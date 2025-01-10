@@ -29,8 +29,8 @@ async function createBulkLeads(req, res) {
   // Flags to enable/disable validation for specific fields
   const validatePhone = true; // Set to false to skip phone validation
   const validateEmail = false; // Set to false to skip email validation
-  const validateName = true; // Set to false to skip name validation
-  const validateSource = true; // Set to false to skip source validation
+  const validateName = false; // Set to false to skip name validation
+  const validateSource = false; // Set to false to skip source validation
 
   try {
     // Validate input: ensure it's a non-empty array

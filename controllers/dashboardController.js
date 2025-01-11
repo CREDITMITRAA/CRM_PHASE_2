@@ -149,7 +149,7 @@ async function getChartsData(req, res) {
               created_by, 
               COUNT(*) AS activity_count
           FROM 
-              crm.Activities
+              ${process.env.DB_NAME}.Activities
           WHERE 
               status = 'active'
               ${dateFilter} -- Add date filter dynamically
@@ -172,7 +172,7 @@ async function getChartsData(req, res) {
               created_by, 
               COUNT(*) AS activity_count
           FROM 
-              crm.Activities
+              ${process.env.DB_NAME}.Activities
           WHERE 
               status = 'active'
               AND activity_status NOT IN ('Not Contacted', 'RNR ( Ring No Response )', 'Switched Off', 'Busy', 'Not Working / Not Reachable')
@@ -196,7 +196,7 @@ async function getChartsData(req, res) {
               created_by, 
               COUNT(*) AS activity_count
           FROM 
-              crm.Activities
+              ${process.env.DB_NAME}.Activities
           WHERE 
               status = 'active'
               AND activity_status = 'Interested'
@@ -222,7 +222,7 @@ async function getChartsData(req, res) {
               created_by, 
               COUNT(*) AS walkin_count
           FROM 
-              crm.WalkIns
+              ${process.env.DB_NAME}.WalkIns
           WHERE 
               status = 'active'
               AND ${dateConditionForWalkInScheduledToday} -- Dynamically apply date filter
@@ -247,7 +247,7 @@ async function getChartsData(req, res) {
               created_by, 
               COUNT(*) AS walkin_count
           FROM 
-              crm.WalkIns
+              ${process.env.DB_NAME}.WalkIns
           WHERE 
               status = 'active' 
               AND ${dateConditionForWalkInsToday} -- Apply dynamic date condition here

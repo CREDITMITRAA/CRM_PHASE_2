@@ -2,7 +2,6 @@ const AWS = require("aws-sdk");
 const fs = require("fs");
 const path = require("path");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { S3_BUCKET_NAME } = require("../utilities/constants");
 const { sequelize } = require("../models");
 const { addLeadDocument } = require("../services/leadDocumentServices");
 
@@ -23,7 +22,7 @@ async function uploadFile(req, res) {
     const uniqueKey = `${Date.now()}-${path.basename(file.originalname)}`;
 
     const params = {
-      Bucket: S3_BUCKET_NAME, // Ensure this is properly set in your environment
+      Bucket: process.env.AWS_S3_BUCKET_NAME, // Ensure this is properly set in your environment
       Key: uniqueKey,
       Body: fs.createReadStream(file.path),
     };
@@ -109,7 +108,7 @@ async function uploadMultipleFiles(req, res) {
     for (const file of files) {
       // Configure the S3 parameters for each file
       const params = {
-        Bucket: S3_BUCKET_NAME, // Replace with your bucket name
+        Bucket: process.env.AWS_S3_BUCKET_NAME, // Replace with your bucket name
         Key: `${Date.now()}-${path.basename(file.originalname)}`, // Unique key
         Body: fs.createReadStream(file.path),
       };

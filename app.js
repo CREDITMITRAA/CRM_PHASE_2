@@ -17,7 +17,7 @@ app.use(bodyParser.json()); // Parse incoming JSON requests
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded data
 // app.use(morgan('dev')); // Log HTTP requests
 app.use(cors({
-  origin: 'http://localhost:3001',  // Your frontend URL
+  origin: process.env.FRONTEND_ORIGIN_URL,
   // origin: 'http://crm.creditmitra.in',  // Your frontend URL for PRODUCTION
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,  // Allow credentials (cookies, tokens)

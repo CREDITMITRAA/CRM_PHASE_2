@@ -15,6 +15,7 @@ const dashboardRoutes = require('./dashboardRoutes')
 const walkInRoutes = require('./walkInRoutes')
 const filesUploadRoutes = require('./filesUploadRoutes')
 const leadDocumentRoutes = require('./leadDocumentRoutes')
+const invalidLeadRoutes = require('./invalidLeadRoutes')
 // Add more routes as needed...
 
 // Set up routes
@@ -31,6 +32,7 @@ router.use('/dashboard', dashboardRoutes)
 router.use('/walk-ins', walkInRoutes)
 router.use('/uploads', filesUploadRoutes)
 router.use('/lead-documents', leadDocumentRoutes)
+router.use('/invalid-leads', invalidLeadRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

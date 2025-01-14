@@ -18,8 +18,16 @@ async function uploadFile(req, res) {
       throw new Error("No file provided.");
     }
 
-    // Generate unique key for the S3 object
-    const uniqueKey = `${Date.now()}-${path.basename(file.originalname)}`;
+    // Extract required fields from the request
+    const leadID = req.body.lead_id;
+    const leadName = req.body.lead_name || "Unknown"; // Default if lead name is not provided
+    // const fileTypeName = req.body.file_type || path.extname(file.originalname).slice(1); // Default to file extension
+    const document_type = req.body.document_type || "misc"
+    const timestamp = Date.now();
+    const extension = path.extname(file.originalname);
+    
+    // Generate unique key with directory structure
+    const uniqueKey = `${leadID}/${leadID}_${leadName}_${document_type}_${timestamp}${extension}`;
 
     const params = {
       Bucket: process.env.AWS_S3_BUCKET_NAME, // Ensure this is properly set in your environment

@@ -173,9 +173,7 @@ async function getAllLeadsWithPagination(req, res) {
       };
     }
     if (lead_status) {
-      whereConditions.lead_status = {
-        [Op.like]: `%${lead_status}%`, // Use Op.iLike for case-insensitivity if supported
-      };
+      whereConditions.lead_status = lead_status
     }
     if(application_status){
       whereConditions.application_status = {

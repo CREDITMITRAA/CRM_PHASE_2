@@ -147,7 +147,8 @@ async function getAllLeadsWithPagination(req, res) {
       assigned_to,
       lead_status,
       assigned_to_name,
-      application_status
+      application_status,
+      lead_source
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -196,6 +197,13 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions.createdAt = {
         [Op.between]: [startOfDayUTC, endOfDayUTC],
       };
+    }
+
+    // lead source filter if lead_source is provided
+    if(lead_source){
+      whereConditions.lead_source = {
+        [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
+      }
     }
 
     if (assigned_to) {
@@ -716,6 +724,43 @@ async function updateLeadStatus(req,res){
   }
 }
 
+async function getAllDistinctLeadSources(req,res){
+  try {
+    let [leadSources] = await sequelize.query(
+      `SELECT DISTINCT lead_source AS lead_source FROM ${process.env.DB_NAME}.Leads WHERE lead_source IS NOT NULL;`,
+    )
+    leadSources = leadSources.map((row)=>row.lead_source)
+    return ApiResponse(res, 'success', 200, "Lead Sources fetched successfully.", leadSources)
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to fetch lead sources !", null, error, null)
+  }
+}
+
+async function getLeadSourceByName(req,res){
+  try {
+    const {lead_source_name} = req.query
+
+    if(!lead_source_name){
+      return ApiResponse(res, 'error', 400, "Lead Source Name is required !")
+    }
+
+    let [leadSources] = await sequelize.query(
+      `SELECT DISTINCT lead_source AS lead_source
+       FROM ${process.env.DB_NAME}.Leads
+       WHERE lead_source LIKE :leadSourceName AND lead_source IS NOT NULL;`,
+      {
+        replacements: { leadSourceName: `%${lead_source_name}%` }, // Allow partial matching
+      }
+    );
+
+    leadSources = leadSources.map((row)=>row.lead_source)
+
+    return ApiResponse(res, 'success', 200, "Lead Sources fetched successfully", leadSources)
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to fetch lead source by name !", null,error,null)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -724,5 +769,7 @@ module.exports = {
   updateVerificationStatus,
   getTotalLeadsCount,
   updateApplicationStatus,
-  updateLeadStatus
+  updateLeadStatus,
+  getAllDistinctLeadSources,
+  getLeadSourceByName
 };

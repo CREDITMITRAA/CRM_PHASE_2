@@ -10,5 +10,7 @@ router.post('/update-verification-status', leadController.updateVerificationStat
 router.get('/get-total-leads-count', leadController.getTotalLeadsCount)
 router.post('/update-application-status', leadController.updateApplicationStatus)
 router.post('/update-lead-status', leadController.updateLeadStatus)
+router.get('/get-all-lead-sources',leadController.getAllDistinctLeadSources)
+router.get('/get-lead-source-by-name', leadController.getLeadSourceByName)
 
 module.exports = router

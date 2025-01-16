@@ -24,16 +24,14 @@ const {
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
 
-  const transaction = await sequelize.transaction(); // Start a transaction
-
-  // Flags to enable/disable validation for specific fields
-  const validatePhone = true; // Set to false to skip phone validation
-  const validateEmail = false; // Set to false to skip email validation
-  const validateName = false; // Set to false to skip name validation
-  const validateSource = false; // Set to false to skip source validation
+  // Validation flags
+  const validatePhone = true;
+  const validateEmail = false;
+  const validateName = false;
+  const validateSource = false;
 
   try {
-    // Validate input: ensure it's a non-empty array
+    // Validate input
     if (!Array.isArray(req.body) || req.body.length === 0) {
       return ApiResponse(
         res,
@@ -43,94 +41,74 @@ async function createBulkLeads(req, res) {
       );
     }
 
-    // If validation is enabled, perform validation
     let validLeads = [];
     let invalidLeads = [];
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^(\+?\d{1,3}[-.\s]?)?(\d{10})$/;
 
-    // Set to track duplicates
-    const phoneSet = new Set();
-    const emailSet = new Set();
-
-    // Validation regex
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // Basic email regex
-    const phoneRegex = /^(\+?\d{1,3}[-.\s]?)?(\d{10})$/; // Updated to allow optional country code
-
+    // Validate leads
     req.body.forEach((lead) => {
       let isValid = true;
       let reason = "";
 
-      // Check for duplicate phone and email
-      if (validatePhone && phoneSet.has(lead.phone)) {
+      if (validateName && !lead.name) {
         isValid = false;
-        reason = "duplicate phone";
-      } else if (validateEmail && emailSet.has(lead.email)) {
+        reason = "Missing name";
+      } else if (validateEmail && (!lead.email || !emailRegex.test(lead.email))) {
         isValid = false;
-        reason = "duplicate email";
+        reason = "Invalid email";
+      } else if (validatePhone && (!lead.phone || !phoneRegex.test(lead.phone))) {
+        isValid = false;
+        reason = "Invalid phone";
+      } else if (validateSource && !lead.lead_source) {
+        isValid = false;
+        reason = "Missing lead source";
       }
 
       if (isValid) {
-        // Validate name
-        if (validateName && !lead.name) {
-          invalidLeads.push({ ...lead, reason: "Invalid name" });
-        }
-        // Validate email
-        else if (validateEmail && !emailRegex.test(lead.email)) {
-          invalidLeads.push({ ...lead, reason: "Invalid email" });
-        }
-        // Validate phone
-        else if (validatePhone && !phoneRegex.test(lead.phone)) {
-          invalidLeads.push({ ...lead, reason: "Invalid phone" });
-        }
-        // Validate source
-        else if (validateSource && !lead.lead_source) {
-          invalidLeads.push({ ...lead, reason: "Invalid source" });
-        } else {
-          validLeads.push(lead);
-          if(validatePhone) phoneSet.add(lead.phone); // Track unique phone numbers
-          if(validateEmail) emailSet.add(lead.email); // Track unique emails
-        }
+        validLeads.push(lead);
       } else {
-        invalidLeads.push({ ...lead, reason: `Duplicate ${reason}` });
+        invalidLeads.push({ ...lead, reason });
       }
     });
 
-    // Handle valid leads: Bulk create within a transaction
+    // Insert valid leads
     let createdLeads = [];
     if (validLeads.length > 0) {
       try {
         createdLeads = await Lead.bulkCreate(validLeads, {
           validate: true,
-          transaction,
         });
-      } catch (error) {
-        // Handle database error (e.g., ER_DUP_ENTRY)
-        if (error.code === "ER_DUP_ENTRY") {
-          const dbErrorLeads = validLeads.map((lead) => ({
-            ...lead,
-            reason: `Database error: ${error.sqlMessage}`,
-          }));
-          await InvalidLead.bulkCreate(dbErrorLeads, { transaction });
-          console.error("Error during bulk creation of valid leads:", error);
-        } else {
-          const dbErrorLeads = validLeads.map((lead) => ({
-            ...lead,
-            reason: `Database error: ${error.message}`,
-          }));
-          await InvalidLead.bulkCreate(dbErrorLeads, { transaction });
-          console.error("Error during bulk creation of valid leads:", error);
+      } catch (bulkError) {
+        console.error("Error inserting valid leads in bulk. Trying individually:", bulkError);
+        for (const lead of validLeads) {
+          try {
+            const createdLead = await Lead.create(lead);
+            createdLeads.push(createdLead);
+          } catch (singleError) {
+            console.error("Error inserting valid lead:", singleError);
+            invalidLeads.push({
+              ...lead,
+              reason: `Database error: ${singleError.message}`,
+            });
+          }
         }
       }
     }
 
-    // Handle invalid leads: Save to InvalidLeads table
+    // Insert invalid leads
+    let invalidLeadResults = [];
     if (invalidLeads.length > 0) {
-      await InvalidLead.bulkCreate(invalidLeads, { transaction });
+      try {
+        invalidLeadResults = await InvalidLead.bulkCreate(invalidLeads, {
+          validate: false, // Skipping validation for invalid records
+        });
+      } catch (error) {
+        console.error("Error inserting invalid leads:", error);
+      }
     }
 
-    // Commit the transaction after all operations
-    await transaction.commit();
-
-    // Send success response
+    // Respond with results
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
       totalValidLeads: createdLeads.length,
       totalInvalidLeads: invalidLeads.length,
@@ -144,34 +122,14 @@ async function createBulkLeads(req, res) {
       invalidLeads,
     });
   } catch (error) {
-    // Rollback the transaction in case of any error
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
-
-    console.error("Error creating leads:", error);
-
-    // Handle validation errors
-    if (error.errors) {
-      return ApiResponse(
-        res,
-        "error",
-        400,
-        "Validation errors occurred",
-        error.errors.map((e) => e.message)
-      );
-    }
-
-    // Handle other errors with detailed message
-    return ApiResponse(
-      res,
-      "error",
-      500,
-      "Failed to process leads",
-      `Error: ${error.message}`
-    );
+    console.error("Unexpected error processing leads:", error);
+    return ApiResponse(res, "error", 500, "Failed to process leads", {
+      error: error.message,
+    });
   }
 }
+
+
 
 async function getAllLeadsWithPagination(req, res) {
   try {

@@ -27,17 +27,36 @@ async function deleteInvalidLeads(req, res) {
 
 async function getAllInvalidLeads(req, res) {
   try {
-    const invaliedLeads = await InvalidLead.findAll({
+    const page = parseInt(req.query.page || 1)
+    const pageSize = parseInt(req.query.pageSize || 10)
+    const offset = (page - 1) * pageSize
+    const limit = pageSize
+    // Fetch total count and paginated data
+    const { count, rows: invalidLeads } = await InvalidLead.findAndCountAll({
       order: [["createdAt", "DESC"]],
+      offset,
+      limit,
     });
+
+    // Calculate total pages
+    const totalPages = Math.ceil(count / pageSize);
+
+    // Prepare pagination metadata
+    const pagination = {
+      page,
+      totalPages,
+      total: count,
+      pageSize,
+    };
+
     return ApiResponse(
       res,
       "success",
       200,
-      "Invalied Leads fetched successfully !",
-      invaliedLeads,
+      "Invalid Leads fetched successfully !",
+      invalidLeads,
       null,
-      null
+      pagination
     );
   } catch (error) {
     return ApiResponse(

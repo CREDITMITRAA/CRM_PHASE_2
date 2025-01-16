@@ -31,8 +31,11 @@ async function getAllInvalidLeads(req, res) {
     const pageSize = parseInt(req.query.pageSize || 10)
     const offset = (page - 1) * pageSize
     const limit = pageSize
+    const { reason } = req.query;
+    const whereClause = reason ? { reason } : {};
     // Fetch total count and paginated data
     const { count, rows: invalidLeads } = await InvalidLead.findAndCountAll({
+      where: whereClause, // Apply filter
       order: [["createdAt", "DESC"]],
       offset,
       limit,
@@ -71,7 +74,30 @@ async function getAllInvalidLeads(req, res) {
   }
 }
 
+async function deleteInvalidLeadsByLeadIds(req,res){
+  try {
+    const {leadIds} = req.body
+    if(!leadIds || !Array.isArray(leadIds) || leadIds.length === 0){
+      return ApiResponse(res, 'error', 400, "Invalid or Missing Lead Ids !")
+    }
+    const response = await InvalidLead.destroy({
+      where:{
+        id:leadIds
+      }
+    })
+
+    if (response === 0) {
+      return ApiResponse(res, "error", 404, "No Invalid Leads found for the given LeadIds!", null, null, null);
+    }
+
+    return ApiResponse(res, 'success', 200, `Delete ${response} Invalid Leads Successfully`)
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to delete invalid leads !", null, error, null)
+  }
+}
+
 module.exports = {
   deleteInvalidLeads,
   getAllInvalidLeads,
+  deleteInvalidLeadsByLeadIds
 };

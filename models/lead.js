@@ -20,6 +20,8 @@ module.exports = (sequelize) => {
     application_status : { type: DataTypes.ENUM(...APPLICATION_STATUSES) },
     is_rejected: { type: DataTypes.BOOLEAN, defaultValue: false },
     rejection_reason: { type: DataTypes.TEXT },
+    rejected_by_id: { type: DataTypes.INTEGER },
+    rejected_at : {type: DataTypes.DATE},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

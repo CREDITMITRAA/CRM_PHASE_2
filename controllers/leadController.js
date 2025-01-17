@@ -470,7 +470,7 @@ async function updateVerificationStatus(req, res) {
   let transaction;
   try {
     transaction = await sequelize.transaction();
-    const { lead_id, verification_status, role, rejection_reason } = req.body;
+    const { lead_id, verification_status, role, rejection_reason, rejected_by_id } = req.body;
 
     if (!lead_id || !verification_status || !role) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
@@ -502,16 +502,20 @@ async function updateVerificationStatus(req, res) {
 
     let updateData = {verification_status}
     if(verification_status === "Rejected"){
-      if(!rejection_reason){
-        return ApiResponse(res, 'error', 400, "Rejection reason is required !")
+      if(!rejection_reason || !rejected_by_id){
+        return ApiResponse(res, 'error', 400, "Rejection reason and Rejected by id is required !")
       }
       updateData.application_status = verification_status
       updateData.is_rejected = true
       updateData.rejection_reason = rejection_reason
+      updateData.rejected_by_id = rejected_by_id
+      updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
     }else{
       updateData.application_status = null
       updateData.is_rejected = false
       updateData.rejection_reason = null
+      updateData.rejected_by_id = null
+      updateData.rejected_at = null
     }
     // Update lead
     const updatedLead = await LeadServices.updateLead(

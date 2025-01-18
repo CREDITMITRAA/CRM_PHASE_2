@@ -279,10 +279,35 @@ async function getWalkInsCount(req, res) {
   }
 }
 
+async function getWalkInsByLeadId(req,res){
+  try {
+    const {lead_id} = req.query
+    if(!lead_id){
+      return ApiResponse(res, 'error', 400, "Lead ID is required !")
+    }
+
+    const walkIns = await WalkIn.findAll({
+      where: { 
+        lead_id: lead_id, 
+        status: 'active', // Fetch only active walk-ins
+        walk_in_date_time: {
+          [Op.gte]: new Date(), // Filter for walk-ins on or after the current time
+        },
+      },
+      order: [['walk_in_date_time', 'ASC']], // Sort by walk-in date
+    });
+
+    return ApiResponse(res, 'success', 200, "Query Successful", walkIns)
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to fetch Walk-Ins for given lead id !", null, error, null)
+  }
+}
+
 module.exports = {
   scheduleWalkIn,
   getWalkIns,
   updateWalkInStatus,
   rescheduleWalkIn,
-  getWalkInsCount
+  getWalkInsCount,
+  getWalkInsByLeadId
 };

@@ -20,6 +20,7 @@ const {
   ROLE_EMPLOYEE,
   LEAD_STATUSES,
 } = require("../utilities/constants");
+const { getErrorReason } = require("../utilities/helper-functions");
 
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
@@ -87,9 +88,10 @@ async function createBulkLeads(req, res) {
             createdLeads.push(createdLead);
           } catch (singleError) {
             console.error("Error inserting valid lead:", singleError);
+            const reason = getErrorReason(singleError);
             invalidLeads.push({
               ...lead,
-              reason: `Database error: ${singleError.message}`,
+              reason: reason,
             });
           }
         }

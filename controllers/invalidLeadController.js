@@ -1,4 +1,4 @@
-const { InvalidLead } = require("../models");
+const { InvalidLead, sequelize } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 
 async function deleteInvalidLeads(req, res) {
@@ -96,8 +96,26 @@ async function deleteInvalidLeadsByLeadIds(req,res){
   }
 }
 
+
+async function getDistinctInvalidLeadReasons(req,res){
+  try {
+      let reasons = await InvalidLead.findAll({
+        attributes: [
+          [sequelize.fn('DISTINCT', sequelize.col('reason')), 'reason']
+        ],
+        where: { status: 'active' },  // Optional: only active invalid leads
+        raw: true  // Ensures the result is returned as plain JSON
+      })
+      reasons = reasons.map((reason) => reason.reason)
+      return ApiResponse(res, 'success', 200, "Query Successful", reasons)
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to get unique invalid leads reasons !", null, error, null)
+  }
+}
+
 module.exports = {
   deleteInvalidLeads,
   getAllInvalidLeads,
-  deleteInvalidLeadsByLeadIds
+  deleteInvalidLeadsByLeadIds,
+  getDistinctInvalidLeadReasons
 };

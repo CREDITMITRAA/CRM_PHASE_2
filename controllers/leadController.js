@@ -207,7 +207,13 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (assigned_to) {
-      leadAssignmentConditions.assigned_to = assigned_to;
+      if (assigned_to === "not_assigned") {
+        whereConditions.id = {
+          [Op.notIn]: sequelize.literal(`(SELECT lead_id FROM LeadAssignments)`),
+        };
+      } else {
+        leadAssignmentConditions.assigned_to = assigned_to;
+      }
     }
 
     if (assigned_to_name) {
@@ -228,7 +234,7 @@ async function getAllLeadsWithPagination(req, res) {
       {
         model: LeadAssignment,
         as: "LeadAssignments",
-        required: !!assigned_to || !!assigned_to_name,
+        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name,
         where: leadAssignmentConditions,
         include: [
           {

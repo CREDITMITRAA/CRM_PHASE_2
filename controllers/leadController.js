@@ -150,7 +150,8 @@ async function getAllLeadsWithPagination(req, res) {
       lead_status,
       assigned_to_name,
       application_status,
-      lead_source
+      lead_source,
+      isPaginationOff='false'
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -257,23 +258,24 @@ async function getAllLeadsWithPagination(req, res) {
           ["createdAt", "DESC"], // Default ordering
           ["id", "DESC"],
         ];
-
+      
+    const isPaginationEnabled = isPaginationOff === 'false'
     const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
       include: includeConditions,
       order: orderConditions,
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
+      limit: isPaginationEnabled ? pageSize : null,
+      offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
     });
 
-    const totalPages = Math.ceil(count / pageSize);
-    let pagination = {
+    const totalPages = isPaginationEnabled ? Math.ceil(count / pageSize) : 1;
+    let pagination = isPaginationEnabled ? {
       page: page,
       totalPages: totalPages,
       total: count,
       pageSize,
-    };
+    } : null;
 
     return ApiResponse(
       res,

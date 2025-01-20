@@ -11,6 +11,7 @@ const CreditReport = require("./creditReport")(sequelize);
 const InvalidLead = require("./invalidLead")(sequelize);
 const WalkIn = require("./walkIn")(sequelize);
 const LeadDocument = require("./leadDocument")(sequelize)
+const ActivityLog = require("./ActivityLog")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -79,5 +80,6 @@ module.exports = {
   CreditReport,
   InvalidLead,
   WalkIn,
-  LeadDocument
+  LeadDocument,
+  ActivityLog
 };

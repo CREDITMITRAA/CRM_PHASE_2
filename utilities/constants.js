@@ -13,7 +13,7 @@ const INITIAL_LEAD_STATUSES = [
     "Not Possible"
 ]
 
-const LEAD_STATUSES = [
+const  LEAD_STATUSES = [
     "Not Contacted",
     'Interested',
     "Follow Up",
@@ -42,7 +42,8 @@ const VERIFICATION_STATUSES = [
     "Manager 1 Approved",
     "Manager 2 Approved",
     "Approved for Walk-In",
-    "Rejected"
+    "Rejected",
+    "Normal Login"
 ]
 
 const TASK_STATUSES = [
@@ -67,7 +68,8 @@ const APPLICATION_STATUSES = [
     "Manager 2 Approved",
     "Rejected",
     "Closed",
-    "Login"
+    "Login",
+    "Normal Login"
 ]
 
 module.exports = {

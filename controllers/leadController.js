@@ -672,7 +672,8 @@ async function updateApplicationStatus(req,res){
       "Manager 2 Approved",
       "Rejected",
       "Closed",
-      "Login"
+      "Login",
+      "Normal Login"
     ]
 
     if(!validApplicationStatuses.includes(application_status)){

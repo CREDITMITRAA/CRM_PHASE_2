@@ -9,6 +9,8 @@ const {
 } = require("../models"); // Adjust paths as needed
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
+const ActivityLogServices = require('../services/ActivityLogServices')
+const {ACTIVITY_LOGS,ACTIVITY_TYPES} = require('../utilities/ActivityLogConstants')
 
 async function assignLeadsToEmployee(req, res) {
   const transaction = await sequelize.transaction();
@@ -52,6 +54,17 @@ async function assignLeadsToEmployee(req, res) {
       updateOnDuplicate: ["assigned_to", "assigned_by", "status"],
       transaction,
     });
+
+    const activityLogs = leadIds.map((leadId) => ({
+      activity_desc:ACTIVITY_LOGS.ASSIGN_LEAD(leadId, assignedTo, assignedBy),
+      activity_type:ACTIVITY_TYPES.LEAD_ASSIGNMENT,
+      created_by: assignedBy,
+      lead_id: leadId
+    }))
+
+    await Promise.all(
+      activityLogs.map((logData) => ActivityLogServices.createActivityLog(logData, transaction))
+    )
 
     // Commit transaction
     await transaction.commit();

@@ -1,4 +1,4 @@
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
 const {
   sequelize,
@@ -6,11 +6,12 @@ const {
   Lead,
   User,
   Activity,
+  LeadTransfer,
 } = require("../models"); // Adjust paths as needed
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
 const ActivityLogServices = require('../services/ActivityLogServices')
-const {ACTIVITY_LOGS,ACTIVITY_TYPES} = require('../utilities/ActivityLogConstants')
+const {ACTIVITY_LOGS,ACTIVITY_TYPES} = require('../utilities/ActivityLogConstants');
 
 async function assignLeadsToEmployee(req, res) {
   const transaction = await sequelize.transaction();
@@ -27,13 +28,12 @@ async function assignLeadsToEmployee(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields!");
     }
 
-    // Fetch the assigned employee and assigning user (no validation needed if they exist in DB)
+    // Fetch the assigned employee and assigning user
     const [employee, assigningUser] = await Promise.all([
       User.findByPk(assignedTo),
       User.findByPk(assignedBy),
     ]);
 
-    // Validate that employee and assigning user exist
     if (!employee) {
       return ApiResponse(res, "ERROR", 404, "Assigned employee not found!");
     }
@@ -41,39 +41,124 @@ async function assignLeadsToEmployee(req, res) {
       return ApiResponse(res, "ERROR", 404, "Assigning user not found!");
     }
 
-    // Prepare bulk upsert data for lead assignments
+    // Find existing leads
+    const existingLeads = await LeadAssignment.findAll({
+      where: { lead_id: leadIds },
+      attributes: ["lead_id", "assigned_to"],
+      transaction,
+    });
+
+    // Unwanted activity statuses
+    const unwantedStatuses = ["RNR ( Ring No Response )", "Switched Off", "Busy", "Not Interested", "Not Working / Not Reachable"];
+
+    // Fetch activities with unwanted statuses for the selected leads
+    const unwantedActivities = await Activity.findAll({
+      where: {
+        lead_id: leadIds,
+        activity_status: {
+          [Sequelize.Op.in]: unwantedStatuses,  // Only activities with the unwanted statuses
+        },
+      },
+      attributes: ["id", "lead_id", "createdAt"],
+      order: [["createdAt", "DESC"]], // Sort by latest activity
+      transaction,
+    });
+
+    // Filter the most recent unwanted activities for each lead
+    const recentUnwantedActivities = unwantedActivities.reduce((acc, activity) => {
+      if (!acc[activity.lead_id] || acc[activity.lead_id].createdAt < activity.createdAt) {
+        acc[activity.lead_id] = activity;
+      }
+      return acc;
+    }, {});
+
+    // Remove unwanted activities from the database
+    const unwantedActivityIds = Object.values(unwantedActivities).map(
+      (activity) => activity.id
+    );
+
+    if (unwantedActivityIds.length > 0) {
+      await Activity.destroy({
+        where: { id: unwantedActivityIds },
+        transaction,
+      });
+    }
+
+    // Update lead statuses in the Leads table
+    const leadsToUpdate = Object.keys(recentUnwantedActivities);
+    if (leadsToUpdate.length > 0) {
+      await Lead.update(
+        { lead_status: "Not Contacted" },
+        {
+          where: { id: leadsToUpdate },
+          transaction,
+        }
+      );
+    }
+
+    // Map existing leads for easier lookup
+    const existingLeadMap = new Map(
+      existingLeads.map((lead) => [lead.lead_id, lead.assigned_to])
+    );
+
+    // Prepare transfer history records and reassignment activity logs
+    const leadTransfers = [];
+    const reassignmentActivityLogs = [];
+    existingLeads.forEach((lead) => {
+      leadTransfers.push({
+        lead_id: lead.lead_id,
+        transfered_from: lead.assigned_to,
+        transfered_to: assignedTo,
+        transfered_on: new Date(),
+        transfered_by: assignedBy,
+      });
+
+      reassignmentActivityLogs.push({
+        activity_desc: `Lead ID ${lead.lead_id} reassigned from Employee ID ${lead.assigned_to} to Employee ID ${assignedTo} by Employee ID ${assignedBy}.`,
+        activity_type: ACTIVITY_TYPES.LEAD_REASSIGNMENT,
+        created_by: assignedBy,
+        lead_id: lead.lead_id,
+      });
+    });
+
+    if (leadTransfers.length > 0) {
+      await LeadTransfer.bulkCreate(leadTransfers, { transaction });
+    }
+
     const bulkAssignments = leadIds.map((leadId) => ({
       lead_id: leadId,
       assigned_to: assignedTo,
       assigned_by: assignedBy,
       status: "active",
+      updatedAt: new Date().toISOString(),
     }));
 
-    // Bulk insert or update assignments
     await LeadAssignment.bulkCreate(bulkAssignments, {
-      updateOnDuplicate: ["assigned_to", "assigned_by", "status"],
+      updateOnDuplicate: ["assigned_to", "assigned_by", "status", "updatedAt"],
       transaction,
     });
 
-    const activityLogs = leadIds.map((leadId) => ({
-      activity_desc:ACTIVITY_LOGS.ASSIGN_LEAD(leadId, assignedTo, assignedBy),
-      activity_type:ACTIVITY_TYPES.LEAD_ASSIGNMENT,
-      created_by: assignedBy,
-      lead_id: leadId
-    }))
+    const newAssignmentActivityLogs = leadIds
+      .filter((leadId) => !existingLeadMap.has(leadId))
+      .map((leadId) => ({
+        activity_desc: ACTIVITY_LOGS.ASSIGN_LEAD(leadId, assignedTo, assignedBy),
+        activity_type: ACTIVITY_TYPES.LEAD_ASSIGNMENT,
+        created_by: assignedBy,
+        lead_id: leadId,
+      }));
+
+    const allActivityLogs = [...newAssignmentActivityLogs, ...reassignmentActivityLogs];
 
     await Promise.all(
-      activityLogs.map((logData) => ActivityLogServices.createActivityLog(logData, transaction))
-    )
+      allActivityLogs.map((logData) =>
+        ActivityLogServices.createActivityLog(logData, transaction)
+      )
+    );
 
-    // Commit transaction
     await transaction.commit();
 
-    // Return response with the assigned employee's name
     return ApiResponse(res, "SUCCESS", 200, "Leads assigned successfully!", {
-      assignedTo: {
-        name: employee.name,  // Return the assigned employee's name
-      },
+      assignedTo: { name: employee.name },
       assignedBy: assigningUser.name,
       assignedLeadIds: leadIds,
     });
@@ -91,7 +176,6 @@ async function assignLeadsToEmployee(req, res) {
     );
   }
 }
-
 
 async function getLeadsByAssignedUserId(req, res) {
   try {

@@ -216,7 +216,7 @@ async function getLeadsByAssignedUserId(req, res) {
     if (phone) leadFilters.phone = { [Op.like]: `%${phone}%` };
     if (leadSource) leadFilters.lead_source = { [Op.like]: `%${leadSource}%` };
     if (leadStatus) {
-      leadFilters.lead_status = { [Op.like]: `%${leadStatus}%` };
+      leadFilters.lead_status = leadStatus
     } else if (exclude_verification === 'true') {
       // Exclude leads with status "Verification 1"
       leadFilters.lead_status = { [Op.in]: [...INITIAL_LEAD_STATUSES] };

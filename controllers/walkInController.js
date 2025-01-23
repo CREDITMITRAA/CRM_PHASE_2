@@ -94,7 +94,7 @@ async function getWalkIns(req, res) {
         {
           model: Lead, // Include the Lead model
           as: "lead", // The alias defined in the association
-          attributes: ["id", "name", "phone"], // Select only required fields from Lead
+          attributes: ["id", "name", "phone", "lead_status", "verification_status"], // Select only required fields from Lead
           include: [
             {
               model: LeadAssignment, // Include the LeadAssignment model

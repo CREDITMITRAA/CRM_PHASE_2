@@ -151,7 +151,9 @@ async function getAllLeadsWithPagination(req, res) {
       assigned_to_name,
       application_status,
       lead_source,
-      isPaginationOff='false'
+      isPaginationOff='false',
+      last_updated,
+      assigned_on
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -185,19 +187,37 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (importedOn) {
-      const startOfDayUTC = moment
-        .tz(importedOn, "Asia/Kolkata")
-        .startOf("day")
-        .utc()
-        .toDate();
-      const endOfDayUTC = moment
-        .tz(importedOn, "Asia/Kolkata")
-        .endOf("day")
-        .utc()
-        .toDate();
-      whereConditions.createdAt = {
-        [Op.between]: [startOfDayUTC, endOfDayUTC],
-      };
+      const [startRange, endRange] = importedOn.split(',')
+      if(startRange && endRange){
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      }else{
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if(last_updated){
+      const [startRange, endRange] = last_updated.split(',')
+      if(startRange && endRange){
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        whereConditions.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      }else{
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        whereConditions.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
     }
 
     // lead source filter if lead_source is provided
@@ -224,6 +244,23 @@ async function getAllLeadsWithPagination(req, res) {
       };
     }
 
+    if(assigned_on){
+      const [startRange, endRange] = assigned_on.split(',')
+      if(startRange && endRange){
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        leadAssignmentConditions.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      }else{
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        leadAssignmentConditions.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
     const includeConditions = [
       {
         model: Activity,
@@ -235,7 +272,7 @@ async function getAllLeadsWithPagination(req, res) {
       {
         model: LeadAssignment,
         as: "LeadAssignments",
-        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name,
+        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name || !!assigned_on,
         where: leadAssignmentConditions,
         include: [
           {

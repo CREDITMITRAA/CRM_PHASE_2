@@ -192,7 +192,8 @@ async function getLeadsByAssignedUserId(req, res) {
       assignedBy,
       page = 1, // Default to page 1
       limit = 10, // Default to 10 leads per page
-      exclude_verification
+      exclude_verification,
+      last_updated
     } = req.query;
 
     // Validate input
@@ -251,6 +252,22 @@ async function getLeadsByAssignedUserId(req, res) {
             };
     }
 
+    if(last_updated){
+      const startOfDayUTC = moment
+              .tz(last_updated, "Asia/Kolkata")
+              .startOf("day")
+              .utc()
+              .toDate();
+      const endOfDayUTC = moment
+              .tz(last_updated, "Asia/Kolkata")
+              .endOf("day")
+              .utc()
+              .toDate();
+              leadFilters.updatedAt = {
+              [Op.between]: [startOfDayUTC, endOfDayUTC],
+            };
+    }
+
     // Step 1: Fetch the total count of leads without activities to avoid inflated count due to join
     const { count } = await LeadAssignment.findAndCountAll({
       where: leadAssignmentFilters,
@@ -276,7 +293,7 @@ async function getLeadsByAssignedUserId(req, res) {
           model: Lead,
           as: 'Lead',
           where: leadFilters,
-          attributes: ['id', 'name', 'email', 'phone', 'lead_source', 'createdAt', 'lead_status'],
+          attributes: ['id', 'name', 'email', 'phone', 'lead_source', 'createdAt', 'lead_status', "updatedAt"],
           include: [
             {
               model: Activity,
@@ -320,6 +337,7 @@ async function getLeadsByAssignedUserId(req, res) {
         name: assignment.assignedBy?.name || null,
         email: assignment.assignedBy?.email || null,
       },
+      updatedAt: assignment.Lead.updatedAt,
       activities: assignment.Lead.Activities
         ? assignment.Lead.Activities.map((activity) => ({
             activityId: activity.id,

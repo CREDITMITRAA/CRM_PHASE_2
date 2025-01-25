@@ -138,6 +138,16 @@ async function assignLeadsToEmployee(req, res) {
       transaction,
     });
 
+    const bulkUpdates = leadIds.map((leadId, index) => ({
+      id:leadId,
+      updatedAt: new Date().toISOString()
+    }))
+
+    await Lead.bulkCreate(bulkUpdates, {
+      updateOnDuplicate:["updatedAt"],
+      transaction
+    })
+
     const newAssignmentActivityLogs = leadIds
       .filter((leadId) => !existingLeadMap.has(leadId))
       .map((leadId) => ({
@@ -331,7 +341,7 @@ async function getLeadsByAssignedUserId(req, res) {
       leadSource: assignment.Lead.lead_source,
       leadStatus: assignment.Lead.lead_status,
       importedOn: assignment.Lead.createdAt,
-      assignedAt: assignment.createdAt,
+      assignedAt: assignment.updatedAt,
       assignedBy: {
         userId: assignment.assignedBy?.id || null,
         name: assignment.assignedBy?.name || null,

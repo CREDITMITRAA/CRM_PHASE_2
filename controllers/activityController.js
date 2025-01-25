@@ -1,4 +1,4 @@
-const { Op } = require("sequelize");
+const { Op, where } = require("sequelize");
 const moment = require("moment-timezone");
 const {
   sequelize,
@@ -259,6 +259,8 @@ async function getAllActivities(req, res) {
       activity_status,
       createdAt,
       created_by,
+      phone,
+      assigned_to
     } = req.query;
 
     page = parseInt(page);
@@ -268,31 +270,42 @@ async function getAllActivities(req, res) {
     if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
 
     const whereConditions = {};
+    const leadConditions = {}
     if (activity_status)
       whereConditions.activity_status = { [Op.like]: `%${activity_status}%` };
     if (created_by)
-      whereConditions.created_by = { [Op.like]: `%${created_by}` };
+      whereConditions.created_by = created_by
 
     if (createdAt) {
-      const startOfDayUTC = moment
-        .tz(createdAt, "Asia/Kolkata")
-        .startOf("day")
-        .utc()
-        .toDate();
-      const endOfDayUTC = moment
-        .tz(createdAt, "Asia/Kolkata")
-        .endOf("day")
-        .utc()
-        .toDate();
-      whereConditions.createdAt = {
-        [Op.between]: [startOfDayUTC, endOfDayUTC],
-      };
+      const [startRange, endRange] = createdAt.split(",")
+      if(startRange && endRange){
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      }else{
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if(phone){
+      leadConditions.phone = { [Op.like] : `%${phone}%`}
+    }
+
+    if(assigned_to){
+      whereConditions.created_by = assigned_to
     }
 
     const includeConditions = [
       {
         model: Lead,
         as: "Lead",
+        where: leadConditions,
         required: true, // Ensure activity must be linked to a lead.
         include: [
           {

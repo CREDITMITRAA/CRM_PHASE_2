@@ -260,7 +260,8 @@ async function getAllActivities(req, res) {
       createdAt,
       created_by,
       phone,
-      assigned_to
+      assigned_to,
+      isPaginationOff='false'
     } = req.query;
 
     page = parseInt(page);
@@ -324,12 +325,14 @@ async function getAllActivities(req, res) {
       },
     ];
 
+    const isPaginationEnabled = isPaginationOff === 'false'
+
     const { count, rows } = await Activity.findAndCountAll({
       where: whereConditions,
       include: includeConditions,
       order: [["createdAt", "DESC"]],
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
+      limit: isPaginationEnabled ? pageSize : null,
+      offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
     });
 

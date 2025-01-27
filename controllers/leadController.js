@@ -811,6 +811,33 @@ async function getLeadSourceByName(req,res){
   }
 }
 
+async function updateLeadDetails(req,res){
+  try {
+     const {id} = req.params
+     
+     if(!id){
+      return ApiResponse(res, 'error', 400, "Lead ID is required !")
+     }
+
+     if(Object.keys(req.body).length === 0){
+      return ApiResponse(res, 'error', 400, "update details are required !")
+     }
+
+     const [updatedRowCount] = await Lead.update(req.body,{
+      where: {id}
+     })
+
+     if(updatedRowCount===0){
+      return ApiResponse(res, 'error', 404, "Lead not found !")
+     }
+
+     return ApiResponse(res, 'success', 200, "Lead updated successfully 1")
+
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to update lead details !", null,error,null)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -821,5 +848,6 @@ module.exports = {
   updateApplicationStatus,
   updateLeadStatus,
   getAllDistinctLeadSources,
-  getLeadSourceByName
+  getLeadSourceByName,
+  updateLeadDetails
 };

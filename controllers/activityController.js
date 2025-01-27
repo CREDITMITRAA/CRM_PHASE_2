@@ -371,7 +371,7 @@ async function getAllTasks(req, res) {
   try {
     let { page = 1, pageSize = 25, created_by, follow_up } = req.query;
 
-    const activity_statuses = ["Follow Up", "Call Back"];
+    const activity_statuses = ["Follow Up", "Call Back", "Scheduled Call With Manager"];
 
     // Validate pagination params
     page = parseInt(page);

@@ -174,7 +174,9 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
     if (verification_status) {
       whereConditions.verification_status = {
-        [Op.like]: `%${verification_status}%`, // Use Op.iLike for case-insensitivity if supported
+        [Op.or]: verification_status.map((status) => ({
+          [Op.like]: `%${status}%`, // Use Op.iLike for case-insensitivity if supported
+        })),
       };
     }
     if (lead_status) {

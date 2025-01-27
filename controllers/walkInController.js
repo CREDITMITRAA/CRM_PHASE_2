@@ -15,6 +15,7 @@ async function scheduleWalkIn(req, res) {
       rescheduled_date_time,
       note,
       created_by,
+      is_call=false
     } = req.body;
 
     if (!lead_id || !walk_in_date_time || !created_by) {
@@ -27,7 +28,19 @@ async function scheduleWalkIn(req, res) {
       return ApiResponse(res, "error", 400, "Lead not found!");
     }
 
-    await lead.update({ lead_status: "Scheduled For Walk-In", verification_status: "Scheduled For Walk-In" }, { transaction });
+    let updatePayload = {}
+    if(is_call){
+      updatePayload = {
+        lead_status: "Scheduled Call With Manager",
+        verification_status:"Scheduled Call With Manager"
+      }
+    }else{
+      updatePayload = {
+        lead_status: "Scheduled For Walk-In",
+        verification_status:"Scheduled For Walk-In"
+      }
+    }
+    await lead.update(updatePayload, { transaction });
 
     const savedWalkIn = await WalkIn.create({
       lead_id,
@@ -37,6 +50,7 @@ async function scheduleWalkIn(req, res) {
       rescheduled_date_time,
       note,
       created_by,
+      is_call
      },
      {transaction}
   );

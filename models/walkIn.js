@@ -31,6 +31,10 @@ module.exports = (sequelize) => {
     created_by: { 
       type: DataTypes.INTEGER 
     },
+    is_call: { 
+      type: DataTypes.BOOLEAN, 
+      defaultValue: false 
+    },
     status: { 
       type: DataTypes.ENUM('active', 'inactive'), 
       defaultValue: 'active' 

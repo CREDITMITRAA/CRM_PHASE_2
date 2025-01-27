@@ -10,7 +10,8 @@ const INITIAL_LEAD_STATUSES = [
     "Not Working / Not Reachable",
     "Message",
     "Email",
-    "Not Possible"
+    "Not Possible",
+    "Scheduled Call With Manager"
 ]
 
 const  LEAD_STATUSES = [
@@ -31,7 +32,8 @@ const  LEAD_STATUSES = [
     "Think and get back",
     "12 documents collected",
     "Not okay for Policy",
-    "Not Possible"
+    "Not Possible",
+    "Scheduled Call With Manager"
 ]
 
 const VERIFICATION_STATUSES = [
@@ -43,7 +45,8 @@ const VERIFICATION_STATUSES = [
     "Manager 2 Approved",
     "Approved for Walk-In",
     "Rejected",
-    "Normal Login"
+    "Normal Login",
+    "Scheduled Call With Manager"
 ]
 
 const TASK_STATUSES = [

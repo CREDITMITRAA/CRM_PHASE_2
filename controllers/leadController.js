@@ -519,7 +519,7 @@ async function updateVerificationStatus(req, res) {
   let transaction;
   try {
     transaction = await sequelize.transaction();
-    const { lead_id, verification_status, role, rejection_reason, rejected_by_id } = req.body;
+    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note } = req.body;
 
     if (!lead_id || !verification_status || !role) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
@@ -560,6 +560,7 @@ async function updateVerificationStatus(req, res) {
       updateData.rejected_by_id = rejected_by_id
       updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
     }else{
+      updateData.verification_status_note = verification_status_note
       updateData.application_status = null
       updateData.is_rejected = false
       updateData.rejection_reason = null
@@ -696,7 +697,7 @@ async function getTotalLeadsCount(req, res) {
 async function updateApplicationStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-    const {lead_id, application_status, lead_status, role, rejection_reason} = req.body
+    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id} = req.body
 
     if(!lead_id || !application_status || !lead_status || !role){
       return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -731,10 +732,15 @@ async function updateApplicationStatus(req,res){
       }
       updateData.is_rejected = true
       updateData.rejection_reason = rejection_reason
+      updateData.rejected_by_id = rejected_by_id
+      updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      updateData.application_status_note = application_status_note
       updateData.is_rejected = false;
       updateData.rejection_reason = null;
+      updateData.rejected_by_id = null;
+      updateData.rejected_at = null;
     }
 
     const updatedLead = await LeadServices.updateLead(lead_id,updateData,transaction)

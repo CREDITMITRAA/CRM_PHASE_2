@@ -15,6 +15,7 @@ module.exports = (sequelize) => {
         defaultValue: 'active',
         allowNull: false,
       },
+      note: {type:DataTypes.TEXT}
     },
     { timestamps: true }
   );

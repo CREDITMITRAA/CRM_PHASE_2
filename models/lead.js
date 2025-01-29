@@ -24,6 +24,7 @@ module.exports = (sequelize) => {
     rejected_at : {type: DataTypes.DATE},
     verification_status_note : {type:DataTypes.TEXT},
     application_status_note: {type:DataTypes.TEXT},
+    updated_by: { type: DataTypes.INTEGER },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

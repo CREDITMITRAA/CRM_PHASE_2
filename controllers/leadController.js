@@ -7,6 +7,7 @@ const {
   User,
   LeadAssignment,
   Activity,
+  ActivityLog
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const LeadServices = require("../services/leadServices");
@@ -21,6 +22,7 @@ const {
   LEAD_STATUSES,
 } = require("../utilities/constants");
 const { getErrorReason } = require("../utilities/helper-functions");
+const { ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
@@ -535,7 +537,7 @@ async function updateVerificationStatus(req, res) {
   let transaction;
   try {
     transaction = await sequelize.transaction();
-    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note } = req.body;
+    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note, user_id } = req.body;
 
     if (!lead_id || !verification_status || !role) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
@@ -575,6 +577,7 @@ async function updateVerificationStatus(req, res) {
       updateData.rejection_reason = rejection_reason
       updateData.rejected_by_id = rejected_by_id
       updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
+      updateData.updated_by = user_id
     }else{
       updateData.verification_status_note = verification_status_note
       updateData.application_status = null
@@ -582,6 +585,7 @@ async function updateVerificationStatus(req, res) {
       updateData.rejection_reason = null
       updateData.rejected_by_id = null
       updateData.rejected_at = null
+      updateData.updated_by = user_id
     }
     // Update lead
     const updatedLead = await LeadServices.updateLead(
@@ -589,6 +593,17 @@ async function updateVerificationStatus(req, res) {
       updateData,
       transaction
     );
+
+    await ActivityLog.create(
+    {
+      created_by : user_id,
+      activity_type: ACTIVITY_TYPES.VERIFICATION_STATUS_UPDATE,
+      activity_desc: `Updated Verification Status to : ${verification_status}`,
+      lead_id:lead_id,
+      note: verification_status_note
+    },
+    {transaction}
+  )
 
     await transaction.commit();
     return ApiResponse(
@@ -713,7 +728,7 @@ async function getTotalLeadsCount(req, res) {
 async function updateApplicationStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id} = req.body
+    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id} = req.body
 
     if(!lead_id || !application_status || !lead_status || !role){
       return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -750,6 +765,7 @@ async function updateApplicationStatus(req,res){
       updateData.rejection_reason = rejection_reason
       updateData.rejected_by_id = rejected_by_id
       updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
+      updateData.updated_by = user_id
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
       updateData.application_status_note = application_status_note
@@ -757,9 +773,21 @@ async function updateApplicationStatus(req,res){
       updateData.rejection_reason = null;
       updateData.rejected_by_id = null;
       updateData.rejected_at = null;
+      updateData.updated_by = user_id
     }
 
     const updatedLead = await LeadServices.updateLead(lead_id,updateData,transaction)
+
+    await ActivityLog.create({
+      created_by : user_id,
+      activity_type: ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE,
+      activity_desc: `Updated Application Status to : ${application_status}`,
+      lead_id:lead_id,
+      note: application_status_note
+    },
+    {transaction}
+  )
+
     await transaction.commit()
     return ApiResponse(res, 'success', 200, "Lead updated with application status successfully.", updatedLead, null,null)
   } catch (error) {

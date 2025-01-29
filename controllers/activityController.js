@@ -71,16 +71,27 @@ async function addActivity(req, res) {
         await transaction.rollback();
         return ApiResponse(res, "error", 404, "Lead not found!", null, null);
       }
-      if (activity_status === "Verification 1") {
+      
+      // Explicitly update `updatedAt`
+    lead.setDataValue("updatedAt", new Date().toISOString());
+
+    if (activity_status === "Verification 1") {
         await lead.update(
           {
             verification_status: activity_status,
             lead_status: activity_status,
+            updatedAt: new Date().toISOString(),
           },
           { transaction }
         );
       } else {
-        await lead.update({ lead_status: activity_status }, { transaction });
+        await lead.update(
+          {
+            lead_status: activity_status,
+            updatedAt: new Date().toISOString(),
+          },
+          { transaction }
+        );
       }
     }
 

@@ -72,6 +72,23 @@ async function addActivity(req, res) {
         return ApiResponse(res, "error", 404, "Lead not found!", null, null);
       }
       
+      let pendingActivity = null
+      if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity_status)){
+        pendingActivity = await Activity.findOne({
+          where:{
+            lead_id: leadId,
+            activity_status: ["Follow Up", "Call Back", "Scheduled Call With Manager"],
+            task_status: { [Op.ne]: "Completed" }
+          },
+          transaction
+        })
+      }
+
+      if(pendingActivity){
+        await transaction.rollback()
+        return ApiResponse(res, 'error', 400, "Previous task is pending! Please complete it before adding a new task.")
+      }
+      
       // Explicitly update `updatedAt`
     lead.setDataValue("updatedAt", new Date().toISOString());
 

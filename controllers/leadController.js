@@ -485,6 +485,22 @@ async function updateLeadReportsActivities(req, res) {
 
     // 5. Add Activity if provided
     if (activity) {
+      let pendingActivity = null
+      if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity.activity_status)){
+        pendingActivity = await Activity.findOne({
+          where:{
+            lead_id: leadId,
+            activity_status: ["Follow Up", "Call Back", "Scheduled Call With Manager"],
+            task_status: { [Op.ne]: "Completed" }
+          },
+          transaction
+        })
+      }
+
+      if(pendingActivity){
+        await transaction.rollback()
+        return ApiResponse(res, 'error', 400, "Previous task is pending! Please complete it before adding a new task.")
+      }
       createdActivity = await ActivityServices.addActivity(activity, transaction);
       if(activity.activity_status === "Verification 1"){
         await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, verification_status:activity.activity_status}, transaction)

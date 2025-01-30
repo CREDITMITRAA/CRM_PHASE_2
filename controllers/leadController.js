@@ -600,7 +600,7 @@ async function updateVerificationStatus(req, res) {
       activity_type: ACTIVITY_TYPES.VERIFICATION_STATUS_UPDATE,
       activity_desc: `Updated Verification Status to : ${verification_status}`,
       lead_id:lead_id,
-      note: verification_status_note
+      note: verification_status === 'Rejected' ? rejection_reason : verification_status_note
     },
     {transaction}
   )
@@ -783,7 +783,7 @@ async function updateApplicationStatus(req,res){
       activity_type: ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE,
       activity_desc: `Updated Application Status to : ${application_status}`,
       lead_id:lead_id,
-      note: application_status_note
+      note: application_status === "Rejected" ? rejection_reason : application_status_note
     },
     {transaction}
   )

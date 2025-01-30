@@ -24,6 +24,7 @@ async function addActivity(req, res) {
 
     // Validate mandatory fields
     if (!activity_status) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -34,7 +35,6 @@ async function addActivity(req, res) {
       );
     }
 
-    // Check for existing activity (if leadId is provided)
     let existingActivity;
     if (leadId) {
       existingActivity = await Activity.findOne({
@@ -44,55 +44,60 @@ async function addActivity(req, res) {
       });
     }
 
-    // Calculate new docsCollected based on existing and new values
     let newDocsCollected = docsCollected;
     if (existingActivity && existingActivity.docs_collected === true) {
       newDocsCollected = existingActivity.docs_collected;
     }
 
-    // Create a new Activity
-    const activity = await Activity.create(
-      {
-        lead_id: leadId,
-        activity_status,
-        description,
-        docs_collected: newDocsCollected,
-        created_by: userId,
-        follow_up: followUp,
-        lead_status,
-      },
-      { transaction }
-    );
-
-    // Update lead status if leadId is provided
     if (leadId) {
       const lead = await Lead.findByPk(leadId, { transaction });
       if (!lead) {
         await transaction.rollback();
         return ApiResponse(res, "error", 404, "Lead not found!", null, null);
       }
-      
-      let pendingActivity = null
-      if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity_status)){
+
+      let pendingActivity = null;
+      if (["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity_status)) {
         pendingActivity = await Activity.findOne({
-          where:{
+          where: {
             lead_id: leadId,
-            activity_status: ["Follow Up", "Call Back", "Scheduled Call With Manager"],
+            activity_status: {
+              [Op.in]: ["Follow Up", "Call Back", "Scheduled Call With Manager"]
+            },
             task_status: { [Op.ne]: "Completed" }
           },
           transaction
-        })
-      }
-
-      if(pendingActivity){
-        await transaction.rollback()
-        return ApiResponse(res, 'error', 400, "Previous task is pending! Please complete it before adding a new task.")
+        });
       }
       
-      // Explicitly update `updatedAt`
-    lead.setDataValue("updatedAt", new Date().toISOString());
+      if (pendingActivity) {
+        await transaction.rollback();
+        return ApiResponse(
+          res,
+          'error',
+          400,
+          "Previous task is pending! Please complete it before adding a new task."
+        );
+      }
 
-    if (activity_status === "Verification 1") {
+      // Create Activity **ONLY AFTER CHECKING pendingActivity**
+      const activity = await Activity.create(
+        {
+          lead_id: leadId,
+          activity_status,
+          description,
+          docs_collected: newDocsCollected,
+          created_by: userId,
+          follow_up: followUp,
+          lead_status,
+        },
+        { transaction }
+      );
+
+      // Update Lead Status
+      lead.setDataValue("updatedAt", new Date().toISOString());
+
+      if (activity_status === "Verification 1") {
         await lead.update(
           {
             verification_status: activity_status,
@@ -110,39 +115,35 @@ async function addActivity(req, res) {
           { transaction }
         );
       }
+
+      // ✅ Commit the transaction **AFTER all updates**
+      await transaction.commit();
+
+      return ApiResponse(
+        res,
+        "success",
+        201,
+        "Activity added successfully!",
+        {
+          activityId: activity.id,
+          description: activity.description,
+          activity_status: activity.activity_status,
+          docs_collected: activity.docs_collected,
+          follow_up: activity.follow_up,
+          createdAt: activity.createdAt,
+          updatedAt: activity.updatedAt,
+          lead_status: activity.lead_status,
+        },
+        null
+      );
     }
-
-    await transaction.commit(); // Commit transaction
-
-    // Response
-    return ApiResponse(
-      res,
-      "success",
-      201,
-      "Activity added successfully!",
-      {
-        activityId: activity.id,
-        description: activity.description,
-        activity_status: activity.activity_status,
-        docs_collected: activity.docs_collected,
-        follow_up: activity.follow_up,
-        createdAt: activity.createdAt,
-        updatedAt: activity.updatedAt,
-        lead_status: activity.lead_status,
-      },
-      null
-    );
   } catch (error) {
-    await transaction.rollback(); // Rollback in case of an error
+    // 🔴 Prevent rollback on already committed transactions
+    if (transaction.finished !== "commit") {
+      await transaction.rollback();
+    }
     console.error("Error adding activity:", error);
-    return ApiResponse(
-      res,
-      "error",
-      500,
-      "Failed to add activity!",
-      null,
-      error
-    );
+    return ApiResponse(res, "error", 500, "Failed to add activity!", null, error);
   }
 }
 

@@ -433,6 +433,9 @@ async function getAllTasks(req, res) {
 
     let whereConditions = {
       activity_status: { [Op.in]: activity_statuses },
+      task_status:{
+        [Op.ne] : "Completed"
+      }
     };
 
     if (created_by) {

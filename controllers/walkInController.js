@@ -68,7 +68,11 @@ async function scheduleWalkIn(req, res) {
 async function getWalkIns(req, res) {
   try {
     let { page = 1, pageSize = 10, created_by, date } = req.query;
-    let whereConditions = {};
+    let whereConditions = {
+      walk_in_status:{
+        [Op.ne] : "Completed"
+      }
+    };
     page = parseInt(page);
     pageSize = parseInt(pageSize);
 

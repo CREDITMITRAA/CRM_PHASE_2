@@ -1,4 +1,6 @@
-const { LoanReport, Lead } = require("../models");
+const { LoanReport, Lead, sequelize, ActivityLog } = require("../models");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 
 async function getLoanReportsByLeadId(req, res) {
@@ -105,31 +107,63 @@ async function updateLoanReport(req,res){
 }
 
 async function deleteLoanReport(req, res) {
+  const transaction = await sequelize.transaction(); // FIX: Await transaction initialization
+
   try {
-    const { updated_by, id } = req.body; // Assume `updatedBy` is passed in the request body
+    const { updated_by, id, loan: loanReport, lead_name } = req.body;
 
     if (!id) {
+      await transaction.rollback();
       return ApiResponse(res, 'error', 400, "Id is required!");
     }
 
     if (!updated_by) {
+      await transaction.rollback();
       return ApiResponse(res, 'error', 400, "Updated by ID is required!");
     }
 
-    // Attempt to perform a soft delete by updating the status and updated_by
+    if (!loanReport) {
+      await transaction.rollback();
+      return ApiResponse(res, 'error', 400, "Loan report data is missing!");
+    }
+
+    // Soft delete loan report
     const [updatedCount] = await LoanReport.update(
       { status: 'deleted', updated_by: updated_by },
-      { where: { id } }
+      { where: { id: loanReport.id }, transaction } // FIX: Ensure transaction is passed correctly
     );
 
     if (updatedCount === 0) {
-      // No record was updated, meaning the record does not exist
+      await transaction.rollback();
       return ApiResponse(res, 'error', 404, "Loan Report Not Found!");
     }
 
-    // Record was successfully updated (soft deleted)
+    // Log activity
+    let logData = createLogData(
+      ACTIVITY_LOGS.LOAN_REPORT_DELETE(
+        loanReport.loan_type,
+        loanReport.bank_name,
+        loanReport.loan_amount,
+        loanReport.emi,
+        loanReport.outstanding
+      ),
+      ACTIVITY_TYPES.LOAN_REPORT_DELETE,
+      updated_by,
+      loanReport.lead_id,
+      null,
+      lead_name
+    );
+
+    await ActivityLog.create(
+      {...logData},
+      {transaction}
+    )
+
+    await transaction.commit(); // Commit only if everything succeeds
+
     return ApiResponse(res, 'success', 200, "Loan Report Soft Deleted Successfully!");
   } catch (error) {
+    await transaction.rollback(); // Rollback on error
     console.error(error);
     return ApiResponse(res, 'error', 500, "Failed to soft delete loan report!", null, error, null);
   }

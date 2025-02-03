@@ -10,6 +10,7 @@ module.exports = (sequelize) => {
       activity_type: { type: DataTypes.STRING, allowNull: false },
       activity_desc: { type: DataTypes.TEXT, allowNull: false },
       lead_id: { type: DataTypes.INTEGER, allowNull: true },
+      lead_name: {type: DataTypes.STRING, allowNull: true},
       status: {
         type: DataTypes.ENUM('active', 'deleted'),
         defaultValue: 'active',

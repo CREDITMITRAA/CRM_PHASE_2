@@ -4,6 +4,8 @@ const path = require("path");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { sequelize } = require("../models");
 const { addLeadDocument } = require("../services/leadDocumentServices");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 
 const s3 = new AWS.S3();
 
@@ -25,6 +27,7 @@ async function uploadFile(req, res) {
     const document_type = req.body.document_type || "misc"
     const timestamp = Date.now();
     const extension = path.extname(file.originalname);
+    const user_id = req.body.user_id
     
     // Generate unique key with directory structure
     const uniqueKey = `${leadID}/${leadID}_${leadName}_${document_type}_${timestamp}${extension}`;
@@ -60,6 +63,21 @@ async function uploadFile(req, res) {
 
     // Save the record in the database
     const addedLeadDocument = await addLeadDocument(leadDocumentData, transaction);
+
+    let logData = null
+    switch(document_type){
+      case 'payslip':
+        logData = createLogData(ACTIVITY_LOGS.PAYSLIP_UPLOAD(file.originalname), ACTIVITY_TYPES.PAYSLIP_UPLOAD,user_id,leadID, null,leadName)
+        break;
+      case 'creditBureau':
+        logData = createLogData(ACTIVITY_LOGS.CREDIT_BUREAU_UPLOAD(file.originalname), ACTIVITY_TYPES.CREDIT_BUREAU_UPLOAD, user_id, leadID ,null,leadName)
+        break;
+      case 'otherDocs':
+        logData = createLogData(ACTIVITY_LOGS.OTHER_DOC_UPLOAD(file.originalname), ACTIVITY_TYPES.OTHER_DOC_UPLOAD, user_id, leadID, null,leadName)
+        break;
+    }
+
+    await createActivityLog(logData,transaction)
 
     // Commit the transaction
     await transaction.commit();

@@ -1,13 +1,61 @@
-const ACTIVITY_LOGS = {
-    ASSIGN_LEAD : (leadId, assignedTo, assignedBy) =>
-    `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`
-}
-
 const ACTIVITY_TYPES = {
     LEAD_ASSIGNMENT: 'LEAD_ASSIGNMENT',
     LEAD_REASSIGNMENT: 'LEAD_REASSIGNMENT',
     APPLICATION_STATUS_UPDATE: 'APPLICATION_STATUS_UPDATE',
-    VERIFICATION_STATUS_UPDATE : 'VERIFICATION_STATUS_UPDATE'
+    VERIFICATION_STATUS_UPDATE : 'VERIFICATION_STATUS_UPDATE',
+    LEAD_STATUS_UPDATE : 'LEAD_STATUS_UPDATE',
+    TASK_CREATE : 'TASK_CREATE',
+    PAYSLIP_UPLOAD : 'PAYSLIP_UPLOAD',
+    CREDIT_BUREAU_UPLOAD : 'CREDIT_BUREAU_UPLOAD',
+    NAME_UPDATE : 'NAME_UPDATE',
+    EMAIL_UPDATE : 'EMAIL_UPDATE',
+    CITY_UPDATE : 'CITY_UPDATE',
+    SALARY_UPDATE : 'SALARY_UPDATE',
+    COMPANY_UPDATE : 'COMPANY_UPDATE',
+    COMPANY_CATEGORY_UPDATE : 'COMPANY_CATEGORY_UPDATE',
+    LOAN_REPORTS_UPDATE : 'LOAN_REPORTS_UPDATE',
+    CREDIT_REPORTS_UPDATE : 'CREDIT_REPORTS_UPDATE',
+    LOAN_REPORT_DELETE : 'LOAN_REPORT_DELETE',
+    CREDIT_REPORT_DELETE : 'CREDIT_REPORT_DELETE',
+    WALK_IN_SCHEDULE : 'WALK_IN_SCHEDULE',
+    WALK_IN_RESCHEDULE : 'WALK_IN_RESCHEDULE',
+    TASK_UPDATE : 'TASK_UPDATE',
+    WALK_IN_UPDATE : 'WALK_IN_UPDATE',
+    PAYSLIP_DELETE : 'PAYSLIP_DELETE',
+    OTHER_DOC_UPLOAD : 'OTHER_DOC_UPLOAD',
+    OTHER_DOC_DELETE : 'OTHER_DOC_DELETE',
+    CREDIT_BUREAU_DELETE : 'CREDIT_BUREAU_DELETE',
+    DOCUMENTS_COLLECTED : 'DOCUMENTS_COLLECTED'
+}
+
+const ACTIVITY_LOGS = {
+    ASSIGN_LEAD : (leadId, assignedTo, assignedBy) =>
+    `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`,
+    LEAD_ASSIGNMENT : (employeeName) => `Lead Assigned to ${employeeName}`,
+    APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${newStatus}`,
+    LEAD_STATUS_UPDATE : (prevStatus,newStatus) => `Lead status updated from ${prevStatus} to ${newStatus}`,
+    TASK_CREATE : (task_type, task_date) => `${task_type} on ${task_date}`,
+    PAYSLIP_UPLOAD : (document_name) => `Payslip ${document_name} uplaoded`,
+    CREDIT_BUREAU_UPLOAD : (document_name) => `Credit Bureau ${document_name} uploaded`,
+    NAME_UPDATE : 'Name updated',
+    EMAIL_UPDATE : 'Email updated',
+    CITY_UPDATE : 'City updated',
+    SALARY_UPDATE : 'Salary updated',
+    COMPANY_UPDATE : 'Company updated',
+    COMPANY_CATEGORY_UPDATE : 'Company Category updated',
+    LOAN_REPORTS_UPDATE : (loan_type, bank_name, loan_amount, emi, outstanding) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding} )`,
+    CREDIT_REPORTS_UPDATE : (credit_card_name, total_outstanding) => `Credit Card Report Uploaded ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
+    LOAN_REPORT_DELETE : (loan_type, bank_name, loan_amount, emi, outstanding) => `Loan Report Deleted ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding} )`,
+    CREDIT_REPORT_DELETE : (credit_card_name, total_outstanding) => `Credit Card Report Deleted ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
+    WALK_IN_SCHEDULE : (date) => `Walk In scheduled on ${date}`,
+    WALK_IN_RESCHEDULE : (date) => `Walk In rescheduled on ${date}`,
+    TASK_UPDATE : (task_type,task_status) => `Task ${task_type} is updated to ${task_status}`,
+    WALK_IN_UPDATE : (new_status) => `Walk In status updated to ${new_status}`,
+    PAYSLIP_DELETE : (document_name) => `Payslip ${document_name} deleted`,
+    OTHER_DOC_UPLOAD : (document_name) => `Other Doc ${document_name} uploaded`,
+    OTHER_DOC_DELETE : (document_name) => `Other Doc ${document_name} deleted`,
+    CREDIT_BUREAU_DELETE : (document_name) => `Credit Bureau ${document_name} deleted`,
+    DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`
 }
 
 module.exports = {

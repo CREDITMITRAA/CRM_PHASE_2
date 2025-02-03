@@ -21,8 +21,9 @@ const {
   ROLE_EMPLOYEE,
   LEAD_STATUSES,
 } = require("../utilities/constants");
-const { getErrorReason } = require("../utilities/helper-functions");
-const { ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
+const { getErrorReason, getUpdatedFields, getActivityType, formatString } = require("../utilities/helper-functions");
+const { ACTIVITY_TYPES, ACTIVITY_LOGS } = require("../utilities/ActivityLogConstants");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
@@ -407,7 +408,7 @@ async function getLeadById(req, res) {
 async function updateLeadReportsActivities(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const {userId,leadId,lead,loanReports,creditReports,activity,application_status,lead_status,role,rejection_reason,verification_status} = req.body;
+    const {userId,leadId,lead,loanReports,creditReports,activity,application_status,lead_status,role,rejection_reason,verification_status, docsCollectedPayload, lead_name} = req.body;
 
     // Validate if user exists
     const user = await User.findByPk(userId, { transaction });
@@ -448,6 +449,16 @@ async function updateLeadReportsActivities(req, res) {
     // 1. Update the Lead if the data is provided
     if (lead) {
       updatedLead = await LeadServices.updateLead(leadId, lead, transaction);
+      let updatedFields = getUpdatedFields({name,email,city,salary,company,company_category_name} = lead, lead.prev_data)
+      const activityLogs = Object.keys(updatedFields).map((field)=>({
+        created_by : userId,
+        activity_type : getActivityType(field),
+        activity_desc : `${formatString(field)} updated from "${updatedFields[field].oldValue}" to "${updatedFields[field].newValue}"`,
+        lead_id : leadId,
+        lead_name : lead_name,
+        status : 'active'
+      }))
+      await ActivityLog.bulkCreate(activityLogs, {transaction})
     }
 
     // 2. Update application status if provided
@@ -467,8 +478,9 @@ async function updateLeadReportsActivities(req, res) {
         updateData.is_rejected = false;
         updateData.rejection_reason = null;
       }
-
       await LeadServices.updateLead(leadId, updateData, transaction);
+      let logData = createLogData(ACTIVITY_LOGS.APPLICATION_STATUS_UPDATE(application_status), ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE, userId, leadId, null, lead_name)
+      await createActivityLog(logData, transaction)
     }
 
     let createdLoanReports = [];
@@ -478,11 +490,29 @@ async function updateLeadReportsActivities(req, res) {
     // 3. Create Loan Reports if provided
     if (loanReports && loanReports.length > 0) {
       createdLoanReports = await LoanReportServices.createLoanReports(loanReports, transaction);
+      const activityLogs = loanReports.map((LoanReport)=>({
+        created_by : userId,
+        activity_type : ACTIVITY_TYPES.LOAN_REPORTS_UPDATE,
+        activity_desc : ACTIVITY_LOGS.LOAN_REPORTS_UPDATE(LoanReport.loan_type, LoanReport.bank_name, LoanReport.loan_amount, LoanReport.emi, LoanReport.outstanding),
+        lead_id : leadId,
+        lead_name : lead_name,
+        status : 'active'
+      }))
+      await ActivityLog.bulkCreate(activityLogs, {transaction})
     }
 
     // 4. Create Credit Reports if provided
     if (creditReports && creditReports.length > 0) {
       createdCreditReports = await CreditReportServices.createCreditReports(creditReports, transaction);
+      const activityLogs = creditReports.map((CreditReport)=>({
+        created_by : userId,
+        activity_type : ACTIVITY_TYPES.CREDIT_REPORTS_UPDATE,
+        activity_desc : ACTIVITY_LOGS.CREDIT_REPORTS_UPDATE(CreditReport.credit_card_name,CreditReport.total_outstanding),
+        lead_id : leadId,
+        lead_name : lead_name,
+        status : 'active'
+      }))
+      await ActivityLog.bulkCreate(activityLogs, {transaction})
     }
 
     // 5. Add Activity if provided
@@ -504,11 +534,37 @@ async function updateLeadReportsActivities(req, res) {
         return ApiResponse(res, 'error', 400, "Previous task is pending! Please complete it before adding a new task.")
       }
       createdActivity = await ActivityServices.addActivity(activity, transaction);
+      
       if(activity.activity_status === "Verification 1"){
         await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, verification_status:activity.activity_status}, transaction)
       }else{
         await LeadServices.updateLead(leadId, {lead_status:activity.activity_status}, transaction)
       } 
+
+      let logData = null
+      if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity.activity_status)){
+        let logDataForTask = createLogData(ACTIVITY_LOGS.TASK_CREATE(activity.activity_status, activity.follow_up), ACTIVITY_TYPES.TASK_CREATE, userId, leadId, activity.description, lead_name)
+        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status,activity.activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, activity.description, lead_name)
+        await createActivityLog(logDataForTask, transaction)
+      }else{
+        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status,activity.activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, activity.description, lead_name)
+      }
+      
+      await createActivityLog(logData,transaction);
+    }
+
+    if(docsCollectedPayload){
+      await ActivityServices.updateDocsCollectedByActivityId(docsCollectedPayload, transaction)
+      let logData = createLogData(
+        ACTIVITY_LOGS.DOCUMENTS_COLLECTED(docsCollectedPayload.docs_collected),
+        ACTIVITY_TYPES.DOCUMENTS_COLLECTED,
+        userId,
+        leadId,
+        null,
+        lead_name
+      )
+
+      await createActivityLog(logData, transaction)
     }
 
     // Commit the transaction after all operations

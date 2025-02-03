@@ -3,6 +3,9 @@ const { WalkIn, Lead, LeadAssignment, User, sequelize } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const moment = require("moment-timezone");
 const walkIn = require("../models/walkIn");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
+const e = require("cors");
 
 async function scheduleWalkIn(req, res) {
   const transaction = await sequelize.transaction()
@@ -15,7 +18,8 @@ async function scheduleWalkIn(req, res) {
       rescheduled_date_time,
       note,
       created_by,
-      is_call=false
+      is_call=false,
+      lead_name
     } = req.body;
 
     if (!lead_id || !walk_in_date_time || !created_by) {
@@ -55,6 +59,16 @@ async function scheduleWalkIn(req, res) {
      {transaction}
   );
 
+    let logData = createLogData(
+        ACTIVITY_LOGS.WALK_IN_SCHEDULE(walk_in_date_time),
+        ACTIVITY_TYPES.WALK_IN_SCHEDULE,
+        created_by,
+        lead_id,
+        note,
+        lead_name
+      )
+
+    await createActivityLog(logData, transaction)
     await transaction.commit()
 
     return ApiResponse(res,"success",201,"Walk In scheduled successfully.",savedWalkIn,null,null);
@@ -163,62 +177,104 @@ async function getWalkIns(req, res) {
 }
 
 async function updateWalkInStatus(req, res) {
+  const transaction = await sequelize.transaction()
   try {
-    const { walk_in_id, walk_in_status } = req.body; // Assuming you're sending the data in the request body
+    const { walk_in_id, walk_in_status, user_id, lead_id, lead_name } = req.body; // Assuming you're sending the data in the request body
 
     // Check if the necessary data is provided
     if (!walk_in_id || !walk_in_status) {
+      await transaction.rollback()
       return ApiResponse(res,"error",400,"Missing required fields !");
     }
 
     // Find the walk-in by ID
     const walkIn = await WalkIn.findOne({
       where: { id: walk_in_id },
+      transaction
     });
 
     if (!walkIn) {
+      await transaction.rollback()
       return ApiResponse(res,"error",404,"Walk-in not found",null,null,null);
     }
 
     // Update the walk-in status
     walkIn.walk_in_status = walk_in_status;
-    await walkIn.save();
+    await walkIn.save({transaction});
+
+    let logData = createLogData(
+      ACTIVITY_LOGS.WALK_IN_UPDATE(walk_in_status),
+      ACTIVITY_TYPES.WALK_IN_UPDATE,
+      user_id,
+      lead_id,
+      null,
+      lead_name
+    )
+
+    await createActivityLog(logData,transaction)
+    await transaction.commit();
     return ApiResponse(res,"success",200,"Walk-in status updated successfully",walkIn,null,null);
   } catch (error) {
+    await transaction.rollback()
     console.log(error);
     return ApiResponse(res,"error",500,"Failed to update walk-in status!",null,error,null);
   }
 }
 
-async function rescheduleWalkIn(req,res){
-    try {
-        const {walk_in_id, rescheduled_date_time, note} = req.body
-        if(!walk_in_id || !rescheduled_date_time){
-            return ApiResponse(res,'error',400,"Missing required fields !")
-        }
+async function rescheduleWalkIn(req, res) {
+  const transaction = await sequelize.transaction(); // Start transaction
+  try {
+      const { walk_in_id, rescheduled_date_time, note, lead_name } = req.body;
 
-        const rescheduledDate = new Date(rescheduled_date_time)
-        if (isNaN(rescheduledDate.getTime())) {
-            return ApiResponse(res, "error", 400, "Invalid date format", null, null, null);
-        }
+      if (!walk_in_id || !rescheduled_date_time) {
+          await transaction.rollback();
+          return ApiResponse(res, "error", 400, "Missing required fields!");
+      }
 
-        const walkInFromDB = await WalkIn.findOne({
-            where: {id:walk_in_id}
-        })
+      const rescheduledDate = new Date(rescheduled_date_time);
+      if (isNaN(rescheduledDate.getTime())) {
+          await transaction.rollback();
+          return ApiResponse(res, "error", 400, "Invalid date format");
+      }
 
-        if(!walkIn){
-            return ApiResponse(res,'error',400, "Walk In Not found")
-        }
+      const walkInFromDB = await WalkIn.findOne({
+          where: { id: walk_in_id },
+          transaction
+      });
 
-        walkInFromDB.is_rescheduled = true
-        walkInFromDB.rescheduled_date_time = rescheduledDate
-        walkInFromDB.walk_in_status="Rescheduled"
-        walkInFromDB.note=note
-        await walkInFromDB.save()
-        return ApiResponse(res,'success', 200, "Walk In Rescheduled Successfully.", walkIn, null,null)
-    } catch (error) {
-        return ApiResponse(res,'error',500,"Failed to reschedule walk in 1", null, error, null)
-    }
+      if (!walkInFromDB) {
+          await transaction.rollback();
+          return ApiResponse(res, "error", 400, "Walk-In Not found");
+      }
+
+      // Update fields
+      walkInFromDB.is_rescheduled = true;
+      walkInFromDB.rescheduled_date_time = rescheduledDate;
+      walkInFromDB.walk_in_status = "Rescheduled";
+      if (note) walkInFromDB.note = note;
+
+      await walkInFromDB.save({ transaction });
+
+      let logData = createLogData(
+          ACTIVITY_LOGS.WALK_IN_RESCHEDULE(rescheduled_date_time),
+          ACTIVITY_TYPES.WALK_IN_RESCHEDULE,
+          walkInFromDB.created_by,
+          walkInFromDB.lead_id,
+          note,
+          lead_name
+      );
+
+      await createActivityLog(logData, transaction);
+
+      await transaction.commit(); // Commit transaction before returning
+
+      return ApiResponse(res, "success", 200, "Walk-In Rescheduled Successfully.", walkInFromDB);
+
+  } catch (error) {
+      if (transaction) await transaction.rollback(); // Rollback on error
+      console.error(error);
+      return ApiResponse(res, "error", 500, "Failed to reschedule walk-in!", null, error);
+  }
 }
 
 async function getWalkInsCount(req, res) {

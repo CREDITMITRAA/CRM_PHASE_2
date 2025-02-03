@@ -1,4 +1,6 @@
-const { CreditReport, Lead } = require("../models");
+const { CreditReport, Lead, sequelize, ActivityLog } = require("../models");
+const { createLogData } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 
 async function getCreditReportsByLeadId(req, res) {
@@ -121,28 +123,50 @@ async function deleteCreditReportById(req, res) {
 }
 
 async function deleteCreditReport(req,res){
+  const transaction = await sequelize.transaction();
   try {
-    const {updated_by, id} = req.body
+    const {updated_by, id, credit_report, lead_name} = req.body
     if (!id) {
+      await transaction.rollback();
       return ApiResponse(res, 'error', 400, "Id is required!");
     }
 
     if (!updated_by) {
+      await transaction.rollback();
       return ApiResponse(res, 'error', 400, "Updated by ID is required!");
     }
     // Attempt to perform a soft delete by updating the status and updated_by
     const [updatedCount] = await CreditReport.update(
       { status: 'deleted', updated_by: updated_by },
-      { where: { id } }
+      { where: { id : credit_report.id }, transaction }
     );
     if (updatedCount === 0) {
+      await transaction.rollback();
       // No record was updated, meaning the record does not exist
       return ApiResponse(res, 'error', 404, "Loan Report Not Found!");
     }
 
+    // Log Activity
+    let logData = createLogData(
+      ACTIVITY_LOGS.CREDIT_REPORT_DELETE(credit_report.credit_card_name, credit_report.total_outstanding),
+      ACTIVITY_TYPES.CREDIT_REPORT_DELETE,
+      updated_by,
+      credit_report.lead_id,
+      null,
+      lead_name
+    )
+
+    await ActivityLog.create(
+      {...logData},
+      { transaction }
+    )
+
+    await transaction.commit();
+
     // Record was successfully updated (soft deleted)
     return ApiResponse(res, 'success', 200, "Credit Report Soft Deleted Successfully!");
   } catch (error) {
+    await transaction.rollback(); // Rollback on error
     return ApiResponse(res,'error', 500, "Failed to Delete Credit Report !", null, error, null)
   }
 }

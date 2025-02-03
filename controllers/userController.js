@@ -229,7 +229,7 @@ async function getUsersByName(req,res){
 async function getUsersNameAndId(req, res) {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'name'],
+      attributes: ['id', 'name', 'role_id'],
       where: {
         status: 'active',
       },

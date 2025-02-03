@@ -1,3 +1,5 @@
+const { ACTIVITY_TYPES } = require("./ActivityLogConstants");
+
 function toUTCFormat(dateString, timeString = "00:00:00") {
   // Combine date and time strings
   const fullDateTime = `${dateString}T${timeString}Z`;
@@ -33,7 +35,51 @@ function getErrorReason(error) {
     return error.message || 'Unknown database error';
   }
 
+  function getUpdatedFields(oldLead, newLead) {
+    let updatedFields = {};
+
+    Object.keys(newLead).forEach((key) => {
+        if (
+            oldLead[key] !== newLead[key] && 
+            !(oldLead[key] == null && newLead[key] == "") // Handle null vs empty string equivalence
+        ) {
+            updatedFields[key] = {
+                newValue: oldLead[key],
+                oldValue: newLead[key]
+            };
+        }
+    });
+
+    return updatedFields;
+  }
+
+  function getActivityType(keyName){
+    switch(keyName){
+      case 'name' :
+        return ACTIVITY_TYPES.NAME_UPDATE;
+      case 'email' :
+        return ACTIVITY_TYPES.EMAIL_UPDATE;
+      case 'city' :
+        return ACTIVITY_TYPES.CITY_UPDATE;
+      case 'salary' :
+        return ACTIVITY_TYPES.SALARY_UPDATE;
+      case 'company' :
+        return ACTIVITY_TYPES.COMPANY_UPDATE;
+      case 'company_category_name' :
+        return ACTIVITY_TYPES.COMPANY_CATEGORY_UPDATE
+    }
+  }
+
+  function formatString(str) {
+    return str
+        .replace(/_/g, ' ')                  // Replace underscores with spaces
+        .replace(/\b\w/g, (char) => char.toUpperCase());  // Capitalize the first letter of each word
+  }
+
 module.exports = {
   toUTCFormat,
-  getErrorReason
+  getErrorReason,
+  getUpdatedFields,
+  getActivityType,
+  formatString
 };

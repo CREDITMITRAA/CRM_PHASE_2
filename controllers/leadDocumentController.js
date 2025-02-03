@@ -1,4 +1,6 @@
-const { LeadDocument, Lead } = require("../models");
+const { LeadDocument, Lead, sequelize } = require("../models");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 
 async function addLeadDocuments(req, res) {
@@ -72,10 +74,12 @@ async function getLeadDocumentsByLeadId(req, res) {
 }
 
 async function deleteLeadDocument(req,res){
+  const transaction = await sequelize.transaction()
   try {
-    const {lead_document_id, updated_by} = req.body
+    const {lead_document_id, updated_by, file, userId, lead_name} = req.body
 
     if (!lead_document_id) {
+      await transaction.rollback()
       return ApiResponse(res, 'error', 400, "Id is required!");
     }
 
@@ -85,17 +89,34 @@ async function deleteLeadDocument(req,res){
 
     const [updatedCount] = await LeadDocument.update(
       { status: 'deleted', updated_by: updated_by },
-      { where: { id:lead_document_id } }
+      { where: { id:lead_document_id }, transaction }
     );
 
     if (updatedCount === 0) {
+      transaction.rollback()
       // No record was updated, meaning the record does not exist
       return ApiResponse(res, 'error', 404, "Lead Document Not Found!");
     }
 
+    let logData = null
+    switch(file.document_type){
+      case 'payslip':
+        logData = createLogData(ACTIVITY_LOGS.PAYSLIP_DELETE(file.document_name), ACTIVITY_TYPES.PAYSLIP_DELETE,userId,file.lead_id,null,lead_name)
+        break;
+      case 'creditBureau':
+        logData = createLogData(ACTIVITY_LOGS.CREDIT_BUREAU_DELETE(file.document_name), ACTIVITY_TYPES.CREDIT_BUREAU_DELETE, userId, file.lead_id, null, lead_name)
+        break;
+      case 'otherDocs':
+        logData = createLogData(ACTIVITY_LOGS.OTHER_DOC_DELETE(file.document_name), ACTIVITY_TYPES.OTHER_DOC_DELETE, userId, file.lead_id, null, lead_name)
+        break;
+    }
+
+    await createActivityLog(logData, transaction)
     // Record was successfully updated (soft deleted)
+    await transaction.commit()
     return ApiResponse(res, 'success', 200, "Lead Document Soft Deleted Successfully!");
   } catch (error) {
+    await transaction.rollback()
     return ApiResponse(res, 'error', 500, "Failed to delete lead document !", null, error, null)
   }
 }

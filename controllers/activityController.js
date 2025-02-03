@@ -8,6 +8,8 @@ const {
   LeadAssignment,
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
+const { createActivityLog, createLogData } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 
 async function addActivity(req, res) {
   const transaction = await sequelize.transaction();
@@ -20,6 +22,8 @@ async function addActivity(req, res) {
       docsCollected = 0, // Default to 0
       followUp = null,
       lead_status = null,
+      prev_status,
+      lead_name
     } = req.body;
 
     // Validate mandatory fields
@@ -115,6 +119,17 @@ async function addActivity(req, res) {
           { transaction }
         );
       }
+
+      let logData = null
+      if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity_status)){
+        let logDataForTask = createLogData(ACTIVITY_LOGS.TASK_CREATE(activity_status, followUp), ACTIVITY_TYPES.TASK_CREATE, userId, leadId, description, lead_name)
+        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+        await createActivityLog(logDataForTask, transaction)
+      }else{
+        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+      }
+      
+      await createActivityLog(logData,transaction);
 
       // ✅ Commit the transaction **AFTER all updates**
       await transaction.commit();
@@ -560,11 +575,13 @@ async function getAllTasks(req, res) {
 }
 
 async function updateTaskStatus(req, res) {
+  const transaction = await sequelize.transaction()
   try {
-    const { task_status, activity_id } = req.body;
+    const { task_status, activity_id, task_type, user_id, lead_id, lead_name } = req.body;
 
     // Validate request body
     if (!task_status || !activity_id) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -579,11 +596,23 @@ async function updateTaskStatus(req, res) {
     // Update task_status in the Activity model
     const updatedActivity = await Activity.update(
       { task_status }, // Fields to update
-      { where: { id: activity_id } } // Condition
+      { where: { id: activity_id }, transaction } // Condition
     );
+
+    let logData = createLogData(
+      ACTIVITY_LOGS.TASK_UPDATE(task_type, task_status),
+      ACTIVITY_TYPES.TASK_UPDATE,
+      user_id,
+      lead_id,
+      null,
+      lead_name
+    )
+
+    await createActivityLog(logData, transaction)
 
     // Check if the update was successful
     if (updatedActivity[0] === 0) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -594,7 +623,7 @@ async function updateTaskStatus(req, res) {
         null
       );
     }
-
+    await transaction.commit();
     return ApiResponse(
       res,
       "success",
@@ -605,6 +634,7 @@ async function updateTaskStatus(req, res) {
       null
     );
   } catch (error) {
+    await transaction.rollback();
     console.error(error);
     return ApiResponse(
       res,
@@ -618,11 +648,48 @@ async function updateTaskStatus(req, res) {
   }
 }
 
+async function updateDocsCollectedByActivityId(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const {docs_collected, activity_id, user_id, lead_id} = req.body
+
+    if(typeof docs_collected === 'undefined' || !activity_id){
+      await transaction.rollback()  
+      return ApiResponse(res, 'error', 400, 'Missing required fields !')
+    }
+
+    const [updatedCount] = await Activity.update(
+      {docs_collected},
+      {where : {id:activity_id}, transaction}
+    )
+
+    if(updatedCount === 0){
+      await transaction.rollback()
+      return ApiResponse(res, 'error', 400, 'Activity Not Found or No Changes Made !')
+    }
+
+    let logData = createLogData(
+      ACTIVITY_LOGS.DOCUMENTS_COLLECTED(docs_collected),
+      ACTIVITY_TYPES.DOCUMENTS_COLLECTED,
+      user_id,
+      lead_id
+    )
+
+    await createActivityLog(logData, transaction)
+    await transaction.commit()
+    return ApiResponse(res, 'success', 200, 'Docs Collected field updated successfully!')
+
+  } catch (error) {
+    return ApiResponse(res, 'error', 500,  "Failed to update docs collected field !", null, error, null)
+  }
+}
+
 module.exports = {
   addActivity,
   getActivitiesByLeadId,
   updateActivityByActivityId,
   getAllActivities,
   getAllTasks,
-  updateTaskStatus
+  updateTaskStatus,
+  updateDocsCollectedByActivityId
 };

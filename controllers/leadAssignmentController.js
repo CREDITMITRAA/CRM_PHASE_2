@@ -16,7 +16,7 @@ const {ACTIVITY_LOGS,ACTIVITY_TYPES} = require('../utilities/ActivityLogConstant
 async function assignLeadsToEmployee(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { leadIds, assignedTo, assignedBy } = req.body;
+    const { leadIds, assignedTo, assignedBy, userName } = req.body;
 
     // Validate input
     if (
@@ -151,7 +151,7 @@ async function assignLeadsToEmployee(req, res) {
     const newAssignmentActivityLogs = leadIds
       .filter((leadId) => !existingLeadMap.has(leadId))
       .map((leadId) => ({
-        activity_desc: ACTIVITY_LOGS.ASSIGN_LEAD(leadId, assignedTo, assignedBy),
+        activity_desc: ACTIVITY_LOGS.LEAD_ASSIGNMENT(userName),
         activity_type: ACTIVITY_TYPES.LEAD_ASSIGNMENT,
         created_by: assignedBy,
         lead_id: leadId,
@@ -231,6 +231,7 @@ async function getLeadsByAssignedUserId(req, res) {
     } else if (exclude_verification === 'true') {
       // Exclude leads with status "Verification 1"
       leadFilters.lead_status = { [Op.in]: [...INITIAL_LEAD_STATUSES] };
+      leadFilters.verification_status = 'Under Review'
     }
 
     // Handle date filter (adjusting for UTC vs. local timezone differences)

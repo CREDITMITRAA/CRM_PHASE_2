@@ -345,33 +345,30 @@ async function getAllLeadsWithPagination(req, res) {
 async function getLeadById(req, res) {
   try {
     const { leadId } = req.params;
+    let {includeFields} = req.query
+
+    includeFields = includeFields ? includeFields.split(',') : null
 
     if (!leadId) {
       return ApiResponse(res, "error", 400, "Lead Id is required!");
     }
 
-    // Fetch the lead by ID along with related data (activities and lead assignments)
-    const lead = await Lead.findOne({
-      where: { id: leadId },
-      include: [
+    let queryOptions = {
+      where: {id:leadId},
+      attributes: includeFields?.length ? includeFields : undefined,
+    }
+
+    if (!includeFields) {
+      queryOptions.include = [
         {
           model: Activity,
           as: "Activities",
-          required: false,
-          attributes: [
-            "id",
-            "activity_status",
-            "docs_collected",
-            "description",
-            "createdAt",
-            "follow_up",
-          ],
-          // No specific order here
+          attributes: ["id", "activity_status", "docs_collected", "description", "createdAt", "follow_up"],
         },
-        // Other includes...
-      ],
-      // logging: console.log, // This will log the raw SQL query
-    });
+      ];
+    }
+    // Fetch the lead by ID along with related data (activities and lead assignments)
+    const lead = await Lead.findOne(queryOptions);
 
     // Check if the lead is found
     if (!lead) {

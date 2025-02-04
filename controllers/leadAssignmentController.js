@@ -43,8 +43,15 @@ async function assignLeadsToEmployee(req, res) {
 
     // Find existing leads
     const existingLeads = await LeadAssignment.findAll({
-      where: { lead_id: leadIds },
+      where: { lead_id: leadIds.map((lead)=>lead.id) },
       attributes: ["lead_id", "assigned_to"],
+      include: [
+        {
+          model: Lead,
+          as: "Lead",
+          attributes: ["name"]
+        }
+      ],
       transaction,
     });
 
@@ -54,7 +61,7 @@ async function assignLeadsToEmployee(req, res) {
     // Fetch activities with unwanted statuses for the selected leads
     const unwantedActivities = await Activity.findAll({
       where: {
-        lead_id: leadIds,
+        lead_id: leadIds.map((lead)=>lead.id),
         activity_status: {
           [Sequelize.Op.in]: unwantedStatuses,  // Only activities with the unwanted statuses
         },
@@ -114,10 +121,11 @@ async function assignLeadsToEmployee(req, res) {
       });
 
       reassignmentActivityLogs.push({
-        activity_desc: `Lead ID ${lead.lead_id} reassigned from Employee ID ${lead.assigned_to} to Employee ID ${assignedTo} by Employee ID ${assignedBy}.`,
+        activity_desc: `Lead reassigned to ${userName}.`,
         activity_type: ACTIVITY_TYPES.LEAD_REASSIGNMENT,
         created_by: assignedBy,
         lead_id: lead.lead_id,
+        lead_name: lead.Lead.name
       });
     });
 
@@ -126,7 +134,7 @@ async function assignLeadsToEmployee(req, res) {
     }
 
     const bulkAssignments = leadIds.map((leadId) => ({
-      lead_id: leadId,
+      lead_id: leadId.id,
       assigned_to: assignedTo,
       assigned_by: assignedBy,
       status: "active",
@@ -139,7 +147,7 @@ async function assignLeadsToEmployee(req, res) {
     });
 
     const bulkUpdates = leadIds.map((leadId, index) => ({
-      id:leadId,
+      id:leadId.id,
       updatedAt: new Date().toISOString()
     }))
 
@@ -149,12 +157,13 @@ async function assignLeadsToEmployee(req, res) {
     })
 
     const newAssignmentActivityLogs = leadIds
-      .filter((leadId) => !existingLeadMap.has(leadId))
+      .filter((leadId) => !existingLeadMap.has(leadId.id))
       .map((leadId) => ({
         activity_desc: ACTIVITY_LOGS.LEAD_ASSIGNMENT(userName),
         activity_type: ACTIVITY_TYPES.LEAD_ASSIGNMENT,
         created_by: assignedBy,
-        lead_id: leadId,
+        lead_id: leadId.id,
+        lead_name: leadId.name
       }));
 
     const allActivityLogs = [...newAssignmentActivityLogs, ...reassignmentActivityLogs];

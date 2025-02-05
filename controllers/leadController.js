@@ -590,7 +590,7 @@ async function updateVerificationStatus(req, res) {
   let transaction;
   try {
     transaction = await sequelize.transaction();
-    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note, user_id } = req.body;
+    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note, user_id, lead_name } = req.body;
 
     if (!lead_id || !verification_status || !role) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
@@ -653,7 +653,8 @@ async function updateVerificationStatus(req, res) {
       activity_type: ACTIVITY_TYPES.VERIFICATION_STATUS_UPDATE,
       activity_desc: `Updated Verification Status to : ${verification_status}`,
       lead_id:lead_id,
-      note: verification_status === 'Rejected' ? rejection_reason : verification_status_note
+      note: verification_status === 'Rejected' ? rejection_reason : verification_status_note,
+      lead_name: lead_name
     },
     {transaction}
   )
@@ -781,7 +782,7 @@ async function getTotalLeadsCount(req, res) {
 async function updateApplicationStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id} = req.body
+    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id, lead_name} = req.body
 
     if(!lead_id || !application_status || !lead_status || !role){
       return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -836,7 +837,8 @@ async function updateApplicationStatus(req,res){
       activity_type: ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE,
       activity_desc: `Updated Application Status to : ${application_status}`,
       lead_id:lead_id,
-      note: application_status === "Rejected" ? rejection_reason : application_status_note
+      note: application_status === "Rejected" ? rejection_reason : application_status_note,
+      lead_name: lead_name
     },
     {transaction}
   )
@@ -853,7 +855,7 @@ async function updateApplicationStatus(req,res){
 async function updateLeadStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-      const {lead_id, lead_status, role} = req.body
+      const {lead_id, lead_status, role, lead_name, prev_lead_status, user_id} = req.body
 
       if(!lead_id || !lead_status || !role){
         return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -868,6 +870,16 @@ async function updateLeadStatus(req,res){
       }
 
       const updatedLead = await LeadServices.updateLead(lead_id,{lead_status}, transaction)
+
+      let logData = createLogData(
+        ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_lead_status, lead_status),
+        ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+        user_id,
+        lead_id,
+        null,
+        lead_name
+      )
+      await createActivityLog(logData, transaction)
 
       await transaction.commit()
 

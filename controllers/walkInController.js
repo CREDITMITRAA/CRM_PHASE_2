@@ -60,8 +60,8 @@ async function scheduleWalkIn(req, res) {
   );
 
     let logData = createLogData(
-        ACTIVITY_LOGS.WALK_IN_SCHEDULE(walk_in_date_time),
-        ACTIVITY_TYPES.WALK_IN_SCHEDULE,
+        is_call ? ACTIVITY_LOGS.CALL_SCHEDULE_WITH_MANAGER(walk_in_date_time) : ACTIVITY_LOGS.WALK_IN_SCHEDULE(walk_in_date_time),
+        is_call ? ACTIVITY_TYPES.CALL_SCHEDULE_WITH_MANAGER : ACTIVITY_TYPES.WALK_IN_SCHEDULE,
         created_by,
         lead_id,
         note,

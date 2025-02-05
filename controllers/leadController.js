@@ -361,7 +361,7 @@ async function getAllLeadsWithPagination(req, res) {
 async function getLeadById(req, res) {
   try {
     const { leadId } = req.params;
-    let {includeFields} = req.query
+    let {includeFields,walk_in_attributes=[]} = req.query
 
     includeFields = includeFields ? includeFields.split(',') : null
 
@@ -382,6 +382,21 @@ async function getLeadById(req, res) {
           attributes: ["id", "activity_status", "docs_collected", "description", "createdAt", "follow_up"],
         },
       ];
+    }
+
+    if(walk_in_attributes.length > 0){
+      queryOptions.include.push(
+        {
+          model: WalkIn,
+          as: 'walkIns',
+          attributes: walk_in_attributes,
+          required: false,
+          order:[
+            [Sequelize.literal(`COALESCE(rescheduled_date_time, walk_in_date_time)`), "DESC"]
+          ],
+          limit: 1
+        }
+      )
     }
     // Fetch the lead by ID along with related data (activities and lead assignments)
     const lead = await Lead.findOne(queryOptions);

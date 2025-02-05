@@ -224,7 +224,7 @@ async function updateWalkInStatus(req, res) {
 async function rescheduleWalkIn(req, res) {
   const transaction = await sequelize.transaction(); // Start transaction
   try {
-      const { walk_in_id, rescheduled_date_time, note, lead_name } = req.body;
+      const { walk_in_id, rescheduled_date_time, note, lead_name, is_call } = req.body;
 
       if (!walk_in_id || !rescheduled_date_time) {
           await transaction.rollback();
@@ -256,8 +256,8 @@ async function rescheduleWalkIn(req, res) {
       await walkInFromDB.save({ transaction });
 
       let logData = createLogData(
-          ACTIVITY_LOGS.WALK_IN_RESCHEDULE(rescheduled_date_time),
-          ACTIVITY_TYPES.WALK_IN_RESCHEDULE,
+          is_call ? ACTIVITY_LOGS.RESCHEDULE_CALL_WITH_MANAGER(rescheduled_date_time) : ACTIVITY_LOGS.WALK_IN_RESCHEDULE(rescheduled_date_time),
+          is_call ? ACTIVITY_TYPES.RESCHEDULE_CALL_WITH_MANAGER : ACTIVITY_TYPES.WALK_IN_RESCHEDULE,
           walkInFromDB.created_by,
           walkInFromDB.lead_id,
           note,

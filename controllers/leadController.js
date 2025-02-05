@@ -1,4 +1,4 @@
-const { Op, where } = require("sequelize");
+const { Op, where, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
 const {
   sequelize,
@@ -7,7 +7,8 @@ const {
   User,
   LeadAssignment,
   Activity,
-  ActivityLog
+  ActivityLog,
+  WalkIn
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const LeadServices = require("../services/leadServices");
@@ -156,7 +157,9 @@ async function getAllLeadsWithPagination(req, res) {
       lead_source,
       isPaginationOff='false',
       last_updated,
-      assigned_on
+      assigned_on,
+      for_walk_ins_page=false,
+      walk_in_attributes=[]
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -288,6 +291,19 @@ async function getAllLeadsWithPagination(req, res) {
         ],
       },
     ];
+
+    if(for_walk_ins_page){
+      includeConditions.push({
+        model: WalkIn,
+        as: 'walkIns',
+        attributes: walk_in_attributes,
+        required: false,
+        order:[
+          [Sequelize.literal(`COALESCE(rescheduled_date_time, walk_in_date_time)`), "DESC"]
+        ],
+        limit: 1
+      })
+    }
 
     const shouldOrderByUpdatedAt = whereConditions?.verification_status || whereConditions?.lead_status || whereConditions?.activity_status;
     const orderConditions = shouldOrderByUpdatedAt

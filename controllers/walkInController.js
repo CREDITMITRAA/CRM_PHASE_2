@@ -84,7 +84,7 @@ async function getWalkIns(req, res) {
     let { page = 1, pageSize = 10, created_by, date } = req.query;
     let whereConditions = {
       walk_in_status:{
-        [Op.ne] : "Completed"
+        [Op.notIn]: ["Completed", "Cancelled"]
       }
     };
     page = parseInt(page);
@@ -200,6 +200,9 @@ async function updateWalkInStatus(req, res) {
 
     // Update the walk-in status
     walkIn.walk_in_status = walk_in_status;
+    if(walk_in_status === "Cancelled"){
+      walkIn.status = "inactive";
+    }
     await walkIn.save({transaction});
 
     let logData = createLogData(

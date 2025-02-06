@@ -1,7 +1,9 @@
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const {ActivityLog} = require('../models')
+const {ActivityLog, sequelize} = require('../models')
 const moment = require("moment-timezone");
 const { Op } = require("sequelize");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 
 async function getActivityLogs(req,res){
     try {
@@ -56,6 +58,34 @@ async function getActivityLogs(req,res){
     }
 }
 
+async function addActivityLogNote(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const {lead_id, lead_name, user_id, note} = req.body
+    if(!lead_id || !lead_name || !user_id || !note){
+      await transaction.rollback()
+      return ApiResponse(res, 'error', 400,  "Missing required fields !")
+    }
+
+    let logData = createLogData(
+      ACTIVITY_LOGS.ADD_ACTIVITY_LOG_NOTE,
+      ACTIVITY_TYPES.ADD_ACTIVITY_LOG_NOTE,
+      user_id,
+      lead_id,
+      note,
+      lead_name
+    )
+
+    await createActivityLog(logData, transaction)
+    await transaction.commit()
+    return ApiResponse(res, 'success', 201, "Note added successfully !", note)
+  } catch (error) {
+      await transaction.rollback()
+      return ApiResponse(res, 'error', 500, "Failed to add activity log note !", null, error, null)
+  }
+}
+
 module.exports = {
-    getActivityLogs
+    getActivityLogs,
+    addActivityLogNote
 }

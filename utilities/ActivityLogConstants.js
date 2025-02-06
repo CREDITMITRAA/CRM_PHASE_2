@@ -27,7 +27,8 @@ const ACTIVITY_TYPES = {
     CREDIT_BUREAU_DELETE : 'CREDIT_BUREAU_DELETE',
     DOCUMENTS_COLLECTED : 'DOCUMENTS_COLLECTED',
     CALL_SCHEDULE_WITH_MANAGER : 'CALL_SCHEDULE_WITH_MANAGER',
-    RESCHEDULE_CALL_WITH_MANAGER : 'RESCHEDULE_CALL_WITH_MANAGER'
+    RESCHEDULE_CALL_WITH_MANAGER : 'RESCHEDULE_CALL_WITH_MANAGER',
+    ADD_ACTIVITY_LOG_NOTE : 'ADD_ACTIVITY_LOG_NOTE'
 }
 
 const ACTIVITY_LOGS = {
@@ -59,7 +60,8 @@ const ACTIVITY_LOGS = {
     CREDIT_BUREAU_DELETE : (document_name) => `Credit Bureau ${document_name} deleted`,
     DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`,
     CALL_SCHEDULE_WITH_MANAGER : (date) => `Call scheduled with manager on ${date}`,
-    RESCHEDULE_CALL_WITH_MANAGER : (date) => `Call re-scheduled with manager on ${date}`
+    RESCHEDULE_CALL_WITH_MANAGER : (date) => `Call re-scheduled with manager on ${date}`,
+    ADD_ACTIVITY_LOG_NOTE : `Note Added`
 }
 
 module.exports = {

@@ -571,14 +571,17 @@ async function updateLeadReportsActivities(req, res) {
       } 
 
       let logData = null
+      let logDataForDocsCollected = null
       if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity.activity_status)){
         let logDataForTask = createLogData(ACTIVITY_LOGS.TASK_CREATE(activity.activity_status, activity.follow_up), ACTIVITY_TYPES.TASK_CREATE, userId, leadId, activity.description, lead_name)
         logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status,activity.activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, activity.description, lead_name)
         await createActivityLog(logDataForTask, transaction)
+        logDataForDocsCollected = createLogData(ACTIVITY_LOGS.DOCUMENTS_COLLECTED(activity.docs_collected), ACTIVITY_TYPES.DOCUMENTS_COLLECTED, activity.userId, activity.lead_id, null, lead_name)
       }else{
         logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status,activity.activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, activity.description, lead_name)
+        logDataForDocsCollected = createLogData(ACTIVITY_LOGS.DOCUMENTS_COLLECTED(activity.docs_collected), ACTIVITY_TYPES.DOCUMENTS_COLLECTED, activity.userId, activity.lead_id, null, lead_name)
       }
-      
+      await createActivityLog(logDataForDocsCollected, transaction)      
       await createActivityLog(logData,transaction);
     }
 

@@ -393,7 +393,7 @@ async function getLeadById(req, res) {
           attributes: walk_in_attributes,
           required: false,
           order:[
-            [Sequelize.literal(`COALESCE(rescheduled_date_time, walk_in_date_time)`), "DESC"]
+            ["id", "DESC"]
           ],
           limit: 1
         }

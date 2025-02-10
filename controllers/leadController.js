@@ -581,7 +581,10 @@ async function updateLeadReportsActivities(req, res) {
         logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status,activity.activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, activity.description, lead_name)
         logDataForDocsCollected = createLogData(ACTIVITY_LOGS.DOCUMENTS_COLLECTED(activity.docs_collected), ACTIVITY_TYPES.DOCUMENTS_COLLECTED, activity.userId, activity.lead_id, null, lead_name)
       }
-      await createActivityLog(logDataForDocsCollected, transaction)      
+
+      if(activity.docs_collected !== activity.prev_docs_collected){
+        await createActivityLog(logDataForDocsCollected, transaction)      
+      }
       await createActivityLog(logData,transaction);
     }
 

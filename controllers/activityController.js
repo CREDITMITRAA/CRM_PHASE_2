@@ -23,7 +23,8 @@ async function addActivity(req, res) {
       followUp = null,
       lead_status = null,
       prev_status,
-      lead_name
+      lead_name,
+      from_activity_logs_page=false
     } = req.body;
 
     // Validate mandatory fields
@@ -110,7 +111,7 @@ async function addActivity(req, res) {
           },
           { transaction }
         );
-      } else {
+      } else if(!from_activity_logs_page){
         await lead.update(
           {
             lead_status: activity_status,
@@ -123,13 +124,19 @@ async function addActivity(req, res) {
       let logData = null
       if(["Follow Up", "Call Back", "Scheduled Call With Manager"].includes(activity_status)){
         let logDataForTask = createLogData(ACTIVITY_LOGS.TASK_CREATE(activity_status, followUp), ACTIVITY_TYPES.TASK_CREATE, userId, leadId, description, lead_name)
-        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+        if(!from_activity_logs_page){
+          logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+        }
         await createActivityLog(logDataForTask, transaction)
       }else{
-        logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+        if(!from_activity_logs_page){
+          logData = createLogData(ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status,activity_status),ACTIVITY_TYPES.LEAD_STATUS_UPDATE, userId, leadId, description, lead_name)
+        }
       }
       
-      await createActivityLog(logData,transaction);
+      if(logData !== null){
+        await createActivityLog(logData,transaction);
+      }
 
       // ✅ Commit the transaction **AFTER all updates**
       await transaction.commit();

@@ -107,35 +107,22 @@ async function getChartsData(req, res) {
       ? `AND DATE(CONVERT_TZ(createdAt, '+00:00', '+05:30')) = '${date}'`
       : "";
 
-    const dateConditionForWalkInScheduledToday = date
+      const dateConditionForWalkInScheduledToday = date
       ? `
-    CONVERT_TZ(createdAt, '+00:00', '+05:30') >= '${date}' 
-    AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE_ADD('${date}', INTERVAL 1 DAY)
-  `
-      : `
-    CONVERT_TZ(createdAt, '+00:00', '+05:30') >= DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30')) 
-    AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30')) + INTERVAL 1 DAY
-  `;
+      CONVERT_TZ(createdAt, '+00:00', '+05:30') >= '${date}' 
+      AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE_ADD('${date}', INTERVAL 1 DAY)
+      `
+      : `1 = 1`; // No date filter (fetch all records)
 
   const dateConditionForWalkInsToday = date
-  ? `
-      (
-        (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
-        DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
-        OR
-        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
-        DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}'
-      )
-    `
-  : `
-      (
-        (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
-        DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30')))
-        OR
-        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
-        DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+05:30'))
-      )
-    `;
+  ? `(
+    (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
+    DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
+    OR
+    (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
+    DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}'
+  )`
+  : `1 = 1`;  // No date filter, get all records
 
     // NO OF CALLS DONE
     const [callsDoneData] = await sequelize.query(
@@ -250,7 +237,7 @@ async function getChartsData(req, res) {
               ${process.env.DB_NAME}.WalkIns
           WHERE 
               status = 'active' 
-              AND ${dateConditionForWalkInsToday} -- Apply dynamic date condition here
+              AND ${dateConditionForWalkInsToday} -- Apply correct condition
           GROUP BY 
               created_by
       ) AS aggregated_data 

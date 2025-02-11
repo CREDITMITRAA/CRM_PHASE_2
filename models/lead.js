@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING },
     email: { type: DataTypes.STRING },
-    phone: { type: DataTypes.STRING(15), unique:true },
+    phone: { type: DataTypes.STRING(15), unique:true, allowNull: false},
     city: { type: DataTypes.STRING },
     company: { type: DataTypes.STRING },
     lead_source: { type: DataTypes.STRING },

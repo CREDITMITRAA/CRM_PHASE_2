@@ -49,13 +49,15 @@ async function createBulkLeads(req, res) {
     let validLeads = [];
     let invalidLeads = [];
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^(\+?\d{1,3}[-.\s]?)?(\d{10})$/;
+    // const phoneRegex = /^(\+?\d{1,3}[-.\s]?)?(\d{10})$/;
+    const phoneRegex = /^(\+?91|[01])?\d{10}$/;
 
     // Validate leads
     req.body.forEach((lead) => {
       let isValid = true;
       let reason = "";
 
+      lead.phone = lead.phone ? String(lead.phone).replace(/\s+/g, "").trim() : null;
       if (validateName && !lead.name) {
         isValid = false;
         reason = "Missing name";

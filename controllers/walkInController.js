@@ -307,6 +307,7 @@ async function getWalkInsCount(req, res) {
     // Get total walk-ins
     const totalWalkIns = await WalkIn.count({
       where: {
+        status:'active',
         ...whereClause,
         [Op.or]: [
           { is_rescheduled: true, rescheduled_date_time: { [Op.ne]: null } },

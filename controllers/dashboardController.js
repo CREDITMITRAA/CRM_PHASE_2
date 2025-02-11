@@ -124,6 +124,10 @@ async function getChartsData(req, res) {
   )`
   : `1 = 1`;  // No date filter, get all records
 
+  const dateConditionForApprovedForWalkIns = date
+  ? `DATE(CONVERT_TZ(updatedAt, '+00:00', '+05:30')) = '${date}'`
+  : `1 = 1`; // No date filter (fetch all records)
+
     // NO OF CALLS DONE
     const [callsDoneData] = await sequelize.query(
       `
@@ -246,12 +250,41 @@ async function getChartsData(req, res) {
 
     const walkins_today = walkinsToday[0]?.walkins_today || [];
 
+    // APPROVED FOR WALK-IN COUNTS
+    const [approvedForWalkIns] = await sequelize.query(`
+      SELECT 
+    JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', leads.updated_by, 'count', COALESCE(approved_count, 0))
+    ) AS approved_walkins_today
+FROM (
+    SELECT DISTINCT updated_by FROM ${process.env.DB_NAME}.Leads
+) AS leads
+LEFT JOIN (
+    SELECT 
+        updated_by, 
+        COUNT(*) AS approved_count
+    FROM 
+        ${process.env.DB_NAME}.Leads
+    WHERE 
+        verification_status = 'Approved for Walk-In'
+        AND ${dateConditionForApprovedForWalkIns}  -- Correct date condition
+        AND status = 'active'
+    GROUP BY 
+        updated_by
+) AS aggregated_data 
+ON leads.updated_by = aggregated_data.updated_by;
+
+    `);
+    
+    const approved_for_walk_ins = approvedForWalkIns[0]?.approved_walkins_today || []
+
     let data = {
       calls_done,
       connected_calls,
       interested_leads,
       walkins_scheduled_today,
       walkins_today,
+      approved_for_walk_ins
     };
     return ApiResponse(
       res,

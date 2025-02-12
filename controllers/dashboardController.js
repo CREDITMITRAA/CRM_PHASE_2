@@ -125,28 +125,34 @@ async function getChartsData(req, res) {
   : `1 = 1`;  // No date filter, get all records
 
   const dateConditionForApprovedForWalkIns = date
-  ? `DATE(CONVERT_TZ(updatedAt, '+00:00', '+05:30')) = '${date}'`
-  : `1 = 1`; // No date filter (fetch all records)
+  ? `DATE(CONVERT_TZ(l.updatedAt, '+00:00', '+05:30')) = '${date}'`
+  : `1 = 1`;
 
     // NO OF CALLS DONE
     const [callsDoneData] = await sequelize.query(
       `
       SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', created_by, 'count', activity_count)
-          ) AS calls_done
-      FROM (
-          SELECT 
-              created_by, 
-              COUNT(*) AS activity_count
-          FROM 
-              ${process.env.DB_NAME}.Activities
-          WHERE 
-              status = 'active'
-              ${dateFilter} -- Add date filter dynamically
-          GROUP BY 
-              created_by
-      ) AS aggregated_data;
+        JSON_ARRAYAGG(
+            JSON_OBJECT('created_by', assignments.assigned_to, 'count', COALESCE(approved_count, 0))
+        ) AS approved_walkins_today
+    FROM (
+        SELECT DISTINCT assigned_to FROM ${process.env.DB_NAME}.LeadAssignments
+    ) AS assignments
+    LEFT JOIN (
+        SELECT 
+            la.assigned_to, 
+            COUNT(*) AS approved_count
+        FROM 
+            ${process.env.DB_NAME}.Leads l
+        INNER JOIN ${process.env.DB_NAME}.LeadAssignments la ON l.id = la.lead_id
+        WHERE 
+            l.verification_status = 'Approved for Walk-In'
+            AND ${dateConditionForApprovedForWalkIns}  -- Date condition for filter or combined
+            AND l.status = 'active'
+        GROUP BY 
+            la.assigned_to
+    ) AS aggregated_data 
+    ON assignments.assigned_to = aggregated_data.assigned_to;
       `
     );
     const calls_done = callsDoneData[0]?.calls_done || [];
@@ -253,27 +259,27 @@ async function getChartsData(req, res) {
     // APPROVED FOR WALK-IN COUNTS
     const [approvedForWalkIns] = await sequelize.query(`
       SELECT 
-    JSON_ARRAYAGG(
-        JSON_OBJECT('created_by', leads.updated_by, 'count', COALESCE(approved_count, 0))
-    ) AS approved_walkins_today
-FROM (
-    SELECT DISTINCT updated_by FROM ${process.env.DB_NAME}.Leads
-) AS leads
-LEFT JOIN (
-    SELECT 
-        updated_by, 
-        COUNT(*) AS approved_count
-    FROM 
-        ${process.env.DB_NAME}.Leads
-    WHERE 
-        verification_status = 'Approved for Walk-In'
-        AND ${dateConditionForApprovedForWalkIns}  -- Correct date condition
-        AND status = 'active'
-    GROUP BY 
-        updated_by
-) AS aggregated_data 
-ON leads.updated_by = aggregated_data.updated_by;
-
+        JSON_ARRAYAGG(
+            JSON_OBJECT('created_by', assignments.assigned_to, 'count', COALESCE(approved_count, 0))
+        ) AS approved_walkins_today
+    FROM (
+        SELECT DISTINCT assigned_to FROM ${process.env.DB_NAME}.LeadAssignments
+    ) AS assignments
+    LEFT JOIN (
+        SELECT 
+            la.assigned_to, 
+            COUNT(*) AS approved_count
+        FROM 
+            ${process.env.DB_NAME}.Leads l
+        INNER JOIN ${process.env.DB_NAME}.LeadAssignments la ON l.id = la.lead_id
+        WHERE 
+            l.verification_status = 'Approved for Walk-In'
+            AND ${dateConditionForApprovedForWalkIns}  -- Correct date condition on updatedAt
+            AND l.status = 'active'
+        GROUP BY 
+            la.assigned_to
+    ) AS aggregated_data 
+    ON assignments.assigned_to = aggregated_data.assigned_to;
     `);
     
     const approved_for_walk_ins = approvedForWalkIns[0]?.approved_walkins_today || []

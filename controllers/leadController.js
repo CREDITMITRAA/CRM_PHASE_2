@@ -569,7 +569,7 @@ async function updateLeadReportsActivities(req, res) {
       // if(activity.activity_status === "Verification 1"){
       //   await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, verification_status:activity.activity_status}, transaction)
       // }else{
-        await LeadServices.updateLead(leadId, {lead_status:activity.activity_status}, transaction)
+        await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, last_updated_status: activity.activity_status}, transaction)
       // } 
 
       let logData = null
@@ -660,7 +660,7 @@ async function updateVerificationStatus(req, res) {
       return ApiResponse(res, "error", 400, "Invalid verification status!");
     }
 
-    let updateData = {verification_status}
+    let updateData = {verification_status, last_updated_status:verification_status}
     if(verification_status === "Rejected"){
       if(!rejection_reason || !rejected_by_id){
         return ApiResponse(res, 'error', 400, "Rejection reason and Rejected by id is required !")
@@ -849,7 +849,7 @@ async function updateApplicationStatus(req,res){
       return ApiResponse(res, 'error', 400, "Application Status Cannot Updated Now !")
     }
 
-    const updateData = {application_status}
+    const updateData = {application_status, last_updated_status:application_status}
 
     if(application_status === "Rejected"){
       if(!rejection_reason){
@@ -909,7 +909,7 @@ async function updateLeadStatus(req,res){
         return ApiResponse(res,'error',400, "Invalid Appliation Status !")
       }
 
-      const updatedLead = await LeadServices.updateLead(lead_id,{lead_status}, transaction)
+      const updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status}, transaction)
 
       let logData = createLogData(
         ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_lead_status, lead_status),

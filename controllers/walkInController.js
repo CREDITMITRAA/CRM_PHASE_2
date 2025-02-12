@@ -36,12 +36,14 @@ async function scheduleWalkIn(req, res) {
     if(is_call){
       updatePayload = {
         lead_status: "Scheduled Call With Manager",
-        verification_status:"Scheduled Call With Manager"
+        verification_status:"Scheduled Call With Manager",
+        last_updated_status:"Scheduled Call With Manager"
       }
     }else{
       updatePayload = {
         lead_status: "Scheduled For Walk-In",
-        verification_status:"Scheduled For Walk-In"
+        verification_status:"Scheduled For Walk-In",
+        last_updated_status:"Scheduled For Walk-In"
       }
     }
     await lead.update(updatePayload, { transaction });
@@ -250,6 +252,12 @@ async function rescheduleWalkIn(req, res) {
           return ApiResponse(res, "error", 400, "Walk-In Not found");
       }
 
+      const lead = await Lead.findByPk(lead_id, {transaction})
+      if (!lead) {
+        await transaction.rollback();
+        return ApiResponse(res, "error", 400, "Lead not found!");
+      }
+
       // Update fields
       walkInFromDB.is_rescheduled = true;
       walkInFromDB.rescheduled_date_time = rescheduledDate;
@@ -257,6 +265,18 @@ async function rescheduleWalkIn(req, res) {
       if (note) walkInFromDB.note = note;
 
       await walkInFromDB.save({ transaction });
+
+      let updatePayload = {}
+      if(is_call){
+        updatePayload = {
+          last_updated_status:"Re-Scheduled Call With Manager"
+        }
+      }else{
+        updatePayload = {
+          last_updated_status:"Re-Scheduled For Walk-In"
+        }
+      }
+      await lead.update(updatePayload, { transaction });
 
       let logData = createLogData(
           is_call ? ACTIVITY_LOGS.RESCHEDULE_CALL_WITH_MANAGER(rescheduled_date_time) : ACTIVITY_LOGS.WALK_IN_RESCHEDULE(rescheduled_date_time),

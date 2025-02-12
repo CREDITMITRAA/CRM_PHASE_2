@@ -106,6 +106,7 @@ async function addActivity(req, res) {
         await lead.update(
           {
             // verification_status: activity_status,
+            last_updated_status: activity_status,
             lead_status: activity_status,
             updatedAt: new Date().toISOString(),
           },
@@ -114,6 +115,7 @@ async function addActivity(req, res) {
       } else if(!from_activity_logs_page){
         await lead.update(
           {
+            last_updated_status: activity_status,
             lead_status: activity_status,
             updatedAt: new Date().toISOString(),
           },

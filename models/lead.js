@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     name: { type: DataTypes.STRING },
     email: { type: DataTypes.STRING },
-    phone: { type: DataTypes.STRING(15), unique:true, allowNull:false},
+    phone: { type: DataTypes.STRING(15), unique:true},
     city: { type: DataTypes.STRING },
     company: { type: DataTypes.STRING },
     lead_source: { type: DataTypes.STRING },
@@ -25,6 +25,7 @@ module.exports = (sequelize) => {
     verification_status_note : {type:DataTypes.TEXT},
     application_status_note: {type:DataTypes.TEXT},
     updated_by: { type: DataTypes.INTEGER },
+    last_updated_status: { type: DataTypes.STRING },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

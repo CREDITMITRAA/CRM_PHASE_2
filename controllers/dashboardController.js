@@ -132,27 +132,21 @@ async function getChartsData(req, res) {
     const [callsDoneData] = await sequelize.query(
       `
       SELECT 
-        JSON_ARRAYAGG(
-            JSON_OBJECT('created_by', assignments.assigned_to, 'count', COALESCE(approved_count, 0))
-        ) AS approved_walkins_today
-    FROM (
-        SELECT DISTINCT assigned_to FROM ${process.env.DB_NAME}.LeadAssignments
-    ) AS assignments
-    LEFT JOIN (
-        SELECT 
-            la.assigned_to, 
-            COUNT(*) AS approved_count
-        FROM 
-            ${process.env.DB_NAME}.Leads l
-        INNER JOIN ${process.env.DB_NAME}.LeadAssignments la ON l.id = la.lead_id
-        WHERE 
-            l.verification_status = 'Approved for Walk-In'
-            AND ${dateConditionForApprovedForWalkIns}  -- Date condition for filter or combined
-            AND l.status = 'active'
-        GROUP BY 
-            la.assigned_to
-    ) AS aggregated_data 
-    ON assignments.assigned_to = aggregated_data.assigned_to;
+          JSON_ARRAYAGG(
+              JSON_OBJECT('created_by', created_by, 'count', activity_count)
+          ) AS calls_done
+      FROM (
+          SELECT 
+              created_by, 
+              COUNT(*) AS activity_count
+          FROM 
+              ${process.env.DB_NAME}.Activities
+          WHERE 
+              status = 'active'
+              ${dateFilter} -- Add date filter dynamically
+          GROUP BY 
+              created_by
+      ) AS aggregated_data;
       `
     );
     const calls_done = callsDoneData[0]?.calls_done || [];

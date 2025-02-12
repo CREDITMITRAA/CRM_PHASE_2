@@ -105,7 +105,7 @@ async function addActivity(req, res) {
       if (activity_status === "Verification 1") {
         await lead.update(
           {
-            verification_status: activity_status,
+            // verification_status: activity_status,
             lead_status: activity_status,
             updatedAt: new Date().toISOString(),
           },

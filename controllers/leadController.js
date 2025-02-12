@@ -566,11 +566,11 @@ async function updateLeadReportsActivities(req, res) {
       }
       createdActivity = await ActivityServices.addActivity(activity, transaction);
       
-      if(activity.activity_status === "Verification 1"){
-        await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, verification_status:activity.activity_status}, transaction)
-      }else{
+      // if(activity.activity_status === "Verification 1"){
+      //   await LeadServices.updateLead(leadId, {lead_status:activity.activity_status, verification_status:activity.activity_status}, transaction)
+      // }else{
         await LeadServices.updateLead(leadId, {lead_status:activity.activity_status}, transaction)
-      } 
+      // } 
 
       let logData = null
       let logDataForDocsCollected = null

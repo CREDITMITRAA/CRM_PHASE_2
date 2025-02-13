@@ -421,10 +421,15 @@ async function getAllActivities(req, res) {
 }
 
 async function getAllTasks(req, res) {
+  const transaction = await sequelize.transaction()
   try {
-    let { page = 1, pageSize = 25, created_by, follow_up } = req.query;
-
-    const activity_statuses = ["Follow Up", "Call Back", "Scheduled Call With Manager"];
+    let { page = 1, pageSize = 25, created_by, follow_up, task_type, task_status } = req.query;
+    let activity_statuses = []
+    if(task_type){
+      activity_statuses = [task_type];
+    }else{
+      activity_statuses = ["Follow Up", "Call Back", "Scheduled Call With Manager"];
+    }
 
     // Validate pagination params
     page = parseInt(page);
@@ -466,6 +471,21 @@ async function getAllTasks(req, res) {
       whereConditions.created_by = created_by;
     }
 
+    if(task_status){
+      whereConditions.task_status = task_status
+    }
+
+    await Activity.update(
+      { task_status: "Pending" },
+      {
+        where: {
+          follow_up: { [Op.lt]: moment().utc().toDate() },
+          task_status: "Upcoming"
+        },
+        transaction
+      }
+    );
+
     if (follow_up) {
       // Parse follow_up date and create the range
       const followUpStartUTC = moment(follow_up).startOf("day").utc().toDate();
@@ -482,6 +502,7 @@ async function getAllTasks(req, res) {
         where: whereConditions,
         include: includeConditions,
         order: [["createdAt", "DESC"]],
+        transaction
       });
 
       // Paginate results
@@ -497,6 +518,7 @@ async function getAllTasks(req, res) {
         pageSize,
       };
 
+      await transaction.commit()
       return ApiResponse(
         res,
         "SUCCESS",
@@ -537,12 +559,14 @@ async function getAllTasks(req, res) {
         where: whereConditionsT2,
         include: includeConditions,
         order: [["createdAt", "DESC"]],
+        transaction
       });
 
       const tasksBeyondT2 = await Activity.findAll({
         where: whereConditionsBeyondT2,
         include: includeConditions,
         order: [["createdAt", "DESC"]],
+        transaction
       });
 
       // Combine results and paginate
@@ -558,7 +582,7 @@ async function getAllTasks(req, res) {
         total: combinedTasks.length,
         pageSize,
       };
-
+      await transaction.commit()
       return ApiResponse(
         res,
         "SUCCESS",
@@ -571,6 +595,7 @@ async function getAllTasks(req, res) {
     }
   } catch (error) {
     console.error("Error fetching tasks:", error.stack);
+    await transaction.rollback();
     return ApiResponse(
       res,
       "ERROR",

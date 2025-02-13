@@ -237,14 +237,30 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    if (assigned_to) {
-      if (assigned_to === "not_assigned") {
-        whereConditions.id = {
-          [Op.notIn]: sequelize.literal(`(SELECT lead_id FROM LeadAssignments)`),
-        };
-      } else {
-        leadAssignmentConditions.assigned_to = assigned_to;
-      }
+    if (assigned_to === "not_assigned") {
+      // Check for leads without any assignments
+      whereConditions[Op.and] = Sequelize.literal(`
+        NOT EXISTS (
+          SELECT 1 
+          FROM LeadAssignments AS LA 
+          WHERE LA.lead_id = Lead.id
+        )
+      `);
+    } else if (assigned_to || assigned_to_name || assigned_on) {
+      // Apply other lead assignment filters
+      includeConditions.push({
+        model: LeadAssignment,
+        as: "LeadAssignments",
+        required: true, // INNER JOIN to only get assigned leads
+        where: leadAssignmentConditions,
+        include: [
+          {
+            model: User,
+            as: "AssignedTo",
+            attributes: ["name"],
+          },
+        ],
+      });
     }
 
     if (assigned_to_name) {

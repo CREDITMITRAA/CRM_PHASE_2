@@ -196,7 +196,7 @@ async function getAllLeadsWithPagination(req, res) {
         ],
       },
     ];
-    
+
     if (name) whereConditions.name = { [Op.like]: `%${name}%` };
     if (email) whereConditions.email = { [Op.like]: `%${email}%` };
     if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
@@ -498,7 +498,7 @@ async function updateLeadReportsActivities(req, res) {
     // 1. Update the Lead if the data is provided
     if (lead) {
       updatedLead = await LeadServices.updateLead(leadId, lead, transaction);
-      let updatedFields = getUpdatedFields({name,email,city,salary,company,company_category_name} = lead, lead.prev_data)
+      let updatedFields = getUpdatedFields({name,email,city,salary,company,company_category_name,lead_source} = lead, lead.prev_data)
       const activityLogs = Object.keys(updatedFields).map((field)=>({
         created_by : userId,
         activity_type : getActivityType(field),

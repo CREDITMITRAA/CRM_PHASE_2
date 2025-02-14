@@ -28,7 +28,8 @@ const ACTIVITY_TYPES = {
     DOCUMENTS_COLLECTED : 'DOCUMENTS_COLLECTED',
     CALL_SCHEDULE_WITH_MANAGER : 'CALL_SCHEDULE_WITH_MANAGER',
     RESCHEDULE_CALL_WITH_MANAGER : 'RESCHEDULE_CALL_WITH_MANAGER',
-    ADD_ACTIVITY_LOG_NOTE : 'ADD_ACTIVITY_LOG_NOTE'
+    ADD_ACTIVITY_LOG_NOTE : 'ADD_ACTIVITY_LOG_NOTE',
+    LEAD_SOURCE_UPDATE : 'LEAD_SOURCE_UPDATE'
 }
 
 const ACTIVITY_LOGS = {
@@ -61,7 +62,8 @@ const ACTIVITY_LOGS = {
     DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`,
     CALL_SCHEDULE_WITH_MANAGER : (date) => `Call scheduled with manager on ${date}`,
     RESCHEDULE_CALL_WITH_MANAGER : (date) => `Call re-scheduled with manager on ${date}`,
-    ADD_ACTIVITY_LOG_NOTE : `Note Added`
+    ADD_ACTIVITY_LOG_NOTE : `Note Added`,
+    LEAD_SOURCE_UPDATE : 'Lead Source Updated'
 }
 
 module.exports = {

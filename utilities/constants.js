@@ -11,7 +11,8 @@ const INITIAL_LEAD_STATUSES = [
     "Message",
     "Email",
     "Not Possible",
-    "Scheduled Call With Manager"
+    "Scheduled Call With Manager",
+    "Others"
 ]
 
 const  LEAD_STATUSES = [
@@ -33,7 +34,8 @@ const  LEAD_STATUSES = [
     "12 documents collected",
     "Not okay for Policy",
     "Not Possible",
-    "Scheduled Call With Manager"
+    "Scheduled Call With Manager",
+    "Others"
 ]
 
 const VERIFICATION_STATUSES = [

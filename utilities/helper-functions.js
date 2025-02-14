@@ -67,6 +67,8 @@ function getErrorReason(error) {
         return ACTIVITY_TYPES.COMPANY_UPDATE;
       case 'company_category_name' :
         return ACTIVITY_TYPES.COMPANY_CATEGORY_UPDATE
+      case 'lead_source' : 
+        return ACTIVITY_TYPES.LEAD_SOURCE_UPDATE
     }
   }
 

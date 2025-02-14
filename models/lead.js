@@ -27,6 +27,8 @@ module.exports = (sequelize) => {
     updated_by: { type: DataTypes.INTEGER },
     last_updated_status: { type: DataTypes.STRING },
     is_reassigned : {type: DataTypes.BOOLEAN, defaultValue: false },
+    bereau_score: { type: DataTypes.DECIMAL(10, 0) },
+    bereau_name: {type: DataTypes.STRING},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

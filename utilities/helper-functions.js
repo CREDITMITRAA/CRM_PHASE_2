@@ -69,6 +69,10 @@ function getErrorReason(error) {
         return ACTIVITY_TYPES.COMPANY_CATEGORY_UPDATE
       case 'lead_source' : 
         return ACTIVITY_TYPES.LEAD_SOURCE_UPDATE
+      case 'bereau_name' :
+        return ACTIVITY_TYPES.BEREAU_NAME_UPDATE
+      case 'bereau_score' :
+        return ACTIVITY_TYPES.BEREAU_SCORE_UPDATE
     }
   }
 

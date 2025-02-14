@@ -29,7 +29,9 @@ const ACTIVITY_TYPES = {
     CALL_SCHEDULE_WITH_MANAGER : 'CALL_SCHEDULE_WITH_MANAGER',
     RESCHEDULE_CALL_WITH_MANAGER : 'RESCHEDULE_CALL_WITH_MANAGER',
     ADD_ACTIVITY_LOG_NOTE : 'ADD_ACTIVITY_LOG_NOTE',
-    LEAD_SOURCE_UPDATE : 'LEAD_SOURCE_UPDATE'
+    LEAD_SOURCE_UPDATE : 'LEAD_SOURCE_UPDATE',
+    BEREAU_NAME_UPDATE : 'BEREAU_NAME_UPDATE',
+    BEREAU_SCORE_UPDATE : 'BEREAU_SCORE_UPDATE'
 }
 
 const ACTIVITY_LOGS = {
@@ -63,7 +65,9 @@ const ACTIVITY_LOGS = {
     CALL_SCHEDULE_WITH_MANAGER : (date) => `Call scheduled with manager on ${date}`,
     RESCHEDULE_CALL_WITH_MANAGER : (date) => `Call re-scheduled with manager on ${date}`,
     ADD_ACTIVITY_LOG_NOTE : `Note Added`,
-    LEAD_SOURCE_UPDATE : 'Lead Source Updated'
+    LEAD_SOURCE_UPDATE : 'Lead Source Updated',
+    BEREAU_NAME_UPDATE : 'Bereau Name Updated',
+    BEREAU_SCORE_UPDATE : 'Bereau Score Updated'
 }
 
 module.exports = {

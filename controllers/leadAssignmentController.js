@@ -95,7 +95,7 @@ async function assignLeadsToEmployee(req, res) {
     const leadsToUpdate = Object.keys(recentUnwantedActivities);
     if (leadsToUpdate.length > 0) {
       await Lead.update(
-        { lead_status: "Not Contacted", last_updated_status: "Not Contacted", is_reassigned: true },
+        { lead_status: "Not Contacted", last_updated_status: "Not Contacted", is_reassigned: 1 },
         {
           where: { id: leadsToUpdate },
           transaction,

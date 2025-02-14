@@ -174,6 +174,29 @@ async function getAllLeadsWithPagination(req, res) {
 
     const whereConditions = {};
     let leadAssignmentConditions = {};
+    const includeConditions = [
+      {
+        model: Activity,
+        as: "Activities",
+        required: false, // Include only if activity_status filter is provided
+        order: [["createdAt", "DESC"]], // Ensure the most recent activity is first
+        limit: 1, // Only include the most recent activity
+      },
+      {
+        model: LeadAssignment,
+        as: "LeadAssignments",
+        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name || !!assigned_on,
+        where: leadAssignmentConditions,
+        include: [
+          {
+            model: User, // Assuming `User` is your `AssignedTo` model
+            as: "AssignedTo", // Alias for the related `User` model
+            attributes: ["name"], // Only include the name field
+          },
+        ],
+      },
+    ];
+    
     if (name) whereConditions.name = { [Op.like]: `%${name}%` };
     if (email) whereConditions.email = { [Op.like]: `%${email}%` };
     if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
@@ -288,29 +311,6 @@ async function getAllLeadsWithPagination(req, res) {
         };
       }
     }
-
-    const includeConditions = [
-      {
-        model: Activity,
-        as: "Activities",
-        required: false, // Include only if activity_status filter is provided
-        order: [["createdAt", "DESC"]], // Ensure the most recent activity is first
-        limit: 1, // Only include the most recent activity
-      },
-      {
-        model: LeadAssignment,
-        as: "LeadAssignments",
-        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name || !!assigned_on,
-        where: leadAssignmentConditions,
-        include: [
-          {
-            model: User, // Assuming `User` is your `AssignedTo` model
-            as: "AssignedTo", // Alias for the related `User` model
-            attributes: ["name"], // Only include the name field
-          },
-        ],
-      },
-    ];
 
     if(for_walk_ins_page){
       includeConditions.push({

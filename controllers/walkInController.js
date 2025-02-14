@@ -84,7 +84,7 @@ async function scheduleWalkIn(req, res) {
 async function getWalkIns(req, res) {
   const transaction = await sequelize.transaction()
   try {
-    let { page = 1, pageSize = 10, created_by, date } = req.query;
+    let { page = 1, pageSize = 10, created_by, date, walk_in_status } = req.query;
     let whereConditions = {
       walk_in_status:{
         [Op.notIn]: ["Completed", "Cancelled"]
@@ -112,6 +112,10 @@ async function getWalkIns(req, res) {
       whereConditions.walk_in_date_time = {
         [Op.between]: [targetDate, endOfDay],
       };
+    }
+
+    if(walk_in_status){
+      whereConditions.walk_in_status = walk_in_status
     }
 
     // Fetch walk-ins with associated data

@@ -82,6 +82,7 @@ async function scheduleWalkIn(req, res) {
 }
 
 async function getWalkIns(req, res) {
+  const transaction = await sequelize.transaction()
   try {
     let { page = 1, pageSize = 10, created_by, date } = req.query;
     let whereConditions = {
@@ -145,8 +146,29 @@ async function getWalkIns(req, res) {
           ],
         },
       ],
+      transaction
     });
 
+    const currentDateTime = new Date(new Date().toISOString())
+    
+    for(let walkIn of rows){
+      if(walkIn.is_rescheduled){
+        if(walkIn.rescheduled_date_time && walkIn.rescheduled_date_time < currentDateTime && ["Upcoming","Rescheduled"].includes(walkIn.walk_in_status)){
+          walkIn.walk_in_status = "Pending";
+          if (walkIn.changed('walk_in_status')) { // Check if change is detected
+            await walkIn.save({ transaction });
+          }
+        }
+      } else {
+        if(walkIn.walk_in_date_time && walkIn.walk_in_date_time < currentDateTime && ["Upcoming","Rescheduled"].includes(walkIn.walk_in_status)){
+          walkIn.walk_in_status = "Pending";
+          if (walkIn.changed('walk_in_status')) { // Check if change is detected
+            await walkIn.save({ transaction });
+          }
+        }
+      }
+    }
+    
     const totalPages = Math.ceil(count / pageSize);
     let pagination = {
       page: page,
@@ -155,6 +177,7 @@ async function getWalkIns(req, res) {
       pageSize,
     };
 
+    await transaction.commit()
     return ApiResponse(
       res,
       "success",
@@ -166,6 +189,7 @@ async function getWalkIns(req, res) {
     );
   } catch (error) {
     console.log(error);
+    await transaction.rollback()
     return ApiResponse(
       res,
       "error",

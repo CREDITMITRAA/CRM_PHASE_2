@@ -61,6 +61,7 @@ const ROLE_MANAGER = "ROLE_MANAGER"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
+    "Pending",
     "Rescheduled",
     "Completed",
     "Cancelled"

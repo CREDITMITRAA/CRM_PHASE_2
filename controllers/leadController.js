@@ -246,6 +246,8 @@ async function getAllLeadsWithPagination(req, res) {
           WHERE LA.lead_id = Lead.id
         )
       `);
+    } else if(assigned_to === "re_assigned"){
+      whereConditions.is_reassigned = true
     } else if (assigned_to || assigned_to_name || assigned_on) {
       // Apply other lead assignment filters
       includeConditions.push({

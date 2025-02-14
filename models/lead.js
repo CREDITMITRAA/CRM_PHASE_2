@@ -26,6 +26,7 @@ module.exports = (sequelize) => {
     application_status_note: {type:DataTypes.TEXT},
     updated_by: { type: DataTypes.INTEGER },
     last_updated_status: { type: DataTypes.STRING },
+    is_reassigned : {type: DataTypes.BOOLEAN, defaultValue: false },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

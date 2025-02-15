@@ -940,7 +940,12 @@ async function updateLeadStatus(req,res){
         return ApiResponse(res,'error',400, "Invalid Appliation Status !")
       }
 
-      const updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status}, transaction)
+      let updatedLead = null
+      if(prev_lead_status === "Verification 1"){
+        updatedLead = await LeadServices.updateLead(lead_id,{last_updated_status:lead_status}, transaction)
+      }else{
+        updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status}, transaction)
+      }
 
       let logData = createLogData(
         ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_lead_status, lead_status),

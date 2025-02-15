@@ -932,8 +932,8 @@ async function updateLeadStatus(req,res){
         return ApiResponse(res, 'error', 400, "Missing required fields !")
       }
 
-      if (role !== ROLE_EMPLOYEE) {
-        return ApiResponse(res,'error', 403, "Only Employee can change lead status !")
+      if (![ROLE_ADMIN,ROLE_EMPLOYEE].includes(role)) {
+        return ApiResponse(res,'error', 403, "Only Admin or Employee can change lead status !")
       }
 
       if(!LEAD_STATUSES.includes(lead_status)){

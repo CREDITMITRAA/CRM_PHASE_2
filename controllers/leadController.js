@@ -161,7 +161,8 @@ async function getAllLeadsWithPagination(req, res) {
       last_updated,
       assigned_on,
       for_walk_ins_page=false,
-      walk_in_attributes=[]
+      walk_in_attributes=[],
+      user_status=null
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -185,7 +186,7 @@ async function getAllLeadsWithPagination(req, res) {
       {
         model: LeadAssignment,
         as: "LeadAssignments",
-        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name || !!assigned_on,
+        required: assigned_to === "not_assigned" ? false : !!assigned_to || !!assigned_to_name || !!assigned_on || !!user_status,
         where: leadAssignmentConditions,
         include: [
           {
@@ -324,6 +325,10 @@ async function getAllLeadsWithPagination(req, res) {
         ],
         limit: 1
       })
+    }
+
+    if(user_status==='inactive'){
+      leadAssignmentConditions.status = user_status
     }
 
     const shouldOrderByUpdatedAt = whereConditions?.verification_status || whereConditions?.lead_status || whereConditions?.activity_status;
@@ -1013,6 +1018,55 @@ async function updateLeadDetails(req,res){
   }
 }
 
+async function getAllLeadsOfExEmployees(req,res){
+  try {
+    let {
+      page = 1,
+      pageSize = 10
+    } = req.query
+
+    page = parseInt(page)
+    pageSize = parseInt(pageSize)
+
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
+
+    const {count,rows} = await Lead.findAndCountAll({
+      include: [
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          where: {status:'inactive'},
+          include: [
+            {
+              model: User,
+              as: "AssignedTo",
+              attributes: ["id", "name", "status"], // Only select necessary fields
+            },
+          ],
+        },
+      ],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      distinct: true,
+    })
+
+    const totalPages = Math.ceil(count / pageSize);
+
+    let pagination = {
+      page: page,
+      totalPages: totalPages,
+      total: count,
+      pageSize,
+    }
+
+    return ApiResponse(res, 'success', 200, "Leads Fetched Successfully !", rows, null, pagination)
+  } catch (error) {
+     return ApiResponse(res, 'error', 500, 'Failed to fetch ex-emp leads !', null, error, null)
+  }
+}
+
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -1024,5 +1078,6 @@ module.exports = {
   updateLeadStatus,
   getAllDistinctLeadSources,
   getLeadSourceByName,
-  updateLeadDetails
+  updateLeadDetails,
+  getAllLeadsOfExEmployees
 };

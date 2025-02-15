@@ -13,5 +13,6 @@ router.post('/update-lead-status', leadController.updateLeadStatus)
 router.get('/get-all-lead-sources',leadController.getAllDistinctLeadSources)
 router.get('/get-lead-source-by-name', leadController.getLeadSourceByName)
 router.put('/update-lead-details/:id', leadController.updateLeadDetails)
+router.get('/get-all-leads-of-ex-emp',leadController.getAllLeadsOfExEmployees)
 
 module.exports = router

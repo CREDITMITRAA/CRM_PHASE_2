@@ -56,7 +56,7 @@ async function assignLeadsToEmployee(req, res) {
     });
 
     // Unwanted activity statuses
-    const unwantedStatuses = ["RNR ( Ring No Response )", "Switched Off", "Busy", "Not Interested", "Not Working / Not Reachable"];
+    const unwantedStatuses = ["RNR ( Ring No Response )", "Switched Off", "Busy", "Not Interested", "Not Working / Not Reachable", "Not Contacted"];
 
     // Fetch activities with unwanted statuses for the selected leads
     const unwantedActivities = await Activity.findAll({
@@ -91,8 +91,20 @@ async function assignLeadsToEmployee(req, res) {
       });
     }
 
+    const freshLeads = await Lead.findAll({
+      where: {
+        id: leadIds.map((lead) => lead.id),
+        lead_status: "Not Contacted",
+      },
+      attributes: ["id"],
+      transaction,
+    });
+
     // Update lead statuses in the Leads table
-    const leadsToUpdate = Object.keys(recentUnwantedActivities);
+    const leadsToUpdate = [
+      ...Object.keys(recentUnwantedActivities),
+      ...freshLeads.map((lead)=>lead.id)
+    ]
     if (leadsToUpdate.length > 0) {
       await Lead.update(
         { lead_status: "Not Contacted", last_updated_status: "Not Contacted", is_reassigned: 1 },

@@ -175,6 +175,14 @@ async function getAllLeadsWithPagination(req, res) {
 
     const whereConditions = {};
     let leadAssignmentConditions = {};
+
+    if(assigned_to && assigned_to !== "not_assigned" && assigned_to !== "re_assigned"){
+      leadAssignmentConditions = {
+        ...leadAssignmentConditions,
+        assigned_to: assigned_to
+      };
+    }
+
     const includeConditions = [
       {
         model: Activity,

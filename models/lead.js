@@ -24,6 +24,7 @@ module.exports = (sequelize) => {
     rejected_at : {type: DataTypes.DATE},
     verification_status_note : {type:DataTypes.TEXT},
     application_status_note: {type:DataTypes.TEXT},
+    others_note: {type:DataTypes.TEXT},
     updated_by: { type: DataTypes.INTEGER },
     last_updated_status: { type: DataTypes.STRING },
     is_reassigned : {type: DataTypes.BOOLEAN, defaultValue: false },

@@ -926,7 +926,7 @@ async function updateApplicationStatus(req,res){
 async function updateLeadStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-      const {lead_id, lead_status, role, lead_name, prev_lead_status, user_id} = req.body
+      const {lead_id, lead_status, role, lead_name, prev_lead_status, user_id, others_note} = req.body
 
       if(!lead_id || !lead_status || !role){
         return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -940,11 +940,15 @@ async function updateLeadStatus(req,res){
         return ApiResponse(res,'error',400, "Invalid Appliation Status !")
       }
 
+      if(lead_status === "Others" && !others_note){
+        return ApiResponse(res,'error',400, "Please provide reason for Others status !")
+      }
+
       let updatedLead = null
       if(prev_lead_status === "Verification 1"){
-        updatedLead = await LeadServices.updateLead(lead_id,{last_updated_status:lead_status}, transaction)
+        updatedLead = await LeadServices.updateLead(lead_id,{last_updated_status:lead_status, others_note: lead_status === "Others" && others_note}, transaction)
       }else{
-        updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status}, transaction)
+        updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status, others_note: lead_status === "Others" && others_note}, transaction)
       }
 
       let logData = createLogData(
@@ -952,7 +956,7 @@ async function updateLeadStatus(req,res){
         ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
         user_id,
         lead_id,
-        null,
+        lead_status === "Others" ? others_note : null,
         lead_name
       )
       await createActivityLog(logData, transaction)

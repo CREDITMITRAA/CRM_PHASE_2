@@ -1,4 +1,4 @@
-const { Op, Sequelize } = require("sequelize");
+const { Op, Sequelize, where } = require("sequelize");
 const moment = require("moment-timezone");
 const {
   sequelize,
@@ -41,7 +41,7 @@ async function assignLeadsToEmployee(req, res) {
       return ApiResponse(res, "ERROR", 404, "Assigning user not found!");
     }
 
-    // Find existing leads
+    // check for existing leads
     const existingLeads = await LeadAssignment.findAll({
       where: { lead_id: leadIds.map((lead)=>lead.id) },
       attributes: ["lead_id", "assigned_to"],
@@ -55,136 +55,210 @@ async function assignLeadsToEmployee(req, res) {
       transaction,
     });
 
-    // Unwanted activity statuses
-    const unwantedStatuses = ["RNR ( Ring No Response )", "Switched Off", "Busy", "Not Interested", "Not Working / Not Reachable", "Not Contacted"];
+    console.log('existing leads = ', existingLeads.map((lead)=>lead.dataValues));
 
-    // Fetch activities with unwanted statuses for the selected leads
-    const unwantedActivities = await Activity.findAll({
-      where: {
-        lead_id: leadIds.map((lead)=>lead.id),
-        activity_status: {
-          [Sequelize.Op.in]: unwantedStatuses,  // Only activities with the unwanted statuses
-        },
-      },
-      attributes: ["id", "lead_id", "createdAt"],
-      order: [["createdAt", "DESC"]], // Sort by latest activity
-      transaction,
-    });
+    const existingLeadIds = existingLeads.map((lead) => lead.lead_id)
 
-    // Filter the most recent unwanted activities for each lead
-    const recentUnwantedActivities = unwantedActivities.reduce((acc, activity) => {
-      if (!acc[activity.lead_id] || acc[activity.lead_id].createdAt < activity.createdAt) {
-        acc[activity.lead_id] = activity;
-      }
-      return acc;
-    }, {});
+    let leadsToBeReAssigned = leadIds.filter((lead)=> existingLeadIds.includes(lead.id))
 
-    // Remove unwanted activities from the database
-    const unwantedActivityIds = Object.values(unwantedActivities).map(
-      (activity) => activity.id
-    );
+    const freshLeads = leadIds.filter((lead)=> !existingLeadIds.includes(lead.id))
 
-    if (unwantedActivityIds.length > 0) {
-      await Activity.destroy({
-        where: { id: unwantedActivityIds },
-        transaction,
-      });
-    }
 
-    const freshLeads = await Lead.findAll({
-      where: {
-        id: leadIds.map((lead) => lead.id),
-        lead_status: "Not Contacted",
-      },
-      attributes: ["id"],
-      transaction,
-    });
+    console.log('leads to be re-assigned = ', leadsToBeReAssigned);
+    console.log('fresh leads = ', freshLeads);
 
-    // Update lead statuses in the Leads table
-    const leadsToUpdate = [
-      ...Object.keys(recentUnwantedActivities),
-      ...freshLeads.map((lead)=>lead.id)
-    ]
-    if (leadsToUpdate.length > 0) {
-      await Lead.update(
-        { lead_status: "Not Contacted", last_updated_status: "Not Contacted", is_reassigned: 1 },
-        {
-          where: { id: leadsToUpdate },
-          transaction,
-        }
-      );
-    }
+    // fresh leads assignment flow
+    if(freshLeads.length > 0){
+      // Assign fresh leads to the employee
+      const bulkAssignments = freshLeads.map((lead)=>({
+        lead_id : lead.id,
+        assigned_to : assignedTo,
+        assigned_by : assignedBy,
+        status: "active",
+        updatedAt : new Date().toISOString()
+      }))
 
-    // Map existing leads for easier lookup
-    const existingLeadMap = new Map(
-      existingLeads.map((lead) => [lead.lead_id, lead.assigned_to])
-    );
+      await LeadAssignment.bulkCreate(bulkAssignments, {
+        updateOnDuplicate : ["assigned_to", "assigned_by", "status", "updatedAt"],
+        transaction
+      })
 
-    // Prepare transfer history records and reassignment activity logs
-    const leadTransfers = [];
-    const reassignmentActivityLogs = [];
-    existingLeads.forEach((lead) => {
-      leadTransfers.push({
-        lead_id: lead.lead_id,
-        transfered_from: lead.assigned_to,
-        transfered_to: assignedTo,
-        transfered_on: new Date(),
-        transfered_by: assignedBy,
-      });
+      const bulkUpdates = freshLeads.map((lead, index)=>({
+        id:lead.id,
+        updatedAt: new Date().toISOString()
+      }))
 
-      reassignmentActivityLogs.push({
-        activity_desc: `Lead reassigned to ${userName}.`,
-        activity_type: ACTIVITY_TYPES.LEAD_REASSIGNMENT,
-        created_by: assignedBy,
-        lead_id: lead.lead_id,
-        lead_name: lead.Lead.name
-      });
-    });
+      await Lead.bulkCreate(bulkUpdates, {
+        updateOnDuplicate: ["updatedAt"],
+        transaction
+      })
 
-    if (leadTransfers.length > 0) {
-      await LeadTransfer.bulkCreate(leadTransfers, { transaction });
-    }
-
-    const bulkAssignments = leadIds.map((leadId) => ({
-      lead_id: leadId.id,
-      assigned_to: assignedTo,
-      assigned_by: assignedBy,
-      status: "active",
-      updatedAt: new Date().toISOString(),
-    }));
-
-    await LeadAssignment.bulkCreate(bulkAssignments, {
-      updateOnDuplicate: ["assigned_to", "assigned_by", "status", "updatedAt"],
-      transaction,
-    });
-
-    const bulkUpdates = leadIds.map((leadId, index) => ({
-      id:leadId.id,
-      updatedAt: new Date().toISOString()
-    }))
-
-    await Lead.bulkCreate(bulkUpdates, {
-      updateOnDuplicate:["updatedAt"],
-      transaction
-    })
-
-    const newAssignmentActivityLogs = leadIds
-      .filter((leadId) => !existingLeadMap.has(leadId.id))
-      .map((leadId) => ({
+      const newAssignmentActivityLogs = freshLeads
+      .map((lead) => ({
         activity_desc: ACTIVITY_LOGS.LEAD_ASSIGNMENT(userName),
         activity_type: ACTIVITY_TYPES.LEAD_ASSIGNMENT,
         created_by: assignedBy,
-        lead_id: leadId.id,
-        lead_name: leadId.name
+        lead_id: lead.id,
+        lead_name: lead.name
       }));
 
-    const allActivityLogs = [...newAssignmentActivityLogs, ...reassignmentActivityLogs];
+      await Promise.all(
+        newAssignmentActivityLogs.map((logData) =>
+          ActivityLogServices.createActivityLog(logData, transaction)
+        )
+      );
+    }
 
-    await Promise.all(
-      allActivityLogs.map((logData) =>
-        ActivityLogServices.createActivityLog(logData, transaction)
-      )
-    );
+    // re assignments flow
+    if (leadsToBeReAssigned.length > 0) {
+      // Extract last_updated_status for each lead
+      const leadsWithStatus = leadsToBeReAssigned.map((lead) => ({
+        lead_id: lead.id,
+        last_updated_status: lead.last_updated_status,
+      }));
+    
+      // Define unwanted statuses
+      const unwantedStatuses = [
+        "RNR ( Ring No Response )",
+        "Switched Off",
+        "Busy",
+        "Not Interested",
+        "Not Working / Not Reachable",
+        "Not Contacted",
+      ];
+    
+      // Filter leads with unwanted statuses
+      const leadsToClearActivities = leadsWithStatus
+        .filter((lead) => unwantedStatuses.includes(lead.last_updated_status))
+        .map((lead) => lead.lead_id);
+    
+      if (leadsToClearActivities.length > 0) {
+        // Fetch the most recent unwanted activities for these leads
+        const initialLevelActivities = await Activity.findAll({
+          where: {
+            lead_id: {
+              [Op.in]: leadsToClearActivities,
+            },
+            activity_status: {
+              [Op.in]: unwantedStatuses,
+            },
+          },
+          attributes: ["id", "lead_id", "createdAt"],
+          order: [["createdAt", "DESC"]],
+          transaction,
+        });
+    
+        // Filter the most recent unwanted activities for each lead
+        const recentUnwantedActivities = initialLevelActivities.reduce(
+          (acc, activity) => {
+            if (
+              !acc[activity.lead_id] ||
+              acc[activity.lead_id].createdAt < activity.createdAt
+            ) {
+              acc[activity.lead_id] = activity;
+            }
+            return acc;
+          },
+          {}
+        );
+    
+        // const dataValuesArray = Object.values(recentUnwantedActivities).map(
+        //   (activity) => activity.dataValues
+        // );
+    
+        // Remove unwanted activities from the database
+        const unwantedActivityIds = initialLevelActivities.map((activity) => activity.id);
+    
+        if (unwantedActivityIds.length > 0) {
+          await Activity.destroy({
+            where: { id: unwantedActivityIds },
+            transaction,
+          });
+        }
+      }
+    
+      // Proceed with re-assignment and status updates
+      if (leadsToBeReAssigned.length > 0) {
+        await Lead.update(
+          {
+            lead_status: "Not Contacted",
+            last_updated_status: "Not Contacted",
+            is_reassigned: 1,
+          },
+          {
+            where: {
+              id: {
+                [Op.in]: leadsToBeReAssigned.map((lead) => lead.id),
+              },
+              last_updated_status: {
+                [Op.in]: unwantedStatuses,
+              },
+            },
+            transaction,
+          }
+        );
+        // Update is_reassigned if last_updated_status is NOT in unwantedStatuses
+        await Lead.update(
+          {
+            is_reassigned: 1,  // Only is_reassigned is updated here
+          },
+          {
+            where: {
+              id: {
+                [Op.in]: leadsToBeReAssigned.map((lead) => lead.id),
+              },
+              last_updated_status: {
+                [Op.notIn]: unwantedStatuses,
+              },
+            },
+            transaction,
+          }
+        );
+      }
+    
+      // lead transfer logic
+      let leadTransfers = [];
+      let reassignmentActivityLogs = [];
+      existingLeads.forEach((lead) => {
+        leadTransfers.push({
+          lead_id: lead.lead_id,
+          transfered_from: lead.assigned_to,
+          transfered_to: assignedTo,
+          transfered_on: new Date(),
+          transfered_by: assignedBy,
+        });
+    
+        reassignmentActivityLogs.push({
+          activity_desc: `Lead reassigned to ${userName}.`,
+          activity_type: ACTIVITY_TYPES.LEAD_REASSIGNMENT,
+          created_by: assignedBy,
+          lead_id: lead.lead_id,
+          lead_name: lead.Lead.name,
+        });
+      });
+    
+      if (leadTransfers.length > 0) {
+        await LeadTransfer.bulkCreate(leadTransfers, { transaction });
+        await Promise.all(
+          reassignmentActivityLogs.map((logData) =>
+            ActivityLogServices.createActivityLog(logData, transaction)
+          )
+        );
+      }
+    
+      const bulkAssignments = leadsToBeReAssigned.map((leadId) => ({
+        lead_id: leadId.id,
+        assigned_to: assignedTo,
+        assigned_by: assignedBy,
+        status: "active",
+        updatedAt: new Date().toISOString(),
+      }));
+    
+      await LeadAssignment.bulkCreate(bulkAssignments, {
+        updateOnDuplicate: ["assigned_to", "assigned_by", "status", "updatedAt"],
+        transaction,
+      });
+    }
 
     await transaction.commit();
 

@@ -183,24 +183,25 @@ async function assignLeadsToEmployee(req, res) {
           {
             lead_status: "Not Contacted",
             last_updated_status: "Not Contacted",
-            is_reassigned: 1,
+            is_reassigned: true,
           },
           {
             where: {
               id: {
                 [Op.in]: leadsToBeReAssigned.map((lead) => lead.id),
               },
-              last_updated_status: {
-                [Op.in]: unwantedStatuses,
-              },
+              [Op.or]: [
+                { last_updated_status: { [Op.in]: unwantedStatuses } },
+                { last_updated_status: null }
+              ]
             },
-            transaction,
+            // transaction,
           }
         );
         // Update is_reassigned if last_updated_status is NOT in unwantedStatuses
         await Lead.update(
           {
-            is_reassigned: 1,  // Only is_reassigned is updated here
+            is_reassigned: true,  // Only is_reassigned is updated here
           },
           {
             where: {
@@ -211,7 +212,7 @@ async function assignLeadsToEmployee(req, res) {
                 [Op.notIn]: unwantedStatuses,
               },
             },
-            transaction,
+            // transaction,
           }
         );
       }

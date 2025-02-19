@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const { sequelize } = require('./models'); // Sequelize instance
 const routes = require('./routes/index');
 const { ApiResponse } = require('./utilities/api-responses/ApiResponse');
+const cron = require('node-cron');
+const { createBackup } = require('./controllers/backupController');
 
 
 const app = express();
@@ -52,6 +54,11 @@ app.use((err, req, res, next) => {
 
 // Start the server
 const PORT = process.env.PORT || 3000;
+
+cron.schedule("30 5 * * *", async () => {
+  console.log("⏳ Running scheduled database backup...");
+  await createBackup(); // No req, res here
+});
 
 // Sync Sequelize models and start the server
 sequelize

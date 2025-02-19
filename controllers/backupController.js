@@ -13,10 +13,11 @@ const FILE_NAME = `backups/database-backup-${DATE_STR}.xlsx`; // Store in 'backu
 const s3 = new AWS.S3();
 
 async function createBackup(req, res) {
+    const {isManualBackup=false} = req.query
     const today = new Date();
     const day = today.getUTCDate(); // Use UTC for consistency
 
-    if (day % 2 !== 0) {
+    if (!isManualBackup && day % 2 !== 0) {
         console.log("Skipping backup, as today is an odd day.");
         if (res) return ApiResponse(res, 'error', 400, "Skipped Backup Today !")
         return;

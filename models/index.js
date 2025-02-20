@@ -13,6 +13,7 @@ const WalkIn = require("./walkIn")(sequelize);
 const LeadDocument = require("./leadDocument")(sequelize)
 const ActivityLog = require("./ActivityLog")(sequelize)
 const LeadTransfer = require("./LeadTransfer")(sequelize)
+const Notification = require("./Notification")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -83,5 +84,6 @@ module.exports = {
   WalkIn,
   LeadDocument,
   ActivityLog,
-  LeadTransfer
+  LeadTransfer,
+  Notification
 };

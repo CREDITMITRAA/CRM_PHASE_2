@@ -9,7 +9,8 @@ const routes = require('./routes/index');
 const { ApiResponse } = require('./utilities/api-responses/ApiResponse');
 const cron = require('node-cron');
 const { createBackup } = require('./controllers/backupController');
-
+const socketIo = require('socket.io');
+const { initializeSocket } = require('./socket/socket');
 
 const app = express();
 
@@ -60,6 +61,9 @@ cron.schedule("30 5 * * *", async () => {
   await createBackup(); // No req, res here
 });
 
+
+let server;
+let io;
 // Sync Sequelize models and start the server
 sequelize
   .authenticate()
@@ -68,12 +72,32 @@ sequelize
     return sequelize.sync({ alter: process.env.ALTER_SEQUALIZE === 'TRUE' && true, force: process.env.FORCE_SEQUALIZE === 'TRUE' && true, logging:process.env.LOG_SQL === 'TRUE' && console.log }); // Sync models with DB
   })
   .then(() => {
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
     });
+    initializeSocket(server)
   })
   .catch((err) => {
     console.error('Failed to connect to the database:', err.message);
   });
 
-module.exports = app;
+ io = socketIo(server,{
+  cors:{
+    origin:process.env.FRONTEND_ORIGIN_URL,
+    methods:["GET","POST"]
+  }
+})
+
+// let count = 0;
+// io.on("connect", (socket)=>{
+//   console.log("A user connected ", socket.id);
+//   socket.on("disconnect", () => {
+//     console.log("User disconnected !", socket.id);
+    
+//   }),
+//   socket.on("count", ()=>{
+//     console.log("count received");
+//   })
+// })
+
+module.exports = {app,io};

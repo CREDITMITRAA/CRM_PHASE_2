@@ -12,6 +12,7 @@ const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
 const ActivityLogServices = require('../services/ActivityLogServices')
 const {ACTIVITY_LOGS,ACTIVITY_TYPES} = require('../utilities/ActivityLogConstants');
+const { getIo } = require("../socket/socket");
 
 async function assignLeadsToEmployee(req, res) {
   const transaction = await sequelize.transaction();
@@ -260,6 +261,13 @@ async function assignLeadsToEmployee(req, res) {
         transaction,
       });
     }
+
+    const io = getIo()
+    io.to(`user_${assignedTo}`).emit("leadAssignment", {
+      message: `${leadIds.length} leads have been assigned to you.`,
+      assignedBy: userName,
+      leadCount: leadIds.length,
+    });
 
     await transaction.commit();
 

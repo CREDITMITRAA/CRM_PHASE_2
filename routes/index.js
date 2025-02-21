@@ -18,6 +18,7 @@ const leadDocumentRoutes = require('./leadDocumentRoutes')
 const invalidLeadRoutes = require('./invalidLeadRoutes')
 const activityLogRoutes = require('./ActivityLogRoutes')
 const BackupRoutes = require('./backupRoutes')
+const NotificationRoutes = require('./NotificationRoutes')
 // Add more routes as needed...
 
 // Set up routes
@@ -37,6 +38,7 @@ router.use('/lead-documents', leadDocumentRoutes)
 router.use('/invalid-leads', invalidLeadRoutes)
 router.use('/activity-logs', activityLogRoutes)
 router.use('/backups', BackupRoutes)
+router.use('/notifications', NotificationRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

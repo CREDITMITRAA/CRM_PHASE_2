@@ -280,7 +280,7 @@ async function rescheduleWalkIn(req, res) {
           return ApiResponse(res, "error", 400, "Walk-In Not found");
       }
 
-      const lead = await Lead.findByPk(lead_id, {transaction})
+      const lead = await Lead.findByPk(walkInFromDB.lead_id, {transaction})
       if (!lead) {
         await transaction.rollback();
         return ApiResponse(res, "error", 400, "Lead not found!");

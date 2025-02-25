@@ -67,16 +67,25 @@ async function getNotificationsByEmployeeId(req,res){
     }
 }
 
-// async function getUnAcknowledgedNotificationsByEmployeeId(req,res){
-//     try {
-//         const {employee_id} = req.query
+async function getUnSeenNotificationsCount(req,res){
+    try {
+        const {employee_id} = req.query
+        if(!employee_id){
+            return ApiResponse(res, 'error', 400, "Employee ID is required !")
+        }
 
-//     } catch (error) {
-//         return ApiResponse(res, 'error', 500, "Failed to fetch unacknowledged notifications !", null, error, null)
-//     }
-// }
+        const count = await Notification.count({
+            where: {employee_id, is_read:false}
+        })
+
+        return ApiResponse(res, 'success', 200, "Count fetched succussfully.", {count})
+    } catch (error) {
+        return ApiResponse(res, 'error', 500, "Failed to fetch unseen notifications count !", null, error, null)
+    }
+}
 
 module.exports = {
     acknowledgeNotification,
-    getNotificationsByEmployeeId
+    getNotificationsByEmployeeId,
+    getUnSeenNotificationsCount
 }

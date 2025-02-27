@@ -108,11 +108,21 @@ async function getWalkIns(req, res) {
       targetDate.setHours(0, 0, 0, 0); // Start of the day
       const endOfDay = new Date(targetDate);
       endOfDay.setHours(23, 59, 59, 999); // End of the day
-
-      whereConditions.walk_in_date_time = {
-        [Op.between]: [targetDate, endOfDay],
-      };
-    }
+    
+      whereConditions[Op.or] = [
+        {
+          rescheduled_date_time: {
+            [Op.between]: [targetDate, endOfDay],
+          },
+        },
+        {
+          rescheduled_date_time: null,
+          walk_in_date_time: {
+            [Op.between]: [targetDate, endOfDay],
+          },
+        },
+      ];
+    }    
 
     if(walk_in_status){
       whereConditions.walk_in_status = walk_in_status

@@ -792,7 +792,7 @@ async function getTotalLeadsCount(req, res) {
 
       if (assigned_to) {
         // Apply to LeadAssignment's `createdAt` if `assigned_to` is provided
-        assignmentConditions.createdAt = {
+        assignmentConditions.updatedAt = {
           [Op.between]: [todayStartUTC, todayEndUTC],
         };
       } else {

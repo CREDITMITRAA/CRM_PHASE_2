@@ -50,6 +50,45 @@ async function login(req, res) {
   }
 }
 
+async function updatePassword(req, res) {
+  try {
+    const { userId, oldPassword, newPassword, renteredNewPassword } = req.body;
+
+    // Check for missing fields
+    if (!userId || !oldPassword || !newPassword || !renteredNewPassword) {
+      return ApiResponse(res, "error", 400, "Missing required fields!");
+    }
+
+    // Fetch user from database
+    const user = await User.findOne({ where: { id: userId } });
+    if (!user) {
+      return ApiResponse(res, "error", 404, "User not found!");
+    }
+
+    // Check if old password matches
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isPasswordValid) {
+      return ApiResponse(res, "error", 400, "Old password is incorrect!");
+    }
+
+    // Validate new password match
+    if (newPassword !== renteredNewPassword) {
+      return ApiResponse(res, "error", 400, "New passwords do not match!");
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in database
+    await user.update({ password: hashedPassword });
+
+    return ApiResponse(res, "success", 200, "Password updated successfully!", {password:hashedPassword});
+
+  } catch (error) {
+    return ApiResponse(res, "error", 500, "Failed to update password!", null, error, null);
+  }
+}
+
 // async function refresh(req,res){
 //   const { token } = req.body;
 //     try {
@@ -67,4 +106,4 @@ async function login(req, res) {
 //     }
 // }
 
-module.exports = { login };
+module.exports = { login, updatePassword };

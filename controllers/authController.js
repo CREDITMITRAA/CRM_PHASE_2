@@ -34,6 +34,8 @@ async function login(req, res) {
       name:user.name?user.name:null,
       role: roleName,
       department: user.department ? user.department : null,
+      designation: user.designation ? user.designation : null,
+      employee_id: user.employee_id
     };
     // Generate JWT token
     const token = jwt.sign({ user: userData }, process.env.JWT_SECRET, {

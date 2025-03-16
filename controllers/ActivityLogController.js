@@ -49,7 +49,7 @@ async function getActivityLogs(req,res){
         let pagination = {
             page:page,
             pageSize:pageSize,
-            totalItems:count,
+            total:count,
             totalPages
         }
         return ApiResponse(res, 'success', 200, "Query Successful !", rows, null, pagination)

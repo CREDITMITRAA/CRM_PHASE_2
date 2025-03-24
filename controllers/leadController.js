@@ -555,7 +555,7 @@ async function updateLeadReportsActivities(req, res) {
       const activityLogs = loanReports.map((LoanReport)=>({
         created_by : userId,
         activity_type : ACTIVITY_TYPES.LOAN_REPORTS_UPDATE,
-        activity_desc : ACTIVITY_LOGS.LOAN_REPORTS_UPDATE(LoanReport.loan_type, LoanReport.bank_name, LoanReport.loan_amount, LoanReport.emi, LoanReport.outstanding),
+        activity_desc : ACTIVITY_LOGS.LOAN_REPORTS_UPDATE(LoanReport.loan_type, LoanReport.bank_name, LoanReport.loan_amount, LoanReport.emi, LoanReport.emi_date, LoanReport.outstanding),
         lead_id : leadId,
         lead_name : lead_name,
         status : 'active'

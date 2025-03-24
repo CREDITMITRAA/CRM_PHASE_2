@@ -171,9 +171,41 @@ async function deleteCreditReport(req,res){
   }
 }
 
+async function addCreditReport(req,res){
+  const transaction = await sequelize.transaction();
+  try {
+    const {lead_id,credit_card_name,total_outstanding,created_by} = req.body
+    if (!lead_id || !credit_card_name || !total_outstanding || !created_by) {
+      return ApiResponse(res, 'error', 400, "Missing required fields!", null, null, transaction);
+    }
+
+    const newCreditReport = await CreditReport.create(
+      {lead_id,created_by,credit_card_name,total_outstanding},
+      {transaction}
+    )
+
+    await ActivityLog.create(
+      {
+        created_by,
+        activity_type: ACTIVITY_TYPES.CREDIT_REPORT_ADD,
+        activity_desc: ACTIVITY_LOGS.CREDIT_REPORT_ADD(credit_card_name,total_outstanding),
+        lead_id,
+        status: 'active'
+      },
+      { transaction }
+    );
+
+    await transaction.commit()
+    return ApiResponse(res, 'success', 201, "Credit Report added successfully!", newCreditReport, null, null);
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to add credit report", null, error, null)
+  }
+}
+
 module.exports = {
   getCreditReportsByLeadId,
   getAllCreditReports,
   deleteCreditReportById,
-  deleteCreditReport
+  deleteCreditReport,
+  addCreditReport
 };

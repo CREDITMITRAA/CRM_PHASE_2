@@ -1008,30 +1008,86 @@ async function getLeadSourceByName(req,res){
   }
 }
 
-async function updateLeadDetails(req,res){
+async function updateLeadDetails(req, res) {
+  const transaction = await sequelize.transaction(); // Start transaction
+
   try {
-     const {id} = req.params
-     
-     if(!id){
-      return ApiResponse(res, 'error', 400, "Lead ID is required !")
-     }
+    const { id } = req.params;
+    const { user_id,lead_name } = req.body; // Ensure user_id is present for logging
 
-     if(Object.keys(req.body).length === 0){
-      return ApiResponse(res, 'error', 400, "update details are required !")
-     }
+    if (!id) {
+      return ApiResponse(res, 'error', 400, "Lead ID is required!");
+    }
 
-     const [updatedRowCount] = await Lead.update(req.body,{
-      where: {id}
-     })
+    if (Object.keys(req.body).length === 0) {
+      return ApiResponse(res, 'error', 400, "Update details are required!");
+    }
 
-     if(updatedRowCount===0){
-      return ApiResponse(res, 'error', 404, "Lead not found !")
-     }
+    // Fetch the existing lead
+    const lead = await Lead.findOne({ where: { id }, transaction });
 
-     return ApiResponse(res, 'success', 200, "Lead updated successfully 1")
+    if (!lead) {
+      await transaction.rollback();
+      return ApiResponse(res, 'error', 404, "Lead not found!");
+    }
+
+    // Track changes for logging
+    const prev_lead_data = { ...lead.dataValues };
+
+    // Check if alternate_phones is being updated
+    if (req.body.alternate_phones) {
+      let newPhones = req.body.alternate_phones;
+
+      if (!Array.isArray(newPhones)) {
+        await transaction.rollback();
+        return ApiResponse(res, 'error', 400, "alternate_phones must be an array!");
+      }
+
+      // Merge existing alternate phones with new ones and remove duplicates
+      const updatedPhones = [...new Set([...(lead.alternate_phones || []), ...newPhones])];
+
+      // Set the updated array back into req.body
+      req.body.alternate_phones = updatedPhones;
+    }
+
+    // Update the lead
+    const [updatedRowCount] = await Lead.update(req.body, { where: { id }, transaction });
+
+    if (updatedRowCount === 0) {
+      await transaction.rollback();
+      return ApiResponse(res, 'error', 404, "Lead not found!");
+    }
+
+    // Fetch updated lead
+    const updatedLead = await Lead.findOne({ where: { id }, transaction });
+
+    // Identify changes
+    let logMessages = [];
+    for (const key in req.body) {
+      if (prev_lead_data[key] !== updatedLead[key]) {
+        logMessages.push(`${key} changed from '${prev_lead_data[key]}' to '${updatedLead[key]}'`);
+      }
+    }
+
+    // Create activity log if changes exist
+    if (logMessages.length > 0) {
+      let logData = createLogData(
+        `Lead details updated : ${logMessages.join(", ")}`,
+        ACTIVITY_TYPES.LEAD_UPDATE,
+        user_id, // Ensure created_by is passed
+        id,
+        null,
+        lead_name
+      );
+      await createActivityLog(logData, transaction); // Ensure log entry is part of the transaction
+    }
+
+    await transaction.commit(); // Commit transaction if everything is successful
+    return ApiResponse(res, 'success', 200, "Lead updated successfully!");
 
   } catch (error) {
-    return ApiResponse(res, 'error', 500, "Failed to update lead details !", null,error,null)
+    await transaction.rollback(); // Rollback transaction in case of failure
+    return ApiResponse(res, 'error', 500, "Failed to update lead details!", null, error, null);
   }
 }
 

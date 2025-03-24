@@ -60,10 +60,11 @@ async function createUser(req, res) {
       working_mode,
       status,
       role_name,
+      date_of_join
     } = req.body;
 
     // Validation: Check if all required fields are provided
-    if (!name || !email || !password || !role_name) {
+    if (!employee_id || !name || !email || !phone || !password || !designation || !role_name || !date_of_join) {
       return ApiResponse(res, "error", 400, "Missing required fields");
     }
 
@@ -97,6 +98,7 @@ async function createUser(req, res) {
         working_mode,
         status: status || "active", // Default status to 'active' if not provided
         role_id: role.id, // Assign the role_id to the user
+        date_of_join
       },
       { transaction: t }
     );
@@ -139,9 +141,9 @@ async function updateUser(req, res) {
     }
 
     // Update user with the rest of the fields
-    await user.update(req.body);
+    const updatedUser = await user.update(req.body);
 
-    ApiResponse(res, "success", 200, "User updated successfully", user);
+    ApiResponse(res, "success", 200, "User updated successfully", updatedUser);
   } catch (err) {
     ApiResponse(res, "error", 500, "Failed to update user", null, {
       message: err.message,

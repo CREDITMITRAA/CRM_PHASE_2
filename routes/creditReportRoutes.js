@@ -8,5 +8,6 @@ router.get('/get-credit-reports-by-lead-id/:leadId', authenticate([ROLE_ADMIN,RO
 router.get('/get-all-credit-reports', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.getAllCreditReports)
 // router.delete('/delete-credit-report', CreditReportController.deleteCreditReportById)
 router.post('/delete-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.deleteCreditReport)
+router.post('/add-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.addCreditReport)
 
 module.exports = router

@@ -31,7 +31,10 @@ const ACTIVITY_TYPES = {
     ADD_ACTIVITY_LOG_NOTE : 'ADD_ACTIVITY_LOG_NOTE',
     LEAD_SOURCE_UPDATE : 'LEAD_SOURCE_UPDATE',
     BEREAU_NAME_UPDATE : 'BEREAU_NAME_UPDATE',
-    BEREAU_SCORE_UPDATE : 'BEREAU_SCORE_UPDATE'
+    BEREAU_SCORE_UPDATE : 'BEREAU_SCORE_UPDATE',
+    LEAD_UPDATE: 'LEAD_UPDATE',
+    LOAN_REPORT_ADD : 'LOAN_REPORT_ADD',
+    CREDIT_REPORT_ADD : 'CREDIT_REPORT_ADD'
 }
 
 const ACTIVITY_LOGS = {
@@ -67,7 +70,10 @@ const ACTIVITY_LOGS = {
     ADD_ACTIVITY_LOG_NOTE : `Note Added`,
     LEAD_SOURCE_UPDATE : 'Lead Source Updated',
     BEREAU_NAME_UPDATE : 'Bereau Name Updated',
-    BEREAU_SCORE_UPDATE : 'Bereau Score Updated'
+    BEREAU_SCORE_UPDATE : 'Bereau Score Updated',
+    LEAD_UPDATE: 'Lead Details Updated',
+    LOAN_REPORT_ADD: (loan_type, bank_name, loan_amount, emi, outstanding) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding} )`,
+    CREDIT_REPORT_ADD : (credit_card_name, total_outstanding) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
 }
 
 module.exports = {

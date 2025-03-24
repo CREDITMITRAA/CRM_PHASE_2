@@ -718,6 +718,54 @@ async function updateDocsCollectedByActivityId(req,res){
   }
 }
 
+async function getRecentActivityNotesByLeadId(req, res) {
+  try {
+    const { leadId, limit=10 } = req.query;
+
+    if (!leadId) {
+      return ApiResponse(res, 'error', 400, "Lead ID is required!", null, null, null);
+    }
+
+    const activities = await Activity.findAll({
+      where: {
+        lead_id: leadId,
+        description: { [Op.ne]: null }, // Ensures description is not null
+        status: 'active' // Fetch only active activities (optional)
+      },
+      limit: limit ? parseInt(limit) : 10, // Default limit to 10 if not provided
+      order: [['createdAt', 'DESC']], // Fetch recent activities first
+    });
+
+    return ApiResponse(res, 'success', 200, "Activity notes fetched successfully!", activities, null, null);
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to fetch activity notes!", null, error, null);
+  }
+}
+
+async function getRecentActivityByLeadId(req,res){
+  try {
+    const { leadId} = req.query;
+
+    if (!leadId) {
+      return ApiResponse(res, 'error', 400, "Lead ID is required!", null, null, null);
+    }
+
+    const activities = await Activity.findAll({
+      where: {
+        lead_id: leadId,
+        status: 'active' // Fetch only active activities (optional)
+      },
+      limit: 1, // Default limit to 10 if not provided
+      order: [['createdAt', 'DESC']], // Fetch recent activities first
+    });
+
+    return ApiResponse(res, 'success', 200, "Activity notes fetched successfully!", activities[0], null, null);
+
+  } catch (error) {
+    return ApiResponse(res, 'error', 500, "Failed to fetch activity notes!", null, error, null);
+  }
+}
+
 module.exports = {
   addActivity,
   getActivitiesByLeadId,
@@ -725,5 +773,7 @@ module.exports = {
   getAllActivities,
   getAllTasks,
   updateTaskStatus,
-  updateDocsCollectedByActivityId
+  updateDocsCollectedByActivityId,
+  getRecentActivityNotesByLeadId,
+  getRecentActivityByLeadId
 };

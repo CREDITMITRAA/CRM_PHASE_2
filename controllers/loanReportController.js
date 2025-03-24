@@ -169,9 +169,45 @@ async function deleteLoanReport(req, res) {
   }
 }
 
+async function addLoanReport(req, res) {
+  const transaction = await sequelize.transaction();
+  try {
+    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by } = req.body;
+
+    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by) {
+      return ApiResponse(res, 'error', 400, "Missing required fields!", null, null, transaction);
+    }
+
+    // Create Loan Report
+    const newLoanReport = await LoanReport.create(
+      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by },
+      { transaction }
+    );
+
+    // Create Activity Log
+    await ActivityLog.create(
+      {
+        created_by,
+        activity_type: ACTIVITY_TYPES.LOAN_REPORT_ADD,
+        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding),
+        lead_id,
+        status: 'active'
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    return ApiResponse(res, 'success', 201, "Loan Report added successfully!", newLoanReport, null, null);
+  } catch (error) {
+    await transaction.rollback();
+    return ApiResponse(res, 'error', 500, "Failed to add loan report!", null, error, null);
+  }
+}
+
 module.exports = {
   getLoanReportsByLeadId,
   getAllLoanReports,
   updateLoanReport,
-  deleteLoanReport
+  deleteLoanReport,
+  addLoanReport
 };

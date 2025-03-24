@@ -13,6 +13,7 @@ module.exports = (sequelize) => {
     designation: { type: DataTypes.STRING },
     department: { type: DataTypes.STRING },
     working_mode: { type: DataTypes.ENUM('remote', 'office', 'hybrid') },
+    date_of_join:{ type: DataTypes.STRING, allowNull: true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
     role_id: {  // Add role_id here as a foreign key
       type: DataTypes.INTEGER,

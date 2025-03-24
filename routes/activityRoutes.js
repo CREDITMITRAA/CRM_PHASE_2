@@ -11,5 +11,7 @@ router.get('/get-all-activities', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMP
 router.get('/get-all-tasks', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), ActivityController.getAllTasks)
 router.post('/update-task-status', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), ActivityController.updateTaskStatus)
 router.post('/update-docs-collected-by-activity-id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), ActivityController.updateDocsCollectedByActivityId)
+router.get('/get-recent-activity-notes-by-lead-id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), ActivityController.getRecentActivityNotesByLeadId)
+router.get('/get-recent-activity-by-lead-id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), ActivityController.getRecentActivityByLeadId)
 
 module.exports = router

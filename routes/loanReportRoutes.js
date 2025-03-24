@@ -8,5 +8,6 @@ router.get('/get-loan-reports-by-lead-id/:leadId', authenticate([ROLE_ADMIN,ROLE
 router.get('/get-all-loan-reports', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), LoanReportsController.getAllLoanReports)
 router.post('/update-loan-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), LoanReportsController.updateLoanReport)
 router.post('/delete-loan-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), LoanReportsController.deleteLoanReport)
+router.post('/add-loan-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), LoanReportsController.addLoanReport)
 
 module.exports = router

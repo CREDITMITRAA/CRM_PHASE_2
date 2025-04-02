@@ -102,31 +102,71 @@ const getDashboardData = async (req, res) => {
 
 async function getChartsData(req, res) {
   try {
-    const { date } = req.query;
-    const dateFilter = date
-      ? `AND DATE(CONVERT_TZ(createdAt, '+00:00', '+05:30')) = '${date}'`
-      : "";
-
-      const dateConditionForWalkInScheduledToday = date
-      ? `
-      CONVERT_TZ(createdAt, '+00:00', '+05:30') >= '${date}' 
-      AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE_ADD('${date}', INTERVAL 1 DAY)
-      `
-      : `1 = 1`; // No date filter (fetch all records)
-
-  const dateConditionForWalkInsToday = date
-  ? `(
-    (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
-    DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
-    OR
-    (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
-    DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}'
-  )`
-  : `1 = 1`;  // No date filter, get all records
-
-  const dateConditionForApprovedForWalkIns = date
-  ? `DATE(CONVERT_TZ(l.updatedAt, '+00:00', '+05:30')) = '${date}'`
-  : `1 = 1`;
+    const { date, date_time_range, created_by } = req.query;
+    
+    // Helper function to parse date range
+    const parseDateTimeRange = (range) => {
+      if (!range) return null;
+      const [start, end] = range.split(',');
+      return { start, end };
+    };
+    
+    const dateRange = parseDateTimeRange(date_time_range);
+    
+    // Build filters based on what's provided
+    let dateFilter = "";
+    let createdByFilter = created_by ? `AND created_by = '${created_by}'` : "";
+    let assignedToFilter = created_by ? `AND la.assigned_to = '${created_by}'` : "";
+    let dateConditionForWalkInScheduledToday = "";
+    let dateConditionForWalkInsToday = "";
+    let dateConditionForApprovedForWalkIns = "";
+    
+    if (dateRange) {
+      // Use date_time_range if provided
+      dateFilter = `AND CONVERT_TZ(createdAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'`;
+      
+      dateConditionForWalkInScheduledToday = `
+        CONVERT_TZ(createdAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
+      `;
+      
+      dateConditionForWalkInsToday = `(
+        (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
+        CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}')
+        OR
+        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
+        CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
+      )`;
+      
+      dateConditionForApprovedForWalkIns = `
+        CONVERT_TZ(l.updatedAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
+      `;
+    } else if (date) {
+      // Fall back to single date filter if date_time_range not provided
+      dateFilter = `AND DATE(CONVERT_TZ(createdAt, '+00:00', '+05:30')) = '${date}'`;
+      
+      dateConditionForWalkInScheduledToday = `
+        CONVERT_TZ(createdAt, '+00:00', '+05:30') >= '${date}' 
+        AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE_ADD('${date}', INTERVAL 1 DAY)
+      `;
+      
+      dateConditionForWalkInsToday = `(
+        (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
+        DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
+        OR
+        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
+        DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}'
+      )`;
+      
+      dateConditionForApprovedForWalkIns = `
+        DATE(CONVERT_TZ(l.updatedAt, '+00:00', '+05:30')) = '${date}'
+      `;
+    } else {
+      // No date filters
+      dateFilter = "";
+      dateConditionForWalkInScheduledToday = "1 = 1";
+      dateConditionForWalkInsToday = "1 = 1";
+      dateConditionForApprovedForWalkIns = "1 = 1";
+    }
 
     // NO OF CALLS DONE
     const [callsDoneData] = await sequelize.query(
@@ -143,7 +183,8 @@ async function getChartsData(req, res) {
               ${process.env.DB_NAME}.Activities
           WHERE 
               status = 'active'
-              ${dateFilter} -- Add date filter dynamically
+              ${dateFilter}
+              ${createdByFilter}
           GROUP BY 
               created_by
       ) AS aggregated_data;
@@ -167,7 +208,8 @@ async function getChartsData(req, res) {
           WHERE 
               status = 'active'
               AND activity_status NOT IN ('Not Contacted', 'RNR ( Ring No Response )', 'Switched Off', 'Busy', 'Not Working / Not Reachable')
-              ${dateFilter} -- Add date filter dynamically
+              ${dateFilter}
+              ${createdByFilter}
           GROUP BY 
               created_by
       ) AS aggregated_data;
@@ -191,7 +233,8 @@ async function getChartsData(req, res) {
           WHERE 
               status = 'active'
               AND activity_status = 'Interested'
-              ${dateFilter} -- Add date filter dynamically
+              ${dateFilter}
+              ${createdByFilter}
           GROUP BY 
               created_by
       ) AS aggregated_data;
@@ -206,7 +249,8 @@ async function getChartsData(req, res) {
               JSON_OBJECT('created_by', users.created_by, 'count', COALESCE(walkin_count, 0))
           ) AS walkins_today
       FROM (
-          SELECT DISTINCT created_by FROM crm.WalkIns
+          SELECT DISTINCT created_by FROM ${process.env.DB_NAME}.WalkIns
+          ${created_by ? `WHERE created_by = '${created_by}'` : ''}
       ) AS users
       LEFT JOIN (
           SELECT 
@@ -216,14 +260,14 @@ async function getChartsData(req, res) {
               ${process.env.DB_NAME}.WalkIns
           WHERE 
               status = 'active'
-              AND ${dateConditionForWalkInScheduledToday} -- Dynamically apply date filter
+              AND ${dateConditionForWalkInScheduledToday}
+              ${created_by ? `AND created_by = '${created_by}'` : ''}
           GROUP BY 
               created_by
       ) AS aggregated_data ON users.created_by = aggregated_data.created_by;
     `);
 
-    const walkins_scheduled_today =
-      walkinsScheduledToday[0]?.walkins_today || [];
+    const walkins_scheduled_today = walkinsScheduledToday[0]?.walkins_today || [];
 
     // NO OF WALKINS TODAY
     const [walkinsToday] = await sequelize.query(`
@@ -232,7 +276,8 @@ async function getChartsData(req, res) {
               JSON_OBJECT('created_by', walkins.created_by, 'count', COALESCE(walkin_count, 0))
           ) AS walkins_today
       FROM 
-          (SELECT DISTINCT created_by FROM crm.WalkIns) AS walkins
+          (SELECT DISTINCT created_by FROM ${process.env.DB_NAME}.WalkIns
+          ${created_by ? `WHERE created_by = '${created_by}'` : ''}) AS walkins
       LEFT JOIN (
           SELECT 
               created_by, 
@@ -241,7 +286,8 @@ async function getChartsData(req, res) {
               ${process.env.DB_NAME}.WalkIns
           WHERE 
               status = 'active' 
-              AND ${dateConditionForWalkInsToday} -- Apply correct condition
+              AND ${dateConditionForWalkInsToday}
+              ${created_by ? `AND created_by = '${created_by}'` : ''}
           GROUP BY 
               created_by
       ) AS aggregated_data 
@@ -258,6 +304,7 @@ async function getChartsData(req, res) {
         ) AS approved_walkins_today
     FROM (
         SELECT DISTINCT assigned_to FROM ${process.env.DB_NAME}.LeadAssignments
+        ${created_by ? `WHERE assigned_to = '${created_by}'` : ''}
     ) AS assignments
     LEFT JOIN (
         SELECT 
@@ -268,15 +315,16 @@ async function getChartsData(req, res) {
         INNER JOIN ${process.env.DB_NAME}.LeadAssignments la ON l.id = la.lead_id
         WHERE 
             l.verification_status = 'Approved for Walk-In'
-            AND ${dateConditionForApprovedForWalkIns}  -- Correct date condition on updatedAt
+            AND ${dateConditionForApprovedForWalkIns}
             AND l.status = 'active'
+            ${created_by ? `AND la.assigned_to = '${created_by}'` : ''}
         GROUP BY 
             la.assigned_to
     ) AS aggregated_data 
     ON assignments.assigned_to = aggregated_data.assigned_to;
     `);
     
-    const approved_for_walk_ins = approvedForWalkIns[0]?.approved_walkins_today || []
+    const approved_for_walk_ins = approvedForWalkIns[0]?.approved_walkins_today || [];
 
     let data = {
       calls_done,

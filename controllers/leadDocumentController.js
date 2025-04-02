@@ -114,7 +114,7 @@ async function deleteLeadDocument(req,res){
     await createActivityLog(logData, transaction)
     // Record was successfully updated (soft deleted)
     await transaction.commit()
-    return ApiResponse(res, 'success', 200, "Lead Document Soft Deleted Successfully!");
+    return ApiResponse(res, 'success', 200, "Lead Document Soft Deleted Successfully!", {documentId:lead_document_id, documentType:file.document_type});
   } catch (error) {
     await transaction.rollback()
     return ApiResponse(res, 'error', 500, "Failed to delete lead document !", null, error, null)

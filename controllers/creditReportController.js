@@ -164,7 +164,7 @@ async function deleteCreditReport(req,res){
     await transaction.commit();
 
     // Record was successfully updated (soft deleted)
-    return ApiResponse(res, 'success', 200, "Credit Report Soft Deleted Successfully!");
+    return ApiResponse(res, 'success', 200, "Credit Report Soft Deleted Successfully!", {id:credit_report.id});
   } catch (error) {
     await transaction.rollback(); // Rollback on error
     return ApiResponse(res,'error', 500, "Failed to Delete Credit Report !", null, error, null)
@@ -174,8 +174,8 @@ async function deleteCreditReport(req,res){
 async function addCreditReport(req,res){
   const transaction = await sequelize.transaction();
   try {
-    const {lead_id,credit_card_name,total_outstanding,created_by} = req.body
-    if (!lead_id || !credit_card_name || !total_outstanding || !created_by) {
+    const {lead_id,credit_card_name,total_outstanding,created_by,lead_name} = req.body
+    if (!lead_id || !credit_card_name || !total_outstanding || !created_by || !lead_name) {
       return ApiResponse(res, 'error', 400, "Missing required fields!", null, null, transaction);
     }
 
@@ -190,6 +190,7 @@ async function addCreditReport(req,res){
         activity_type: ACTIVITY_TYPES.CREDIT_REPORT_ADD,
         activity_desc: ACTIVITY_LOGS.CREDIT_REPORT_ADD(credit_card_name,total_outstanding),
         lead_id,
+        lead_name,
         status: 'active'
       },
       { transaction }

@@ -84,7 +84,7 @@ async function scheduleWalkIn(req, res) {
 async function getWalkIns(req, res) {
   const transaction = await sequelize.transaction()
   try {
-    let { page = 1, pageSize = 10, created_by, date, walk_in_status } = req.query;
+    let { page = 1, pageSize = 10, created_by, date, walk_in_status, date_time_range } = req.query;
     let whereConditions = {
       walk_in_status:{
         [Op.notIn]: ["Completed", "Cancelled"]
@@ -102,13 +102,11 @@ async function getWalkIns(req, res) {
       whereConditions.created_by = created_by;
     }
 
-    // Date filter for specific day, if provided
+    // Date filter for specific day
     if (date) {
-      const targetDate = new Date(date);
-      targetDate.setHours(0, 0, 0, 0); // Start of the day
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999); // End of the day
-    
+      const targetDate = moment.tz(date, "Asia/Kolkata").startOf("day").utc().toDate();
+      const endOfDay = moment.tz(date, "Asia/Kolkata").endOf("day").utc().toDate();
+
       whereConditions[Op.or] = [
         {
           rescheduled_date_time: {
@@ -122,7 +120,30 @@ async function getWalkIns(req, res) {
           },
         },
       ];
-    }    
+    }
+
+    // Date-Time Range Filter
+    if (date_time_range) {
+      const [startRange, endRange] = date_time_range.split(",");
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+
+        whereConditions[Op.or] = [
+          {
+            rescheduled_date_time: {
+              [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+            },
+          },
+          {
+            rescheduled_date_time: null,
+            walk_in_date_time: {
+              [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+            },
+          },
+        ];
+      }
+    }
 
     if(walk_in_status){
       whereConditions.walk_in_status = walk_in_status

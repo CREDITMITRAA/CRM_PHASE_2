@@ -228,6 +228,8 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
+    
+
     if (importedOn) {
       const [startRange, endRange] = importedOn.split(',')
       if(startRange && endRange){
@@ -304,22 +306,48 @@ async function getAllLeadsWithPagination(req, res) {
       };
     }
 
-    if(assigned_on){
-      const [startRange, endRange] = assigned_on.split(',')
-      if(startRange && endRange){
-        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
-        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm","Asia/Kolkata").utc().toDate();
+    if (assigned_on) {
+      const [startRange, endRange] = assigned_on.split(',');
+    
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .startOf("minute")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .endOf("minute")
+          .utc()
+          .toDate();
+    
+        console.log("Filtered Start UTC:", startOfRangeUTC);
+        console.log("Filtered End UTC:", endOfRangeUTC);
+    
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfRangeUTC, endOfRangeUTC],
         };
-      }else{
-        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
-        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+    
+        console.log("Filtered Single Day Start UTC:", startOfDayUTC);
+        console.log("Filtered Single Day End UTC:", endOfDayUTC);
+    
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfDayUTC, endOfDayUTC],
         };
       }
     }
+    
 
     if(for_walk_ins_page){
       includeConditions.push({
@@ -333,6 +361,12 @@ async function getAllLeadsWithPagination(req, res) {
         ],
         limit: 1
       })
+      if (for_walk_ins_page && !application_status) {
+        whereConditions[Op.or] = [
+          { application_status: { [Op.ne]: 'Normal Login' } },
+          { application_status: { [Op.eq]: null } }
+        ];
+      }
     }
 
     if(user_status==='inactive'){
@@ -1009,11 +1043,11 @@ async function getLeadSourceByName(req,res){
 }
 
 async function updateLeadDetails(req, res) {
-  const transaction = await sequelize.transaction(); // Start transaction
+  const transaction = await sequelize.transaction();
 
   try {
     const { id } = req.params;
-    const { user_id,lead_name } = req.body; // Ensure user_id is present for logging
+    const { user_id, lead_name } = req.body;
 
     if (!id) {
       return ApiResponse(res, 'error', 400, "Lead ID is required!");
@@ -1023,7 +1057,6 @@ async function updateLeadDetails(req, res) {
       return ApiResponse(res, 'error', 400, "Update details are required!");
     }
 
-    // Fetch the existing lead
     const lead = await Lead.findOne({ where: { id }, transaction });
 
     if (!lead) {
@@ -1031,63 +1064,69 @@ async function updateLeadDetails(req, res) {
       return ApiResponse(res, 'error', 404, "Lead not found!");
     }
 
-    // Track changes for logging
     const prev_lead_data = { ...lead.dataValues };
 
-    // Check if alternate_phones is being updated
+    // Handle alternate_phones update
     if (req.body.alternate_phones) {
-      let newPhones = req.body.alternate_phones;
-
-      if (!Array.isArray(newPhones)) {
+      if (!Array.isArray(req.body.alternate_phones)) {
         await transaction.rollback();
         return ApiResponse(res, 'error', 400, "alternate_phones must be an array!");
       }
 
-      // Merge existing alternate phones with new ones and remove duplicates
-      const updatedPhones = [...new Set([...(lead.alternate_phones || []), ...newPhones])];
-
-      // Set the updated array back into req.body
-      req.body.alternate_phones = updatedPhones;
+      // Filter out empty strings and null values
+      const cleanedPhones = req.body.alternate_phones
+        .filter(phone => phone && phone.trim() !== "");
+      
+      // Remove duplicates
+      req.body.alternate_phones = [...new Set(cleanedPhones)];
     }
 
-    // Update the lead
-    const [updatedRowCount] = await Lead.update(req.body, { where: { id }, transaction });
+    const [updatedRowCount] = await Lead.update(req.body, { 
+      where: { id }, 
+      transaction,
+      returning: true
+    });
 
     if (updatedRowCount === 0) {
       await transaction.rollback();
       return ApiResponse(res, 'error', 404, "Lead not found!");
     }
 
-    // Fetch updated lead
-    const updatedLead = await Lead.findOne({ where: { id }, transaction });
+    const updatedLead = await Lead.findOne({ 
+      where: { id }, 
+      transaction,
+      attributes: { exclude: ['password'] }
+    });
 
-    // Identify changes
     let logMessages = [];
     for (const key in req.body) {
-      if (prev_lead_data[key] !== updatedLead[key]) {
-        logMessages.push(`${key} changed from '${prev_lead_data[key]}' to '${updatedLead[key]}'`);
+      const prevValue = prev_lead_data[key];
+      const newValue = updatedLead[key];
+      
+      if (JSON.stringify(prevValue) !== JSON.stringify(newValue)) {
+        logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
       }
     }
 
-    // Create activity log if changes exist
     if (logMessages.length > 0) {
       let logData = createLogData(
-        `Lead details updated : ${logMessages.join(", ")}`,
+        `Lead details updated: ${logMessages.join(", ")}`,
         ACTIVITY_TYPES.LEAD_UPDATE,
-        user_id, // Ensure created_by is passed
+        user_id,
         id,
         null,
         lead_name
       );
-      await createActivityLog(logData, transaction); // Ensure log entry is part of the transaction
+      await createActivityLog(logData, transaction);
     }
 
-    await transaction.commit(); // Commit transaction if everything is successful
-    return ApiResponse(res, 'success', 200, "Lead updated successfully!");
+    await transaction.commit();
+    return ApiResponse(res, 'success', 200, "Lead updated successfully!", updatedLead);
 
   } catch (error) {
-    await transaction.rollback(); // Rollback transaction in case of failure
-    return ApiResponse(res, 'error', 500, "Failed to update lead details!", null, error, null);
+    await transaction.rollback();
+    console.error('Error updating lead:', error);
+    return ApiResponse(res, 'error', 500, "Failed to update lead details!", null, error);
   }
 }
 

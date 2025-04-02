@@ -421,15 +421,19 @@ async function getAllActivities(req, res) {
 }
 
 async function getAllTasks(req, res) {
-  const transaction = await sequelize.transaction()
+  const transaction = await sequelize.transaction();
   try {
-    let { page = 1, pageSize = 25, created_by, follow_up, task_type, task_status } = req.query;
-    let activity_statuses = []
-    if(task_type){
-      activity_statuses = [task_type];
-    }else{
-      activity_statuses = ["Follow Up", "Call Back", "Scheduled Call With Manager"];
-    }
+    let { 
+      page = 1, 
+      pageSize = 25, 
+      created_by, 
+      follow_up, 
+      follow_up_range, 
+      task_type, 
+      task_status 
+    } = req.query;
+    
+    let activity_statuses = task_type ? [task_type] : ["Follow Up", "Call Back", "Scheduled Call With Manager"];
 
     // Validate pagination params
     page = parseInt(page);
@@ -462,17 +466,15 @@ async function getAllTasks(req, res) {
 
     let whereConditions = {
       activity_status: { [Op.in]: activity_statuses },
-      task_status:{
-        [Op.ne] : "Completed"
-      }
+      task_status: { [Op.ne]: "Completed" }
     };
 
     if (created_by) {
       whereConditions.created_by = created_by;
     }
 
-    if(task_status){
-      whereConditions.task_status = task_status
+    if (task_status) {
+      whereConditions.task_status = task_status;
     }
 
     await Activity.update(
@@ -486,113 +488,65 @@ async function getAllTasks(req, res) {
       }
     );
 
-    if (follow_up) {
-      // Parse follow_up date and create the range
-      const followUpStartUTC = moment(follow_up).startOf("day").utc().toDate();
-      const followUpEndUTC = moment(follow_up).endOf("day").utc().toDate();
+    // Handle `follow_up_range` (date range filter)
+    if (follow_up_range) {
+      const [startRange, endRange] = follow_up_range.split(",");
+      
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DD", "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DD", "Asia/Kolkata").endOf("day").utc().toDate();
+
+        whereConditions.follow_up = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC]
+        };
+      } else {
+        // If only a single date is provided in `follow_up_range`
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        
+        whereConditions.follow_up = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC]
+        };
+      }
+    } 
+    // Handle `follow_up` (single date filter)
+    else if (follow_up) {
+      const followUpStartUTC = moment.tz(follow_up, "YYYY-MM-DD", "Asia/Kolkata").startOf("day").utc().toDate();
+      const followUpEndUTC = moment.tz(follow_up, "YYYY-MM-DD", "Asia/Kolkata").endOf("day").utc().toDate();
 
       whereConditions.follow_up = {
         [Op.between]: [followUpStartUTC, followUpEndUTC],
       };
-
-      console.log("follow_up in UTC range:", followUpStartUTC, followUpEndUTC);
-
-      // Fetch tasks with the applied conditions
-      const tasks = await Activity.findAll({
-        where: whereConditions,
-        include: includeConditions,
-        order: [["createdAt", "DESC"]],
-        transaction
-      });
-
-      // Paginate results
-      const paginatedTasks = tasks.slice(
-        (page - 1) * pageSize,
-        page * pageSize
-      );
-
-      const pagination = {
-        page,
-        totalPages: Math.ceil(tasks.length / pageSize),
-        total: tasks.length,
-        pageSize,
-      };
-
-      await transaction.commit()
-      return ApiResponse(
-        res,
-        "SUCCESS",
-        200,
-        "Tasks fetched successfully",
-        paginatedTasks,
-        null,
-        pagination
-      );
-    } else {
-      // Handle all tasks (T+2 and beyond)
-      const startOfTodayUTC = moment
-        .tz("Asia/Kolkata")
-        .startOf("day")
-        .utc()
-        .toDate();
-
-      const endOfTPlus2UTC = moment
-        .tz("Asia/Kolkata")
-        .add(2, "days")
-        .endOf("day")
-        .utc()
-        .toDate();
-
-      // Tasks within T+2
-      const whereConditionsT2 = {
-        ...whereConditions,
-        follow_up: { [Op.between]: [startOfTodayUTC, endOfTPlus2UTC] },
-      };
-
-      // Tasks beyond T+2
-      const whereConditionsBeyondT2 = {
-        ...whereConditions,
-        follow_up: { [Op.notBetween]: [startOfTodayUTC, endOfTPlus2UTC] },
-      };
-
-      const tasksWithinT2 = await Activity.findAll({
-        where: whereConditionsT2,
-        include: includeConditions,
-        order: [["createdAt", "DESC"]],
-        transaction
-      });
-
-      const tasksBeyondT2 = await Activity.findAll({
-        where: whereConditionsBeyondT2,
-        include: includeConditions,
-        order: [["createdAt", "DESC"]],
-        transaction
-      });
-
-      // Combine results and paginate
-      const combinedTasks = [...tasksWithinT2, ...tasksBeyondT2];
-      const paginatedTasks = combinedTasks.slice(
-        (page - 1) * pageSize,
-        page * pageSize
-      );
-
-      const pagination = {
-        page,
-        totalPages: Math.ceil(combinedTasks.length / pageSize),
-        total: combinedTasks.length,
-        pageSize,
-      };
-      await transaction.commit()
-      return ApiResponse(
-        res,
-        "SUCCESS",
-        200,
-        "Tasks fetched successfully",
-        paginatedTasks,
-        null,
-        pagination
-      );
     }
+
+    // Fetch tasks with applied conditions
+    const tasks = await Activity.findAll({
+      where: whereConditions,
+      include: includeConditions,
+      order: [["createdAt", "DESC"]],
+      transaction
+    });
+
+    // Paginate results
+    const paginatedTasks = tasks.slice((page - 1) * pageSize, page * pageSize);
+    
+    const pagination = {
+      page,
+      totalPages: Math.ceil(tasks.length / pageSize),
+      total: tasks.length,
+      pageSize,
+    };
+
+    await transaction.commit();
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Tasks fetched successfully",
+      paginatedTasks,
+      null,
+      pagination
+    );
   } catch (error) {
     console.error("Error fetching tasks:", error.stack);
     await transaction.rollback();
@@ -607,6 +561,7 @@ async function getAllTasks(req, res) {
     );
   }
 }
+
 
 async function updateTaskStatus(req, res) {
   const transaction = await sequelize.transaction()

@@ -161,7 +161,7 @@ async function deleteLoanReport(req, res) {
 
     await transaction.commit(); // Commit only if everything succeeds
 
-    return ApiResponse(res, 'success', 200, "Loan Report Soft Deleted Successfully!");
+    return ApiResponse(res, 'success', 200, "Loan Report Soft Deleted Successfully!", {id:loanReport.id});
   } catch (error) {
     await transaction.rollback(); // Rollback on error
     console.error(error);
@@ -172,9 +172,9 @@ async function deleteLoanReport(req, res) {
 async function addLoanReport(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by } = req.body;
+    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name } = req.body;
 
-    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by) {
+    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by || !lead_name) {
       return ApiResponse(res, 'error', 400, "Missing required fields!", null, null, transaction);
     }
 
@@ -191,6 +191,7 @@ async function addLoanReport(req, res) {
         activity_type: ACTIVITY_TYPES.LOAN_REPORT_ADD,
         activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding),
         lead_id,
+        lead_name,
         status: 'active'
       },
       { transaction }

@@ -475,7 +475,7 @@ async function getLeadsByAssignedUserId(req, res) {
       total: count,
       page: parseInt(page),
       totalPages,
-      limit: parseInt(limit),
+      pageSize: parseInt(limit),
     };
 
     return ApiResponse(res, 'success', 200, 'Leads retrieved successfully!', leads, null, pagination);

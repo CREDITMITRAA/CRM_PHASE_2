@@ -26,7 +26,7 @@ async function acknowledgeNotification(req,res){
 
 async function getNotificationsByEmployeeId(req,res){
     try {
-        const {employee_id, page=1, pageSize=10, only_unacknowledged=false} = req.query
+        const {employee_id, page=1, pageSize=10, only_unacknowledged=false, is_interactive=false} = req.query
         console.log('employee id = ', employee_id);
         
         if(!employee_id) {
@@ -40,6 +40,10 @@ async function getNotificationsByEmployeeId(req,res){
         let whereConditions = {employee_id}
         if(only_unacknowledged){
             whereConditions.is_read = false
+        }
+
+        if(is_interactive){
+            whereConditions.is_interactive = is_interactive
         }
 
         const {count,rows} = await Notification.findAndCountAll({

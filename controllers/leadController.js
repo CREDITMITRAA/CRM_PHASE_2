@@ -25,6 +25,7 @@ const {
 const { getErrorReason, getUpdatedFields, getActivityType, formatString } = require("../utilities/helper-functions");
 const { ACTIVITY_TYPES, ACTIVITY_LOGS } = require("../utilities/ActivityLogConstants");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
+const { getIo } = require("../socket/socket");
 
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
@@ -162,7 +163,8 @@ async function getAllLeadsWithPagination(req, res) {
       assigned_on,
       for_walk_ins_page=false,
       walk_in_attributes=[],
-      user_status=null
+      user_status=null,
+      appointment_date
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -266,9 +268,10 @@ async function getAllLeadsWithPagination(req, res) {
 
     // lead source filter if lead_source is provided
     if(lead_source){
-      whereConditions.lead_source = {
-        [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
-      }
+      // whereConditions.lead_source = {
+      //   [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
+      // }
+      whereConditions.lead_source = lead_source
     }
 
     if (assigned_to === "not_assigned") {
@@ -347,7 +350,104 @@ async function getAllLeadsWithPagination(req, res) {
         };
       }
     }
+
+    // if (appointment_date) {
+    //   const [startDate, endDate] = appointment_date.split(',');
     
+    //   // Convert to UTC dates
+    //   const startUTC = moment.tz(startDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+    //   const endUTC = moment.tz(endDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+    
+    //   // Add the walkIns include if not already present
+    //   if (for_walk_ins_page) {
+    //     includeConditions.push({
+    //       model: WalkIn,
+    //       as: 'walkIns',
+    //       attributes: walk_in_attributes,
+    //       required: true,
+    //       order: [["id", "DESC"]],
+    //       limit: 1,
+    //       where: {
+    //         [Op.or]: [
+    //           {
+    //             is_rescheduled: true,
+    //             rescheduled_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           },
+    //           {
+    //             is_rescheduled: false,
+    //             walk_in_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           },
+    //           {
+    //             is_rescheduled: null,
+    //             walk_in_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           }
+    //         ]
+    //       }
+    //     });
+    //   } else {
+    //     // If for_walk_ins_page is true, modify the existing walkIns condition
+    //     const walkInInclude = includeConditions.find(inc => inc.as === 'walkIns');
+    //     if (walkInInclude) {
+    //       walkInInclude.where = {
+    //         [Op.or]: [
+    //           {
+    //             is_rescheduled: true,
+    //             rescheduled_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           },
+    //           {
+    //             is_rescheduled: false,
+    //             walk_in_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           },
+    //           {
+    //             is_rescheduled: null,
+    //             walk_in_date_time: {
+    //               [Op.between]: [startUTC, endUTC]
+    //             }
+    //           }
+    //         ]
+    //       };
+    //       walkInInclude.required = true;
+    //     }
+    //   }
+    // }
+
+    if (for_walk_ins_page && appointment_date) {
+      const [startDate, endDate] = appointment_date.split(',');
+      const startUTC = moment.tz(startDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+      const endUTC = moment.tz(endDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
+    
+      // Add a subquery condition to the main where clause
+      whereConditions.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT lead_id FROM WalkIns
+          WHERE (
+            (is_rescheduled = 1 AND rescheduled_date_time BETWEEN '${startUTC.toISOString()}' AND '${endUTC.toISOString()}')
+            OR 
+            ((is_rescheduled = 0 OR is_rescheduled IS NULL) AND walk_in_date_time BETWEEN '${startUTC.toISOString()}' AND '${endUTC.toISOString()}')
+          )
+        )`)
+      };
+    
+      // Keep the include for getting walkIn data, but make it optional
+      includeConditions.push({
+        model: WalkIn,
+        as: 'walkIns',
+        attributes: walk_in_attributes,
+        required: false,
+        order: [["id", "DESC"]],
+        limit: 1
+      });
+    }
 
     if(for_walk_ins_page){
       includeConditions.push({
@@ -692,10 +792,11 @@ async function updateLeadReportsActivities(req, res) {
 }
 
 async function updateVerificationStatus(req, res) {
+  const io = getIo()
   let transaction;
   try {
     transaction = await sequelize.transaction();
-    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note, user_id, lead_name } = req.body;
+    const { lead_id, verification_status, role, rejection_reason, rejected_by_id, verification_status_note, user_id, lead_name, assigned_to } = req.body;
 
     if (!lead_id || !verification_status || !role) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
@@ -765,6 +866,15 @@ async function updateVerificationStatus(req, res) {
   )
 
     await transaction.commit();
+
+    if(verification_status === "Manager 2 Approved"){
+      io.to(`user_${assigned_to}`).emit('lead_approved', { message: 'Awesome job! Your lead is approved—keep them coming!' })
+    }
+
+    if(verification_status === "Rejected"){
+      io.to(`user_${assigned_to}`).emit('lead_rejected', { message: 'Stay positive! Your approval will come soon—just keep pushing forward' })
+    }
+
     return ApiResponse(
       res,
       "success",
@@ -885,9 +995,10 @@ async function getTotalLeadsCount(req, res) {
 }
 
 async function updateApplicationStatus(req,res){
+  const io = getIo()
   const transaction = await sequelize.transaction()
   try {
-    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id, lead_name} = req.body
+    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id, lead_name, assigned_to} = req.body
 
     if(!lead_id || !application_status || !lead_status || !role){
       return ApiResponse(res, 'error', 400, "Missing required fields !")
@@ -949,6 +1060,14 @@ async function updateApplicationStatus(req,res){
   )
 
     await transaction.commit()
+    if(application_status === "Manager 2 Approved"){
+      io.to(`user_${assigned_to}`).emit('lead_approved', { message: 'Awesome job! Your lead is approved—keep them coming!' })
+    }
+
+    if(application_status === "Rejected"){
+      io.to(`user_${assigned_to}`).emit('lead_rejected', { message: 'Stay positive! Your approval will come soon—just keep pushing forward' })
+    }
+
     return ApiResponse(res, 'success', 200, "Lead updated with application status successfully.", updatedLead, null,null)
   } catch (error) {
     if(transaction) await transaction.rollback()

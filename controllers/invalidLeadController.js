@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const { InvalidLead, sequelize } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 
@@ -27,24 +28,70 @@ async function deleteInvalidLeads(req, res) {
 
 async function getAllInvalidLeads(req, res) {
   try {
-    const page = parseInt(req.query.page || 1)
-    const pageSize = parseInt(req.query.pageSize || 10)
-    const offset = (page - 1) * pageSize
-    const limit = pageSize
-    const { reason } = req.query;
-    const whereClause = reason ? { reason } : {};
-    // Fetch total count and paginated data
+    // Pagination parameters
+    const page = parseInt(req.query.page || 1);
+    const pageSize = parseInt(req.query.pageSize || 10);
+    const offset = (page - 1) * pageSize;
+    const limit = pageSize;
+
+    // Filter parameters
+    const { 
+      leadId, 
+      phone, 
+      name, 
+      importedOn, 
+      lead_source, 
+      reason,
+      sortBy = 'createdAt',
+      sortOrder = 'DESC'
+    } = req.query;
+
+    // Build where conditions
+    const whereConditions = {};
+    
+    // Exact match filters
+    if (leadId) whereConditions.id = leadId;
+    if (lead_source) whereConditions.lead_source = lead_source;
+    if (reason) whereConditions.reason = reason;
+    
+    // Partial match filters
+    if (name) whereConditions.name = { [Op.like]: `%${name}%` };
+    if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
+
+    // Special handling for importedOn (createdAt) filter
+    if (importedOn) {
+      const [startRange, endRange] = importedOn.split(',');
+      
+      if (startRange && endRange) {
+        // Date range provided (start and end)
+        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata").utc().toDate();
+        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        // Single date provided (whole day)
+        const startOfDayUTC = moment.tz(startRange, "Asia/Kolkata").startOf("day").utc().toDate();
+        const endOfDayUTC = moment.tz(startRange, "Asia/Kolkata").endOf("day").utc().toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    // Sorting
+    const order = [[sortBy, sortOrder]];
+
+    // Fetch data with filters
     const { count, rows: invalidLeads } = await InvalidLead.findAndCountAll({
-      where: whereClause, // Apply filter
-      order: [["createdAt", "DESC"]],
+      where: whereConditions,
+      order,
       offset,
       limit,
     });
 
-    // Calculate total pages
+    // Pagination metadata
     const totalPages = Math.ceil(count / pageSize);
-
-    // Prepare pagination metadata
     const pagination = {
       page,
       totalPages,
@@ -56,19 +103,20 @@ async function getAllInvalidLeads(req, res) {
       res,
       "success",
       200,
-      "Invalid Leads fetched successfully !",
+      "Invalid Leads fetched successfully!",
       invalidLeads,
       null,
       pagination
     );
   } catch (error) {
+    console.error("Error fetching invalid leads:", error);
     return ApiResponse(
       res,
       "error",
       500,
-      "Failed to get invalid leads !",
+      "Failed to get invalid leads!",
       null,
-      error,
+      error.message,
       null
     );
   }

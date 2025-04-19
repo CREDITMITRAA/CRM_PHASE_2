@@ -7,6 +7,7 @@ module.exports = (sequelize) => {
     employee_id: {type: DataTypes.INTEGER, allowNull:false},
     message: {type: DataTypes.TEXT, allowNull:false},
     is_read: {type: DataTypes.BOOLEAN, defaultValue:false},
+    is_interactive: {type: DataTypes.BOOLEAN, defaultValue:false},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true});
 };

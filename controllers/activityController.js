@@ -10,6 +10,7 @@ const {
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { createActivityLog, createLogData } = require("../services/ActivityLogServices");
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
+const UserMetricsServices = require("../services/UserMetricsServices")
 
 async function addActivity(req, res) {
   const transaction = await sequelize.transaction();
@@ -98,6 +99,14 @@ async function addActivity(req, res) {
         },
         { transaction }
       );
+
+      await UserMetricsServices.updateUserMetric(userId,'calls_done',1, transaction)
+      if(activity_status === "Interested"){
+        await UserMetricsServices.updateUserMetric(userId, "interested", 1, transaction)
+      }
+      if(!['Not Contacted', 'RNR ( Ring No Response )', 'Switched Off', 'Busy', 'Not Working / Not Reachable'].includes(activity_status)){
+        await UserMetricsServices.updateUserMetric(userId, "connected_calls", 1, transaction)
+      }
 
       // Update Lead Status
       lead.setDataValue("updatedAt", new Date().toISOString());

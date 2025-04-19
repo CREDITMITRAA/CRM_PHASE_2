@@ -15,6 +15,7 @@ const ActivityLog = require("./ActivityLog")(sequelize)
 const LeadTransfer = require("./LeadTransfer")(sequelize)
 const Notification = require("./Notification")(sequelize)
 const CallLog = require('./CallLog')(sequelize)
+const UserMetrics = require('./UserMetrics')(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -87,5 +88,6 @@ module.exports = {
   ActivityLog,
   LeadTransfer,
   Notification,
-  CallLog
+  CallLog,
+  UserMetrics
 };

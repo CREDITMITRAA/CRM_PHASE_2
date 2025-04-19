@@ -14,6 +14,8 @@ module.exports = (sequelize) => {
     department: { type: DataTypes.STRING },
     working_mode: { type: DataTypes.ENUM('remote', 'office', 'hybrid') },
     date_of_join:{ type: DataTypes.STRING, allowNull: true },
+    login_status : { type: DataTypes.ENUM('logged_in', 'logged_out') },
+    last_login_at : { type: DataTypes.DATE, allowNull:true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
     role_id: {  // Add role_id here as a foreign key
       type: DataTypes.INTEGER,

@@ -1,4 +1,4 @@
-const { LoanReport, Lead, sequelize, ActivityLog } = require("../models");
+const { LoanReport, Lead, sequelize, ActivityLog, Activity } = require("../models");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
@@ -172,24 +172,50 @@ async function deleteLoanReport(req, res) {
 async function addLoanReport(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name } = req.body;
+    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name, emi_date } = req.body;
 
-    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by || !lead_name) {
-      return ApiResponse(res, 'error', 400, "Missing required fields!", null, null, transaction);
+    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by || !lead_name || !emi_date) {
+      return ApiResponse(res, 'error', 400, "Missing required fields!", null, null);
+    }
+
+    // Check for recent Activity
+    const recentActivity = await Activity.findOne({
+      where: { lead_id },
+      order: [['createdAt', 'DESC']],
+      transaction
+    });
+
+    if (recentActivity) {
+      // Update docs_collected in the latest Activity
+      await recentActivity.update({ docs_collected: true }, { transaction });
+    } else {
+      // Create a new Activity entry
+      await Activity.create(
+        {
+          lead_id,
+          created_by,
+          lead_name,
+          activity_status: 'Not Contacted',
+          docs_collected: true,
+          // task_status: TASK_STATUSES[0], // Set default task status
+          status: 'active'
+        },
+        { transaction }
+      );
     }
 
     // Create Loan Report
     const newLoanReport = await LoanReport.create(
-      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by },
+      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, emi_date },
       { transaction }
     );
 
-    // Create Activity Log
+    // Log Loan Report Addition in ActivityLog
     await ActivityLog.create(
       {
         created_by,
         activity_type: ACTIVITY_TYPES.LOAN_REPORT_ADD,
-        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding),
+        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding, emi_date),
         lead_id,
         lead_name,
         status: 'active'

@@ -2,7 +2,7 @@ const AWS = require("aws-sdk");
 const fs = require("fs");
 const path = require("path");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { sequelize } = require("../models");
+const { sequelize, Activity } = require("../models");
 const { addLeadDocument } = require("../services/leadDocumentServices");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
@@ -63,6 +63,31 @@ async function uploadFile(req, res) {
 
     // Save the record in the database
     const addedLeadDocument = await addLeadDocument(leadDocumentData, transaction);
+
+    const recentActivity = await Activity.findOne({
+      where: { lead_id:leadID },
+      order: [["createdAt", "DESC"]],
+      transaction,
+    });
+
+    if (recentActivity) {
+      // Update docs_collected in the latest Activity
+      await recentActivity.update({ docs_collected: true }, { transaction });
+    } else {
+      // Create a new Activity entry
+      await Activity.create(
+        {
+          lead_id:leadID,
+          created_by:user_id,
+          lead_name:leadName,
+          activity_status: 'Not Contacted',
+          docs_collected: true,
+          // task_status: TASK_STATUSES[0], // Set default task status
+          status: 'active'
+        },
+        { transaction }
+      );
+    }
 
     let logData = null
     switch(document_type){

@@ -103,230 +103,171 @@ const getDashboardData = async (req, res) => {
 async function getChartsData(req, res) {
   try {
     const { date, date_time_range, created_by } = req.query;
-    
-    // Helper function to parse date range
+
     const parseDateTimeRange = (range) => {
       if (!range) return null;
       const [start, end] = range.split(',');
       return { start, end };
     };
-    
+
     const dateRange = parseDateTimeRange(date_time_range);
-    
-    // Build filters based on what's provided
-    let dateFilter = "";
-    let createdByFilter = created_by ? `AND created_by = '${created_by}'` : "";
-    let assignedToFilter = created_by ? `AND la.assigned_to = '${created_by}'` : "";
-    let dateConditionForWalkInScheduledToday = "";
-    let dateConditionForWalkInsToday = "";
-    let dateConditionForApprovedForWalkIns = "";
-    
+    const createdByCondition = created_by ? `AND u.id = '${created_by}'` : ''; // Changed to id
+    const assignedToCondition = created_by ? `AND u.id = '${created_by}'` : ''; // Changed to id
+    const userStatusCondition = `u.status = 'active'`; // New condition
+
+    let dateFilter = '';
+    let dateConditionForWalkInScheduledToday = '';
+    let dateConditionForWalkInsToday = '';
+    let dateConditionForApprovedForWalkIns = '';
+
     if (dateRange) {
-      // Use date_time_range if provided
       dateFilter = `AND CONVERT_TZ(createdAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'`;
-      
+
       dateConditionForWalkInScheduledToday = `
         CONVERT_TZ(createdAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
       `;
-      
+
       dateConditionForWalkInsToday = `(
         (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
-        CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}')
+         CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}')
         OR
-        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
-        CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
+        ((is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
+         CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}')
       )`;
-      
+
       dateConditionForApprovedForWalkIns = `
         CONVERT_TZ(l.updatedAt, '+00:00', '+05:30') BETWEEN '${dateRange.start}' AND '${dateRange.end}'
       `;
     } else if (date) {
-      // Fall back to single date filter if date_time_range not provided
       dateFilter = `AND DATE(CONVERT_TZ(createdAt, '+00:00', '+05:30')) = '${date}'`;
-      
+
       dateConditionForWalkInScheduledToday = `
-        CONVERT_TZ(createdAt, '+00:00', '+05:30') >= '${date}' 
-        AND CONVERT_TZ(createdAt, '+00:00', '+05:30') < DATE_ADD('${date}', INTERVAL 1 DAY)
+        DATE(CONVERT_TZ(createdAt, '+00:00', '+05:30')) = '${date}'
       `;
-      
+
       dateConditionForWalkInsToday = `(
         (is_rescheduled = 1 AND rescheduled_date_time IS NOT NULL AND 
-        DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
+         DATE(CONVERT_TZ(rescheduled_date_time, '+00:00', '+05:30')) = '${date}')
         OR
-        (is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
-        DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}'
+        ((is_rescheduled = 0 OR rescheduled_date_time IS NULL) AND 
+         DATE(CONVERT_TZ(walk_in_date_time, '+00:00', '+05:30')) = '${date}')
       )`;
-      
+
       dateConditionForApprovedForWalkIns = `
         DATE(CONVERT_TZ(l.updatedAt, '+00:00', '+05:30')) = '${date}'
       `;
     } else {
-      // No date filters
-      dateFilter = "";
-      dateConditionForWalkInScheduledToday = "1 = 1";
-      dateConditionForWalkInsToday = "1 = 1";
-      dateConditionForApprovedForWalkIns = "1 = 1";
+      dateFilter = '';
+      dateConditionForWalkInScheduledToday = '1 = 1';
+      dateConditionForWalkInsToday = '1 = 1';
+      dateConditionForApprovedForWalkIns = '1 = 1';
     }
 
-    // NO OF CALLS DONE
-    const [callsDoneData] = await sequelize.query(
-      `
-      SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', created_by, 'count', activity_count)
-          ) AS calls_done
-      FROM (
-          SELECT 
-              created_by, 
-              COUNT(*) AS activity_count
-          FROM 
-              ${process.env.DB_NAME}.Activities
-          WHERE 
-              status = 'active'
-              ${dateFilter}
-              ${createdByFilter}
-          GROUP BY 
-              created_by
-      ) AS aggregated_data;
-      `
-    );
+    // Calls Done
+    const [callsDoneData] = await sequelize.query(`
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(a.activity_count, 0))
+      ) AS calls_done
+      FROM ${process.env.DB_NAME}.Users u
+      LEFT JOIN (
+        SELECT created_by, COUNT(*) AS activity_count
+        FROM ${process.env.DB_NAME}.Activities
+        WHERE status = 'active' ${dateFilter}
+        GROUP BY created_by
+      ) a ON u.id = a.created_by
+      WHERE ${userStatusCondition} ${createdByCondition};
+    `);
     const calls_done = callsDoneData[0]?.calls_done || [];
 
-    // NO OF CONNECTED CALLS
-    const [connectedCallsData] = await sequelize.query(
-      `
-      SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', created_by, 'count', activity_count)
-          ) AS connected_calls
-      FROM (
-          SELECT 
-              created_by, 
-              COUNT(*) AS activity_count
-          FROM 
-              ${process.env.DB_NAME}.Activities
-          WHERE 
-              status = 'active'
-              AND activity_status NOT IN ('Not Contacted', 'RNR ( Ring No Response )', 'Switched Off', 'Busy', 'Not Working / Not Reachable')
-              ${dateFilter}
-              ${createdByFilter}
-          GROUP BY 
-              created_by
-      ) AS aggregated_data;
-      `
-    );
+    // Connected Calls
+    const [connectedCallsData] = await sequelize.query(`
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(a.activity_count, 0))
+      ) AS connected_calls
+      FROM ${process.env.DB_NAME}.Users u
+      LEFT JOIN (
+        SELECT created_by, COUNT(*) AS activity_count
+        FROM ${process.env.DB_NAME}.Activities
+        WHERE status = 'active'
+          AND activity_status NOT IN ('Not Contacted', 'RNR ( Ring No Response )', 'Switched Off', 'Busy', 'Not Working / Not Reachable')
+          ${dateFilter}
+        GROUP BY created_by
+      ) a ON u.id = a.created_by
+      WHERE ${userStatusCondition} ${createdByCondition};
+    `);
     const connected_calls = connectedCallsData[0]?.connected_calls || [];
 
-    // NO OF INTERESTED LEADS
-    const [interestedCallsData] = await sequelize.query(
-      `
-      SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', created_by, 'count', activity_count)
-          ) AS interested_calls
-      FROM (
-          SELECT 
-              created_by, 
-              COUNT(*) AS activity_count
-          FROM 
-              ${process.env.DB_NAME}.Activities
-          WHERE 
-              status = 'active'
-              AND activity_status = 'Interested'
-              ${dateFilter}
-              ${createdByFilter}
-          GROUP BY 
-              created_by
-      ) AS aggregated_data;
-      `
-    );
+    // Interested Leads
+    const [interestedCallsData] = await sequelize.query(`
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(a.activity_count, 0))
+      ) AS interested_calls
+      FROM ${process.env.DB_NAME}.Users u
+      LEFT JOIN (
+        SELECT created_by, COUNT(*) AS activity_count
+        FROM ${process.env.DB_NAME}.Activities
+        WHERE status = 'active'
+          AND activity_status = 'Interested'
+          ${dateFilter}
+        GROUP BY created_by
+      ) a ON u.id = a.created_by
+      WHERE ${userStatusCondition} ${createdByCondition};
+    `);
     const interested_leads = interestedCallsData[0]?.interested_calls || [];
 
-    // NO OF WALK INS TODAY
+    // Walk-ins Scheduled Today
     const [walkinsScheduledToday] = await sequelize.query(`
-      SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', users.created_by, 'count', COALESCE(walkin_count, 0))
-          ) AS walkins_today
-      FROM (
-          SELECT DISTINCT created_by FROM ${process.env.DB_NAME}.WalkIns
-          ${created_by ? `WHERE created_by = '${created_by}'` : ''}
-      ) AS users
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(wi.walkin_count, 0))
+      ) AS walkins_today
+      FROM ${process.env.DB_NAME}.Users u
       LEFT JOIN (
-          SELECT 
-              created_by, 
-              COUNT(*) AS walkin_count
-          FROM 
-              ${process.env.DB_NAME}.WalkIns
-          WHERE 
-              status = 'active'
-              AND ${dateConditionForWalkInScheduledToday}
-              ${created_by ? `AND created_by = '${created_by}'` : ''}
-          GROUP BY 
-              created_by
-      ) AS aggregated_data ON users.created_by = aggregated_data.created_by;
+        SELECT created_by, COUNT(*) AS walkin_count
+        FROM ${process.env.DB_NAME}.WalkIns
+        WHERE status = 'active' AND ${dateConditionForWalkInScheduledToday}
+        GROUP BY created_by
+      ) wi ON u.id = wi.created_by
+      WHERE ${userStatusCondition} ${createdByCondition};
     `);
-
     const walkins_scheduled_today = walkinsScheduledToday[0]?.walkins_today || [];
 
-    // NO OF WALKINS TODAY
+    // Walk-ins Today
     const [walkinsToday] = await sequelize.query(`
-      SELECT 
-          JSON_ARRAYAGG(
-              JSON_OBJECT('created_by', walkins.created_by, 'count', COALESCE(walkin_count, 0))
-          ) AS walkins_today
-      FROM 
-          (SELECT DISTINCT created_by FROM ${process.env.DB_NAME}.WalkIns
-          ${created_by ? `WHERE created_by = '${created_by}'` : ''}) AS walkins
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(wi.walkin_count, 0))
+      ) AS walkins_today
+      FROM ${process.env.DB_NAME}.Users u
       LEFT JOIN (
-          SELECT 
-              created_by, 
-              COUNT(*) AS walkin_count
-          FROM 
-              ${process.env.DB_NAME}.WalkIns
-          WHERE 
-              status = 'active' 
-              AND ${dateConditionForWalkInsToday}
-              ${created_by ? `AND created_by = '${created_by}'` : ''}
-          GROUP BY 
-              created_by
-      ) AS aggregated_data 
-      ON walkins.created_by = aggregated_data.created_by;
+        SELECT created_by, COUNT(*) AS walkin_count
+        FROM ${process.env.DB_NAME}.WalkIns
+        WHERE status = 'active' AND ${dateConditionForWalkInsToday}
+        GROUP BY created_by
+      ) wi ON u.id = wi.created_by
+      WHERE ${userStatusCondition} ${createdByCondition};
     `);
-
     const walkins_today = walkinsToday[0]?.walkins_today || [];
 
-    // APPROVED FOR WALK-IN COUNTS
+    // Approved for Walk-ins
     const [approvedForWalkIns] = await sequelize.query(`
-      SELECT 
-        JSON_ARRAYAGG(
-            JSON_OBJECT('created_by', assignments.assigned_to, 'count', COALESCE(approved_count, 0))
-        ) AS approved_walkins_today
-    FROM (
-        SELECT DISTINCT assigned_to FROM ${process.env.DB_NAME}.LeadAssignments
-        ${created_by ? `WHERE assigned_to = '${created_by}'` : ''}
-    ) AS assignments
-    LEFT JOIN (
-        SELECT 
-            la.assigned_to, 
-            COUNT(*) AS approved_count
-        FROM 
-            ${process.env.DB_NAME}.Leads l
+      SELECT JSON_ARRAYAGG(
+        JSON_OBJECT('created_by', u.id, 'count', COALESCE(la.approved_count, 0))
+      ) AS approved_walkins_today
+      FROM ${process.env.DB_NAME}.Users u
+      LEFT JOIN (
+        SELECT la.assigned_to, COUNT(*) AS approved_count
+        FROM ${process.env.DB_NAME}.Leads l
         INNER JOIN ${process.env.DB_NAME}.LeadAssignments la ON l.id = la.lead_id
-        WHERE 
-            l.verification_status = 'Approved for Walk-In'
-            AND ${dateConditionForApprovedForWalkIns}
-            AND l.status = 'active'
-            ${created_by ? `AND la.assigned_to = '${created_by}'` : ''}
-        GROUP BY 
-            la.assigned_to
-    ) AS aggregated_data 
-    ON assignments.assigned_to = aggregated_data.assigned_to;
+        WHERE l.verification_status = 'Approved for Walk-In'
+          AND ${dateConditionForApprovedForWalkIns}
+          AND l.status = 'active'
+          AND la.status = 'active'
+        GROUP BY la.assigned_to
+      ) la ON u.id = la.assigned_to
+      WHERE ${userStatusCondition} ${assignedToCondition};
     `);
-    
     const approved_for_walk_ins = approvedForWalkIns[0]?.approved_walkins_today || [];
 
-    let data = {
+    const data = {
       calls_done,
       connected_calls,
       interested_leads,
@@ -334,27 +275,14 @@ async function getChartsData(req, res) {
       walkins_today,
       approved_for_walk_ins
     };
-    return ApiResponse(
-      res,
-      "success",
-      200,
-      "Query Successful !",
-      data,
-      null,
-      null
-    );
+
+    return ApiResponse(res, "success", 200, "Query Successful!", data, null, null);
+
   } catch (error) {
-    console.log(error);
-    return ApiResponse(
-      res,
-      "error",
-      500,
-      "Failed to fetch charts data !",
-      null,
-      error,
-      null
-    );
+    console.error("getChartsData error:", error);
+    return ApiResponse(res, "error", 500, "Failed to fetch charts data!", null, error, null);
   }
 }
+
 
 module.exports = { getDashboardData, getChartsData };

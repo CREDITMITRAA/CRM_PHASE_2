@@ -12,5 +12,6 @@ router.post('/', userController.createUser); // Create a user
 router.get('/:id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), userController.getUserById); // Get a specific user
 router.put('/:id',authenticate([ROLE_ADMIN]), userController.updateUser); // Update a user
 router.delete('/:id', authenticate([ROLE_ADMIN]), userController.deleteUserByUserId); // Delete a user
+router.put('/update-profile-image-url/:userId', authenticate([ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER]), userController.updateProfileImageUrl);
 
 module.exports = router;

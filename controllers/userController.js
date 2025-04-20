@@ -232,7 +232,7 @@ async function getUsersByName(req,res){
 async function getUsersNameAndId(req, res) {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'name', 'role_id'],
+      attributes: ['id', 'name', 'role_id', 'profile_image_url'],
       where: {
         status: 'active',
       },
@@ -245,6 +245,31 @@ async function getUsersNameAndId(req, res) {
   }
 }
 
+async function updateProfileImageUrl(req, res) {
+  try {
+    const {userId} = req.params; // Assuming the `authenticate()` middleware sets req.user
+    const { profile_image_url } = req.body;
+    console.log('user id = ', userId, 'url = ', profile_image_url);
+    
+    if (!profile_image_url) {
+      return ApiResponse(res, "error", 400, "Profile image URL is required", null, "Missing field", null);
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return ApiResponse(res, "error", 404, "User not found", null, null, null);
+    }
+
+    user.profile_image_url = profile_image_url;
+    await user.save();
+
+    return ApiResponse(res, "success", 200, "Profile image URL updated successfully", profile_image_url, null, null);
+  } catch (error) {
+    return ApiResponse(res, "error", 500, "Failed to update profile image URL", null, error.message, null);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -252,5 +277,6 @@ module.exports = {
   updateUser,
   deleteUserByUserId,
   getUsersByName,
-  getUsersNameAndId
+  getUsersNameAndId,
+  updateProfileImageUrl
 };

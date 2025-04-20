@@ -20,6 +20,7 @@ const activityLogRoutes = require('./ActivityLogRoutes')
 const BackupRoutes = require('./backupRoutes')
 const NotificationRoutes = require('./NotificationRoutes')
 const CallLogRoutes = require('./CallLogRoutes')
+const ProfileImageUrlRoutes = require('./ProfileImageUrlRoutes')
 // Add more routes as needed...
 
 // Set up routes
@@ -41,6 +42,7 @@ router.use('/activity-logs', activityLogRoutes)
 router.use('/backups', BackupRoutes)
 router.use('/notifications', NotificationRoutes)
 router.use('/call-logs', CallLogRoutes)
+router.use('/profile-image-urls', ProfileImageUrlRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

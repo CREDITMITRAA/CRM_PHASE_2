@@ -16,6 +16,7 @@ const LeadTransfer = require("./LeadTransfer")(sequelize)
 const Notification = require("./Notification")(sequelize)
 const CallLog = require('./CallLog')(sequelize)
 const UserMetrics = require('./UserMetrics')(sequelize)
+const ProfileImageUrl = require('./ProfileImageUrl')(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -89,5 +90,6 @@ module.exports = {
   LeadTransfer,
   Notification,
   CallLog,
-  UserMetrics
+  UserMetrics,
+  ProfileImageUrl
 };

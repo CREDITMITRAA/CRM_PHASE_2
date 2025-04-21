@@ -211,7 +211,7 @@ async function getAllLeadsWithPagination(req, res) {
     if (name) whereConditions.name = { [Op.like]: `%${name}%` };
     if (email) whereConditions.email = { [Op.like]: `%${email}%` };
     if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
-    if (leadId) whereConditions.id = leadId;
+    if (leadId) whereConditions.id = { [Op.like]: `%${leadId}%` };
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
     if (verification_status) {

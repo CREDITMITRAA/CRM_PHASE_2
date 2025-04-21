@@ -370,7 +370,7 @@ async function getLeadsByAssignedUserId(req, res) {
     if (name) leadFilters.name = { [Op.like]: `%${name}%` };
     if (email) leadFilters.email = { [Op.like]: `%${email}%` };
     if (phone) leadFilters.phone = { [Op.like]: `%${phone}%` };
-    if (leadId) leadFilters.id = leadId;
+    if (leadId) leadFilters.id = { [Op.like]: `%${leadId}%` };
     const leadSourceValue = leadSource || lead_source;
     if (leadSourceValue) {
       // leadFilters.lead_source = { [Op.like]: `%${leadSourceValue}%` };

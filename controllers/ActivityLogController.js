@@ -63,18 +63,19 @@ async function getActivityLogs(req, res) {
         };
       }
     }
+
     let result;
     let pagination = {};
 
     if (from_dashboard === "true") {
-      // NEW APPROACH: Get all records first, then paginate
+      // Get all records first, ordered by createdAt DESC
       const allRecords = await ActivityLog.findAll({
         where: whereConditions,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"]],  // Primary sort by createdAt DESC
         raw: true,
       });
 
-      // Group records by creator
+      // Group records by creator, maintaining the order
       const recordsByCreator = {};
       allRecords.forEach((record) => {
         if (!recordsByCreator[record.created_by]) {
@@ -85,14 +86,15 @@ async function getActivityLogs(req, res) {
         }
       });
 
-      // Flatten the grouped records
-      const allFilteredRecords = Object.values(recordsByCreator).flat();
+      // Flatten the grouped records and sort again to ensure proper ordering
+      const allFilteredRecords = Object.values(recordsByCreator)
+        .flat()
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-      // Calculate actual pagination
+      // Calculate pagination
       const totalRecords = allFilteredRecords.length;
       const totalPages = Math.ceil(totalRecords / pageSize);
 
-      // Handle page number exceeding available pages
       if (pageNumber > totalPages) {
         return ApiResponse(
           res,

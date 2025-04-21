@@ -13,7 +13,7 @@ module.exports = (sequelize) => {
     company_category_id: { type: DataTypes.INTEGER },
     salary: { type: DataTypes.DECIMAL(10, 2) },
     address: { type: DataTypes.TEXT },
-    gender: { type: DataTypes.ENUM('male', 'female', 'transgender'),allowNull:true },
+    gender: { type: DataTypes.ENUM('male', 'female', 'transgender', 'others'),allowNull:true },
     alternate_phones: {type:DataTypes.JSON, defaultValue:[]},
     verification_status: { 
       type: DataTypes.ENUM(...VERIFICATION_STATUSES), // Spread the array values into the ENUM type

@@ -14,7 +14,7 @@ async function login(req, res) {
 
     // Check if the user exists with the given email
     const user = await User.findOne({ 
-      where: { email },
+      where: { email, status:'active' },
       include: { model: Role, as: 'Role' } 
     });
 

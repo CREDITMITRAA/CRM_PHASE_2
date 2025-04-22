@@ -172,7 +172,7 @@ async function deleteLoanReport(req, res) {
 async function addLoanReport(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name, emi_date } = req.body;
+    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name, emi_date, loan_disbursal_date } = req.body;
 
     if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by || !lead_name || !emi_date) {
       return ApiResponse(res, 'error', 400, "Missing required fields!", null, null);
@@ -206,7 +206,7 @@ async function addLoanReport(req, res) {
 
     // Create Loan Report
     const newLoanReport = await LoanReport.create(
-      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, emi_date },
+      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, emi_date, loan_disbursal_date },
       { transaction }
     );
 
@@ -215,7 +215,7 @@ async function addLoanReport(req, res) {
       {
         created_by,
         activity_type: ACTIVITY_TYPES.LOAN_REPORT_ADD,
-        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding, emi_date),
+        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date),
         lead_id,
         lead_name,
         status: 'active'

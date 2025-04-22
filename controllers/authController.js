@@ -68,7 +68,9 @@ async function login(req, res) {
       profile_image_url: user.profile_image_url ? user.profile_image_url : null,
       employee_id: user.employee_id,
       last_login_at: currentTime, // New last_login_at
-      last_login_ago: lastLoginAgo // Time since previous login (e.g., "5 days ago")
+      last_login_ago: lastLoginAgo, // Time since previous login (e.g., "5 days ago")
+      gender: user.gender,
+      address: user.address
     };
 
     // Generate JWT token

@@ -18,6 +18,7 @@ module.exports = (sequelize) => {
     last_login_at : { type: DataTypes.DATE, allowNull:true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
     profile_image_url : { type: DataTypes.STRING, allowNull: true },
+    gender: { type: DataTypes.ENUM('male', 'female'),allowNull:true },
     role_id: {  // Add role_id here as a foreign key
       type: DataTypes.INTEGER,
       references: {

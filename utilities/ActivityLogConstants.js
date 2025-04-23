@@ -34,16 +34,112 @@ const ACTIVITY_TYPES = {
     BEREAU_SCORE_UPDATE : 'BEREAU_SCORE_UPDATE',
     LEAD_UPDATE: 'LEAD_UPDATE',
     LOAN_REPORT_ADD : 'LOAN_REPORT_ADD',
-    CREDIT_REPORT_ADD : 'CREDIT_REPORT_ADD'
+    CREDIT_REPORT_ADD : 'CREDIT_REPORT_ADD',
 }
+
+const ASSIGNED_TABLE = "ASSIGNED_TABLE";
+const NOT_ASSIGNED_TABLE = "NOT_ASSIGNED_TABLE";
+const INVALID_LEADS_TABLE = "INVALID_LEADS_TABLE";
+const EX_EMPLOYEES_LEADS_TABLE = "EX_EMPLOYEES_LEADS_TABLE";
+const EXPORT_LEADS = "EXPORT_LEADS";
+const UNDER_REVIEW = "Under Review";
+const ON_HOLD = "On Hold";
+const MANAGER_1_APPROVED = "Manager 1 Approved";
+const MANAGER_2_APPROVED = "Manager 2 Approved";
+const APPROVED_FOR_WALK_IN = "Approved for Walk-In";
+const REJECTED = "Rejected";
+const NORMAL_LOGIN = "Normal Login";
+const CLOSED = "Closed";
+const LOGIN = "Login";
+const SCHEDULED_FOR_WALK_IN = "Scheduled For Walk-In";
+const SCHEDULED_CALL_WITH_MANAGER = "Scheduled Call With Manager";
+const OKAY_FOR_POLICY = "Okay for Policy";
+const THINK_AND_GET_BACK = "Think and get back";
+const TWELVE_DOCUMENTS_COLLECTED = "12 documents collected";
+const NOT_OKAY_FOR_POLICY = "Not okay for Policy";
+const OTHERS = "Others";
+const ROLE_ADMIN = "ROLE_ADMIN";
+const ROLE_MANAGER = "ROLE_MANAGER";
+const ROLE_EMPLOYEE = "ROLE_EMPLOYEE";
+const ADMIN = "Admin";
+const MANAGER = "Manager";
+const EMPLOYEE = "Employee";
+const PAYSLIP = "payslip";
+const CREDIT_BUREAU = "creditBureau";
+const OTHER_DOCS = "otherDocs";
+const PERSONAL_LOAN = "Personal Loan";
+const HOME_LOAN = "Home Loan";
+const GOLD_LOAN = "Gold Loan";
+const INTERESTED = "Interested";
+const FOLLOW_UP = "Follow Up";
+const CALL_BACK = "Call Back";
+const RNR_RING_NO_RESPONSE = "RNR ( Ring No Response )";
+const SWITCHED_OFF = "Switched Off";
+const BUSY = "Busy";
+const NOT_INTERESTED = "Not Interested";
+const NOT_WORKING_NOT_REACHABLE = "Not Working / Not Reachable";
+const NOT_POSSIBLE = "Not Possible";
+const VERIFICATION_1 = "Verification 1";
+const SCHEDULE_FOR_WALK_IN = "Schedule For Walk-In";
+const SCHEDULE_CALL_WITH_MANAGER = "Schedule Call With Manager";
+const RESCHEDULE_WALK_IN = "Reschedule Walk-In";
+const RESCHEDULE_CALL_WITH_MANAGER = "Reschedule Call With Manager";
+const UPCOMING = "Upcoming";
+const PENDING = "Pending";
+const CANCELLED = "Cancelled";
+const LEADS = "Leads";
+const WALK_INS = "Walk-Ins";
+const EMPLOYEES = "Employees";
+const NOT_CONTACTED = "Not Contacted";
+const APPLICATION_CLOSED = "Closed";
+const RESCHEDULED_FOR_WALK_IN = "Re-Scheduled For Walk-In";
+const MALE = "male";
+const FEMALE = "female";
+
+const terminologiesMap = new Map([
+    [NOT_CONTACTED, 'Unattended'],
+    [INTERESTED, 'Active Prospect'],
+    [FOLLOW_UP, 'Ongoing Contact'],
+    [CALL_BACK,'Re-call'],
+    [RNR_RING_NO_RESPONSE, 'Non-responsive'],
+    [SWITCHED_OFF, 'Unavailable'],
+    [BUSY,'Line Engaged'],
+    [NOT_INTERESTED,'Disengaged Lead'],
+    [NOT_WORKING_NOT_REACHABLE,'Inactive'],
+    [NOT_POSSIBLE,'Ineligible'],
+    [SCHEDULE_FOR_WALK_IN, 'Book Appointment'],
+    [VERIFICATION_1, 'Preliminary Approval'],
+    [SCHEDULE_CALL_WITH_MANAGER, 'Executive Consultation'],
+    [TWELVE_DOCUMENTS_COLLECTED, "Documentation Collected"],
+    [SCHEDULED_FOR_WALK_IN, 'Appointment Booked'],
+    [APPROVED_FOR_WALK_IN, "Paperwork Verified"],
+    [SCHEDULED_CALL_WITH_MANAGER, 'Advisor Consultation'],
+    [OTHERS, OTHERS],
+    [UNDER_REVIEW, UNDER_REVIEW],
+    [ON_HOLD, "Application on Hold"],
+    [MANAGER_1_APPROVED, "Stage 1 Approved"],
+    [MANAGER_2_APPROVED, "Supervisor Approved"],
+    [REJECTED, REJECTED],
+    [NORMAL_LOGIN, NORMAL_LOGIN],
+    [OKAY_FOR_POLICY, "Policy Confirmation"],
+    [THINK_AND_GET_BACK, "Under Consideration"],
+    [NOT_OKAY_FOR_POLICY, "Policy Declined"],
+    [RESCHEDULE_WALK_IN, "Reschedule Appointment"],
+    [RESCHEDULE_CALL_WITH_MANAGER, "Advisor Call Rescheduled"],
+    [CLOSED, "Application Closed"],
+    [LOGIN, LOGIN],
+    [WALK_INS, "Appointments"],
+    [LEADS, "Pipeline Entries"],
+    [RESCHEDULED_FOR_WALK_IN, "Appointment Rescheduled"]
+  ])
 
 const ACTIVITY_LOGS = {
     ASSIGN_LEAD : (leadId, assignedTo, assignedBy) =>
     `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`,
     LEAD_ASSIGNMENT : (employeeName) => `Lead Assigned to ${employeeName}`,
-    APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${newStatus}`,
-    LEAD_STATUS_UPDATE : (prevStatus,newStatus) => `Lead status updated from ${prevStatus} to ${newStatus}`,
-    TASK_CREATE : (task_type, task_date) => `${task_type} on ${task_date}`,
+    APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${terminologiesMap.get(newStatus)}`,
+    LEAD_STATUS_UPDATE : (prevStatus,newStatus) => `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}`,
+    TASK_CREATE : (task_type, task_date) => `${terminologiesMap.get(task_type)} on ${task_date}`,
     PAYSLIP_UPLOAD : (document_name) => `Payslip ${document_name} uplaoded`,
     CREDIT_BUREAU_UPLOAD : (document_name) => `Credit Bureau ${document_name} uploaded`,
     NAME_UPDATE : 'Name updated',
@@ -58,7 +154,7 @@ const ACTIVITY_LOGS = {
     CREDIT_REPORT_DELETE : (credit_card_name, total_outstanding) => `Credit Card Report Deleted ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
     WALK_IN_SCHEDULE : (date) => `Walk In scheduled on ${date}`,
     WALK_IN_RESCHEDULE : (date) => `Walk In rescheduled on ${date}`,
-    TASK_UPDATE : (task_type,task_status) => `Task ${task_type} is updated to ${task_status}`,
+    TASK_UPDATE : (task_type,task_status) => `Task ${terminologiesMap.get(task_type)} is updated to ${task_status}`,
     WALK_IN_UPDATE : (new_status) => `Walk In status updated to ${new_status}`,
     PAYSLIP_DELETE : (document_name) => `Payslip ${document_name} deleted`,
     OTHER_DOC_UPLOAD : (document_name) => `Other Doc ${document_name} uploaded`,

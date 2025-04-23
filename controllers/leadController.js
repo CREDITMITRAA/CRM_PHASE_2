@@ -153,7 +153,7 @@ async function getAllLeadsWithPagination(req, res) {
       employeeName,
       importedOn,
       verification_status,
-      assigned_to,
+      assigned_to="true",
       lead_status,
       assigned_to_name,
       application_status,
@@ -178,12 +178,12 @@ async function getAllLeadsWithPagination(req, res) {
     const whereConditions = {};
     let leadAssignmentConditions = {};
 
-    if(assigned_to && assigned_to !== "not_assigned" && assigned_to !== "re_assigned"){
+    if (assigned_to && assigned_to !== "not_assigned" && assigned_to !== "re_assigned") {
       leadAssignmentConditions = {
         ...leadAssignmentConditions,
-        assigned_to: assigned_to
+        ...(assigned_to !== "true" ? { assigned_to } : {})
       };
-    }
+    }    
 
     const includeConditions = [
       {

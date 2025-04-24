@@ -857,7 +857,7 @@ async function updateVerificationStatus(req, res) {
     {
       created_by : user_id,
       activity_type: ACTIVITY_TYPES.VERIFICATION_STATUS_UPDATE,
-      activity_desc: `Updated Verification Status to : ${verification_status}`,
+      activity_desc: ACTIVITY_LOGS.VERIFICATION_STATUS_UPDATE(verification_status),
       lead_id:lead_id,
       note: verification_status === 'Rejected' ? rejection_reason : verification_status_note,
       lead_name: lead_name

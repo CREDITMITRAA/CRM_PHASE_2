@@ -2,12 +2,12 @@ const express =require('express')
 const router = express.Router()
 const CreditReportController = require('../controllers/creditReportController')
 const { authenticate } = require('../middlewares/authenticationMiddleware')
-const { ROLE_ADMIN, ROLE_MANAGER, ROLE_EMPLOYEE } = require('../utilities/constants')
+const { ROLE_ADMIN, ROLE_MANAGER, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM } = require('../utilities/constants')
 
-router.get('/get-credit-reports-by-lead-id/:leadId', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.getCreditReportsByLeadId)
-router.get('/get-all-credit-reports', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.getAllCreditReports)
+router.get('/get-credit-reports-by-lead-id/:leadId', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), CreditReportController.getCreditReportsByLeadId)
+router.get('/get-all-credit-reports', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), CreditReportController.getAllCreditReports)
 // router.delete('/delete-credit-report', CreditReportController.deleteCreditReportById)
-router.post('/delete-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.deleteCreditReport)
-router.post('/add-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE]), CreditReportController.addCreditReport)
+router.post('/delete-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), CreditReportController.deleteCreditReport)
+router.post('/add-credit-report', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), CreditReportController.addCreditReport)
 
 module.exports = router

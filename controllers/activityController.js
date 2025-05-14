@@ -117,6 +117,7 @@ async function addActivity(req, res) {
             // verification_status: activity_status,
             last_updated_status: activity_status,
             lead_status: activity_status,
+            lead_bucket: "PRELIMINERY_CHECK",
             updatedAt: new Date().toISOString(),
           },
           { transaction }

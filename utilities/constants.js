@@ -35,7 +35,22 @@ const  LEAD_STATUSES = [
     "Not okay for Policy",
     "Not Possible",
     "Scheduled Call With Manager",
-    "Others"
+    "Others",
+    "All Positive",
+    "Negative Observations",
+    "All Loans Closed",
+    "All Closure Documents Verified",
+    "All Login Documents Verified",
+    "Bureau Dispute Raised",
+    "All Disputes Updated",
+    "Login Bank 1",
+    "Login Bank 2",
+    "Login Bank 3",
+    "Login Bank 4",
+    "Login Bank 5",
+    "Login Bank 6",
+    "All Clear",
+    "Negative Transaction"
 ]
 
 const VERIFICATION_STATUSES = [
@@ -60,6 +75,7 @@ const TASK_STATUSES = [
 const ROLE_ADMIN = "ROLE_ADMIN"
 const ROLE_EMPLOYEE = "ROLE_EMPLOYEE"
 const ROLE_MANAGER = "ROLE_MANAGER"
+const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -76,7 +92,23 @@ const APPLICATION_STATUSES = [
     "Rejected",
     "Closed",
     "Login",
-    "Normal Login"
+    "Normal Login",
+    "Application Approved",
+    "Advance Amount Paid",
+    "Closing Date Changed",
+    "Closing Amount Paid",
+    "Loans Disbursed From Bank",
+    "Application Closed",
+    "Others",
+    "Login Started",
+    "Login Date Changed"
+]
+
+const CRM_BUCKETS = [
+    "PIPELINE_ENTRIES",
+    "PRELIMINERY_CHECK",
+    "APPOINTMENTS",
+    "APPROVED_APPLICATIONS"
 ]
 
 module.exports = {
@@ -85,8 +117,10 @@ module.exports = {
     ROLE_ADMIN,
     ROLE_EMPLOYEE,
     ROLE_MANAGER,
+    ROLE_OPERATIONS_TEAM,
     TASK_STATUSES,
     WALK_IN_STATUSES,
     APPLICATION_STATUSES,
     INITIAL_LEAD_STATUSES,
+    CRM_BUCKETS
 }

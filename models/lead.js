@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { LEAD_STATUSES, VERIFICATION_STATUSES, APPLICATION_STATUSES } = require('../utilities/constants');
+const { LEAD_STATUSES, VERIFICATION_STATUSES, APPLICATION_STATUSES, CRM_BUCKETS } = require('../utilities/constants');
 
 module.exports = (sequelize) => {
   return sequelize.define('Lead', {
@@ -33,6 +33,11 @@ module.exports = (sequelize) => {
     is_reassigned : {type: DataTypes.BOOLEAN, defaultValue: false },
     bereau_score: { type: DataTypes.DECIMAL(10, 0) },
     bereau_name: {type: DataTypes.STRING},
+    closing_date: {type: DataTypes.DATE},
+    verification_date: {type: DataTypes.DATE},
+    login_date: {type: DataTypes.DATE},
+    lead_bucket : {type: DataTypes.ENUM(...CRM_BUCKETS), defaultValue: 'PIPELINE_ENTRIES'},
+    is_paid : { type: DataTypes.BOOLEAN, defaultValue: false },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

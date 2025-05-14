@@ -21,9 +21,10 @@ const {
   VERIFICATION_STATUSES,
   ROLE_EMPLOYEE,
   LEAD_STATUSES,
+  ROLE_OPERATIONS_TEAM,
 } = require("../utilities/constants");
 const { getErrorReason, getUpdatedFields, getActivityType, formatString } = require("../utilities/helper-functions");
-const { ACTIVITY_TYPES, ACTIVITY_LOGS } = require("../utilities/ActivityLogConstants");
+const { ACTIVITY_TYPES, ACTIVITY_LOGS, terminologiesMap } = require("../utilities/ActivityLogConstants");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const { getIo } = require("../socket/socket");
 
@@ -164,7 +165,11 @@ async function getAllLeadsWithPagination(req, res) {
       for_walk_ins_page=false,
       walk_in_attributes=[],
       user_status=null,
-      appointment_date
+      appointment_date,
+      lead_bucket,
+      closing_date,
+      verification_date,
+      is_paid=false
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -214,22 +219,62 @@ async function getAllLeadsWithPagination(req, res) {
     if (leadId) whereConditions.id = { [Op.like]: `%${leadId}%` };
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
+    console.log('verification status = ', verification_status)
+    
     if (verification_status) {
+      // Normalize to array if it isn't already
+      const statuses = Array.isArray(verification_status) 
+        ? verification_status 
+        : [verification_status];
+      
       whereConditions.verification_status = {
-        [Op.or]: verification_status.map((status) => ({
-          [Op.like]: `%${status}%`, // Use Op.iLike for case-insensitivity if supported
-        })),
+        [Op.or]: statuses.map(status => ({
+          [Op.like]: `%${status}%`
+        }))
       };
     }
+
     if (lead_status) {
       whereConditions.lead_status = lead_status
     }
-    if(application_status){
+
+    if (closing_date) {
+      const targetDate = new Date(closing_date);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      whereConditions.closing_date = {
+        [Op.between]: [startOfDay, endOfDay],
+      };
+    }
+
+    if (verification_date) {
+      const targetDate = new Date(verification_date);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      whereConditions.verification_date = {
+        [Op.between]: [startOfDay, endOfDay],
+      };
+    }
+    if(!for_walk_ins_page && application_status){
       whereConditions.application_status = {
         [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
       }
     }
-
+    // if (application_status) {
+    //   whereConditions.application_status = {
+    //     [Op.or]: application_status.map((status) => ({
+    //       [Op.like]: `%${status}%`, // Use Op.iLike for case-insensitivity if supported
+    //     })),
+    //   };
+    // }
     
 
     if (importedOn) {
@@ -272,6 +317,23 @@ async function getAllLeadsWithPagination(req, res) {
       //   [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
       // }
       whereConditions.lead_source = lead_source
+    }
+
+    const verification_statuses = Array.isArray(verification_status) ? verification_status.filter((s)=>s !== '') : [verification_status].filter((s)=>s !== '')
+
+    if (lead_bucket) {
+      whereConditions.lead_bucket = lead_bucket;
+      if (lead_bucket === "APPROVED_APPLICATIONS") {
+        whereConditions.is_paid = {
+          [Op.eq]: is_paid === 'true'
+        };
+      } else if (lead_bucket === "PRELIMINERY_CHECK" && (!verification_status || verification_statuses.length === 0)) {
+        // For PRELIMINARY_CHECK, exclude "Normal Login" but include null and others
+        whereConditions[Op.or] = [
+          { verification_status: { [Op.notLike]: 'Normal Login' } },
+          { verification_status: { [Op.eq]: null } }
+        ];
+      }
     }
 
     if (assigned_to === "not_assigned") {
@@ -450,6 +512,22 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if(for_walk_ins_page){
+      if(!application_status){
+        console.log('application status is not given');
+        
+        whereConditions[Op.or] = [
+          { application_status: { [Op.notLike]: 'Normal Login' } },
+          { application_status: { [Op.eq]: null } }
+        ];
+      }else{
+        whereConditions.application_status = {
+          [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
+        }
+      }
+      // whereConditions[Op.or] = [
+      //   { lead_bucket: { [Op.ne]: 'APPROVED_APPLICATIONS' } },
+      //   { lead_bucket: { [Op.eq]: null } }
+      // ];
       includeConditions.push({
         model: WalkIn,
         as: 'walkIns',
@@ -465,6 +543,10 @@ async function getAllLeadsWithPagination(req, res) {
         whereConditions[Op.or] = [
           { application_status: { [Op.ne]: 'Normal Login' } },
           { application_status: { [Op.eq]: null } }
+        ];
+        whereConditions[Op.or] = [
+          { lead_bucket: { [Op.ne]: 'APPROVED_APPLICATIONS' } },
+          { lead_bucket: { [Op.eq]: null } }
         ];
       }
     }
@@ -529,43 +611,61 @@ async function getAllLeadsWithPagination(req, res) {
 async function getLeadById(req, res) {
   try {
     const { leadId } = req.params;
-    let {includeFields,walk_in_attributes=[]} = req.query
+    let {includeFields, walk_in_attributes = []} = req.query;
 
-    includeFields = includeFields ? includeFields.split(',') : null
+    includeFields = includeFields ? includeFields.split(',') : null;
 
     if (!leadId) {
       return ApiResponse(res, "error", 400, "Lead Id is required!");
     }
 
     let queryOptions = {
-      where: {id:leadId},
+      where: {id: leadId},
       attributes: includeFields?.length ? includeFields : undefined,
-    }
+      include: [] // Initialize empty include array
+    };
 
     if (!includeFields) {
-      queryOptions.include = [
+      queryOptions.include.push(
         {
           model: Activity,
           as: "Activities",
           attributes: ["id", "activity_status", "docs_collected", "description", "createdAt", "follow_up"],
-        },
-      ];
+        }
+      );
+      
+      // Add LeadAssignments inclusion
+      queryOptions.include.push(
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          required: true, // INNER JOIN to only get assigned leads
+          include: [
+            {
+              model: User,
+              as: "AssignedTo",
+              attributes: ["name"],
+            },
+          ],
+        }
+      );
     }
 
-    if(walk_in_attributes.length > 0){
+    if (walk_in_attributes.length > 0) {
       queryOptions.include.push(
         {
           model: WalkIn,
           as: 'walkIns',
           attributes: walk_in_attributes,
           required: false,
-          order:[
+          order: [
             ["id", "DESC"]
           ],
           limit: 1
         }
-      )
+      );
     }
+
     // Fetch the lead by ID along with related data (activities and lead assignments)
     const lead = await Lead.findOne(queryOptions);
 
@@ -831,13 +931,13 @@ async function updateVerificationStatus(req, res) {
       if(!rejection_reason || !rejected_by_id){
         return ApiResponse(res, 'error', 400, "Rejection reason and Rejected by id is required !")
       }
-      updateData.application_status = verification_status
+      // updateData.application_status = verification_status
       updateData.is_rejected = true
       updateData.rejection_reason = rejection_reason
       updateData.rejected_by_id = rejected_by_id
       updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
       updateData.updated_by = user_id
-    }else{
+    }else {
       updateData.verification_status_note = verification_status_note
       updateData.application_status = null
       updateData.is_rejected = false
@@ -998,13 +1098,13 @@ async function updateApplicationStatus(req,res){
   const io = getIo()
   const transaction = await sequelize.transaction()
   try {
-    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id, lead_name, assigned_to} = req.body
+    const {lead_id, application_status, lead_status, role, rejection_reason, application_status_note, rejected_by_id, user_id, lead_name, assigned_to, closing_date, login_date, lead_bucket} = req.body
 
     if(!lead_id || !application_status || !lead_status || !role){
       return ApiResponse(res, 'error', 400, "Missing required fields !")
     }
 
-    if (role !== ROLE_ADMIN && role !== ROLE_MANAGER) {
+    if (role !== ROLE_ADMIN && role !== ROLE_MANAGER && role !== ROLE_OPERATIONS_TEAM) {
       return ApiResponse(res,'error', 403, "Unauthorized Access !")
     }
 
@@ -1014,15 +1114,25 @@ async function updateApplicationStatus(req,res){
       "Rejected",
       "Closed",
       "Login",
-      "Normal Login"
+      "Normal Login",
+      "Application Approved",
+      "Closing Date Changed",
+      "Advance Amount Paid",
+      "Closing Amount Paid",
+      "Others",
+      "Loans Disbursed From Bank",
+      "Application Closed",
+      "Login Date Changed"
     ]
 
     if(!validApplicationStatuses.includes(application_status)){
       return ApiResponse(res,'error',400, "Invalid Appliation Status !")
     }
 
-    if(lead_status !== "12 documents collected"){
-      return ApiResponse(res, 'error', 400, "Application Status Cannot Updated Now !")
+    if(lead_status !== "12 documents collected" ){
+      if(lead_bucket !== "APPROVED_APPLICATIONS"){
+        return ApiResponse(res, 'error', 400, "Application Status Cannot Updated Now !")
+      }
     }
 
     const updateData = {application_status, last_updated_status:application_status}
@@ -1036,7 +1146,27 @@ async function updateApplicationStatus(req,res){
       updateData.rejected_by_id = rejected_by_id
       updateData.rejected_at = moment().format('YYYY-MM-DD HH:mm:ss')
       updateData.updated_by = user_id
-    } else {
+    } else if(application_status === "Application Approved"){
+      if(!closing_date || !lead_bucket){
+        return ApiResponse(res, "error", 400, "Missing required fields !")
+      }
+      updateData.closing_date = closing_date
+      // updateData.verification_date = verification_date
+      updateData.application_status = application_status
+      updateData.lead_bucket = lead_bucket
+    }else if(application_status === "Closing Date Changed"){
+      updateData.closing_date = closing_date
+      // updateData.verification_date = verification_date
+      updateData.application_status = application_status
+    }else if(["Advance Amount Paid", "Closing Amount Paid", "Login Date Changed"].includes(application_status)){
+      if(!login_date){
+        if(transaction) await transaction.rollback()
+        return ApiResponse(res, 'error', 400, "Login date is required !")
+      }
+      updateData.login_date = login_date
+      updateData.is_paid = true
+      updateData.application_status = application_status
+    }else{
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
       updateData.application_status_note = application_status_note
       updateData.is_rejected = false;
@@ -1047,11 +1177,18 @@ async function updateApplicationStatus(req,res){
     }
 
     const updatedLead = await LeadServices.updateLead(lead_id,updateData,transaction)
+    const specialStatuses = ["Advance Amount Paid", "Closing Amount Paid", "Login Date Changed"];
+    const activity_desc = application_status === "Closing Date Changed"
+  ? `Updated Application Status to : ${terminologiesMap.get(application_status)} (closing date ${closing_date})`
+  : specialStatuses.includes(application_status)
+    ? `Updated Application Status to : ${terminologiesMap.get(application_status)} (Login Date : ${login_date})`
+    : `Updated Application Status to : ${terminologiesMap.get(application_status)}`;
 
     await ActivityLog.create({
       created_by : user_id,
       activity_type: ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE,
-      activity_desc: `Updated Application Status to : ${application_status}`,
+      // activity_desc: application_status === "Closing Date Changed" ? `Updated Application Status to : ${terminologiesMap.get(application_status)} ( closing date ${closing_date} )` : `Updated Application Status to : ${terminologiesMap.get(application_status)}`,
+      activity_desc: activity_desc,
       lead_id:lead_id,
       note: application_status === "Rejected" ? rejection_reason : application_status_note,
       lead_name: lead_name
@@ -1079,13 +1216,13 @@ async function updateApplicationStatus(req,res){
 async function updateLeadStatus(req,res){
   const transaction = await sequelize.transaction()
   try {
-      const {lead_id, lead_status, role, lead_name, prev_lead_status, user_id, others_note} = req.body
+      const {lead_id, lead_status, role, lead_name, prev_lead_status, user_id, others_note, verification_date} = req.body
 
       if(!lead_id || !lead_status || !role){
         return ApiResponse(res, 'error', 400, "Missing required fields !")
       }
 
-      if (![ROLE_ADMIN,ROLE_EMPLOYEE].includes(role)) {
+      if (![ROLE_ADMIN,ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM].includes(role)) {
         return ApiResponse(res,'error', 403, "Only Admin or Employee can change lead status !")
       }
 
@@ -1097,19 +1234,31 @@ async function updateLeadStatus(req,res){
         return ApiResponse(res,'error',400, "Please provide reason for Others status !")
       }
 
-      let updatedLead = null
-      if(prev_lead_status === "Verification 1"){
-        updatedLead = await LeadServices.updateLead(lead_id,{last_updated_status:lead_status, others_note: lead_status === "Others" && others_note}, transaction)
-      }else{
-        updatedLead = await LeadServices.updateLead(lead_id,{lead_status, last_updated_status:lead_status, others_note: lead_status === "Others" && others_note}, transaction)
-      }
+      let updatedLead = null;
+const updatePayload = {
+  lead_status: lead_status,
+  last_updated_status: lead_status,
+  others_note: lead_status === "Others" ? others_note : undefined,
+};
+
+// If not "Verification 1", include `lead_status`
+// if (prev_lead_status !== "Verification 1") {
+//   updatePayload.lead_status = lead_status;
+// }
+
+// Add `verification_date` if `lead_status` is between the two values
+if (["All Clear", "Negative Transaction"].includes(lead_status)) {
+  updatePayload.verification_date = verification_date
+}
+
+updatedLead = await LeadServices.updateLead(lead_id, updatePayload, transaction);
 
       let logData = createLogData(
-        ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_lead_status, lead_status),
+        ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_lead_status, lead_status, verification_date),
         ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
         user_id,
         lead_id,
-        lead_status === "Others" ? others_note : null,
+        others_note,
         lead_name
       )
       await createActivityLog(logData, transaction)

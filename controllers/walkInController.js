@@ -36,14 +36,16 @@ async function scheduleWalkIn(req, res) {
     if(is_call){
       updatePayload = {
         lead_status: "Scheduled Call With Manager",
-        verification_status:"Scheduled Call With Manager",
-        last_updated_status:"Scheduled Call With Manager"
+        // verification_status:"Scheduled Call With Manager",
+        last_updated_status:"Scheduled Call With Manager",
+        lead_bucket: "APPOINTMENTS",
       }
     }else{
       updatePayload = {
         lead_status: "Scheduled For Walk-In",
-        verification_status:"Scheduled For Walk-In",
-        last_updated_status:"Scheduled For Walk-In"
+        // verification_status:"Scheduled For Walk-In",
+        last_updated_status:"Scheduled For Walk-In",
+        lead_bucket: "APPOINTMENTS",
       }
     }
     await lead.update(updatePayload, { transaction });
@@ -328,11 +330,13 @@ async function rescheduleWalkIn(req, res) {
       let updatePayload = {}
       if(is_call){
         updatePayload = {
-          last_updated_status:"Re-Scheduled Call With Manager"
+          last_updated_status:"Re-Scheduled Call With Manager",
+          lead_status: "Re-Scheduled Call With Manager"
         }
       }else{
         updatePayload = {
-          last_updated_status:"Re-Scheduled For Walk-In"
+          last_updated_status:"Re-Scheduled For Walk-In",
+          lead_status: "Re-Scheduled Call With Manager"
         }
       }
       await lead.update(updatePayload, { transaction });

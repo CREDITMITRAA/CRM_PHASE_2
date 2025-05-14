@@ -95,6 +95,28 @@ const APPLICATION_CLOSED = "Closed";
 const RESCHEDULED_FOR_WALK_IN = "Re-Scheduled For Walk-In";
 const MALE = "male";
 const FEMALE = "female";
+const ALL_CLEAR = "All Clear"
+const NEGATIVE_TRANSACTION = "Negative Transaction"
+const LOAN_DISBURSED_FROM_BANK = "Loan Disbursed From Bank"
+const APPLICATION_IS_CLOSED = "Application Closed"
+const LOGIN_STARTED = "Login Started"
+const ALL_POSITIVE = "All Positive"
+const ALL_LOANS_CLOSED = "All Loans Closed"
+const ALL_CLOSURE_DOCUMENTS_VERIFIED = "All Closure Documents Verified"
+const ALL_LOGIN_DOCUMENTS_VERIFIED = "All Login Documents Verified"
+const BUREAU_DISPUTE_RAISED = "Bureau Dispute Raised"
+const ALL_DISPUTES_UPDATED = "All Disputes Updated"
+const LOGIN_BANK_1 = "Login Bank 1"
+const LOGIN_BANK_2 = "Login Bank 2"
+const LOGIN_BANK_3 = "Login Bank 3"
+const LOGIN_BANK_4 = "Login Bank 4"
+const LOGIN_BANK_5 = "Login Bank 5"
+const LOGIN_BANK_6 = "Login Bank 6"
+const APPLICATION_APPROVED = "Application Approved"
+const CLOSING_DATE_CHANGED = "Closing Date Changed"
+const ADVANCE_AMOUNT_PAID = "Advance Amount Paid"
+const CLOSING_AMOUNT_PAID = "Closing Amount Paid"
+const LOGIN_DATE_CHANGED = "Login Date Changed"
 
 const terminologiesMap = new Map([
     [NOT_CONTACTED, 'Unattended'],
@@ -130,7 +152,24 @@ const terminologiesMap = new Map([
     [LOGIN, LOGIN],
     [WALK_INS, "Appointments"],
     [LEADS, "Pipeline Entries"],
-    [RESCHEDULED_FOR_WALK_IN, "Appointment Rescheduled"]
+    [RESCHEDULED_FOR_WALK_IN, "Appointment Rescheduled"],
+    [ALL_CLEAR,ALL_CLEAR],
+    [NEGATIVE_TRANSACTION, NEGATIVE_TRANSACTION],
+    [LOGIN_BANK_1, LOGIN_BANK_1],
+  [LOGIN_BANK_2, LOGIN_BANK_2],
+  [LOGIN_BANK_3, LOGIN_BANK_3],
+  [LOGIN_BANK_4, LOGIN_BANK_4],
+  [LOGIN_BANK_5, LOGIN_BANK_5],
+  [LOGIN_BANK_6, LOGIN_BANK_6],
+  [ALL_CLOSURE_DOCUMENTS_VERIFIED, ALL_CLOSURE_DOCUMENTS_VERIFIED],
+  [ALL_LOGIN_DOCUMENTS_VERIFIED, ALL_LOGIN_DOCUMENTS_VERIFIED],
+  [BUREAU_DISPUTE_RAISED, BUREAU_DISPUTE_RAISED],
+  [ALL_DISPUTES_UPDATED, ALL_DISPUTES_UPDATED],
+  [APPLICATION_APPROVED,APPLICATION_APPROVED],
+  [CLOSING_DATE_CHANGED,CLOSING_DATE_CHANGED],
+  [ADVANCE_AMOUNT_PAID,ADVANCE_AMOUNT_PAID],
+  [CLOSING_AMOUNT_PAID,CLOSING_AMOUNT_PAID],
+  [LOGIN_DATE_CHANGED,LOGIN_DATE_CHANGED]
   ])
 
 const ACTIVITY_LOGS = {
@@ -138,7 +177,10 @@ const ACTIVITY_LOGS = {
     `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`,
     LEAD_ASSIGNMENT : (employeeName) => `Lead Assigned to ${employeeName}`,
     APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${terminologiesMap.get(newStatus)}`,
-    LEAD_STATUS_UPDATE : (prevStatus,newStatus) => `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}`,
+    LEAD_STATUS_UPDATE: (prevStatus, newStatus, verification_date) => 
+        `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}${
+          [ALL_CLEAR, NEGATIVE_TRANSACTION].includes(terminologiesMap.get(newStatus)) ? ` (Verification Date: ${verification_date})` : ''
+        }`,      
     TASK_CREATE : (task_type, task_date) => `${terminologiesMap.get(task_type)} on ${task_date}`,
     PAYSLIP_UPLOAD : (document_name) => `Payslip ${document_name} uplaoded`,
     CREDIT_BUREAU_UPLOAD : (document_name) => `Credit Bureau ${document_name} uploaded`,
@@ -175,5 +217,6 @@ const ACTIVITY_LOGS = {
 
 module.exports = {
     ACTIVITY_LOGS,
-    ACTIVITY_TYPES  
+    ACTIVITY_TYPES,
+    terminologiesMap  
 }

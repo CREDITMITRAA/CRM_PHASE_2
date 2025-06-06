@@ -631,6 +631,7 @@ async function getLeadById(req, res) {
           model: Activity,
           as: "Activities",
           attributes: ["id", "activity_status", "docs_collected", "description", "createdAt", "follow_up"],
+          required: false
         }
       );
       
@@ -639,7 +640,7 @@ async function getLeadById(req, res) {
         {
           model: LeadAssignment,
           as: "LeadAssignments",
-          required: true, // INNER JOIN to only get assigned leads
+          required: false, // INNER JOIN to only get assigned leads
           include: [
             {
               model: User,
@@ -1446,6 +1447,53 @@ async function getAllLeadsOfExEmployees(req,res){
   }
 }
 
+async function uploadLead(req, res) {
+  const transaction = await sequelize.transaction();
+  try {
+    const { name, phone, email, loan_amount, lead_source, loan_type, client_secret, bereau_score, city  } = req.body;
+    if(client_secret !== "SQ"){
+      await transaction.rollback();
+      return ApiResponse(res, 'error', 400, "Un-Authorized Access !");
+    }
+
+    if (!name || !phone || !lead_source || !loan_type) {
+      await transaction.rollback();
+      return ApiResponse(res, 'error', 400, "Missing required fields!");
+    }
+
+    const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
+
+    if (leadFromDB) {
+      // Update current lead source
+      leadFromDB.lead_source = lead_source;
+
+      // Update previous sources array
+      const prevSources = leadFromDB.prev_lead_sources || [];
+      const updatedSources = [lead_source, ...prevSources];
+      leadFromDB.prev_lead_sources = updatedSources;  
+
+      leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;
+      leadFromDB.product = loan_type;
+      if (loan_amount) leadFromDB.loan_amount = loan_amount;
+      if(bereau_score) leadFromDB.bereau_score = bereau_score
+      if(city) leadFromDB.city = city
+      // if (email) leadFromDB.email = email;
+
+      await leadFromDB.save({ transaction });
+
+      await transaction.commit();
+      return ApiResponse(res, 'success', 201, "Lead updated successfully!");
+    } else {
+      let leadToBeSaved = {...req.body, product:loan_type}
+      const savedLead = await Lead.create(leadToBeSaved, { transaction });
+      await transaction.commit();
+      return ApiResponse(res, 'success', 201, "Lead uploaded successfully!", savedLead);
+    }
+  } catch (error) {
+    await transaction.rollback();
+    return ApiResponse(res, 'error', 500, 'Failed to upload lead!', null, error);
+  }
+}
 
 module.exports = {
   createBulkLeads,
@@ -1459,5 +1507,6 @@ module.exports = {
   getAllDistinctLeadSources,
   getLeadSourceByName,
   updateLeadDetails,
-  getAllLeadsOfExEmployees
+  getAllLeadsOfExEmployees,
+  uploadLead
 };

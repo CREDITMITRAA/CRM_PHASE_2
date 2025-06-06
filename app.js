@@ -13,17 +13,24 @@ const socketIo = require('socket.io');
 const { initializeSocket } = require('./socket/socket');
 
 const app = express();
-
+const allowedOrigins = process.env.FRONTEND_ORIGIN_URL.split(",")
 // Middleware
 app.use(helmet()); // For security headers
 app.use(bodyParser.json()); // Parse incoming JSON requests
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded data
 // app.use(morgan('dev')); // Log HTTP requests
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN_URL,
-  // origin: 'http://crm.creditmitra.in',  // Your frontend URL for PRODUCTION
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like curl or mobile apps)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,  // Allow credentials (cookies, tokens)
+  credentials: true,
 }));
 app.options('*', cors());  // Handle preflight OPTIONS requests
 

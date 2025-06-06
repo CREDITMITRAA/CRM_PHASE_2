@@ -16,5 +16,6 @@ router.get('/get-all-lead-sources', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_E
 router.get('/get-lead-source-by-name', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.getLeadSourceByName)
 router.put('/update-lead-details/:id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.updateLeadDetails)
 router.get('/get-all-leads-of-ex-emp', authenticate([ROLE_ADMIN]), leadController.getAllLeadsOfExEmployees)
+router.post('/upload-lead', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM], true), leadController.uploadLead)
 
 module.exports = router

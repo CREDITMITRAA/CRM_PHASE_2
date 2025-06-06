@@ -38,6 +38,10 @@ module.exports = (sequelize) => {
     login_date: {type: DataTypes.DATE},
     lead_bucket : {type: DataTypes.ENUM(...CRM_BUCKETS), defaultValue: 'PIPELINE_ENTRIES'},
     is_paid : { type: DataTypes.BOOLEAN, defaultValue: false },
+    loan_amount: { type: DataTypes.DECIMAL(15,2), allowNull:true },
+    prev_lead_sources: { type: DataTypes.JSON, defaultValue: [], allowNull: true },
+    visit_count: { type: DataTypes.INTEGER, defaultValue:0, allowNull:true },
+    product: { type: DataTypes.STRING },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

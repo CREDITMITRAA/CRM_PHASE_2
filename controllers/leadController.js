@@ -1450,7 +1450,7 @@ async function getAllLeadsOfExEmployees(req,res){
 async function uploadLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { name, phone, email, loan_amount, lead_source, loan_type, client_secret, bereau_score, city  } = req.body;
+    const { name, phone, email, loan_amount, lead_source, loan_type, client_secret, bereau_score, city, bereau_name  } = req.body;
     if(client_secret !== "SQ"){
       await transaction.rollback();
       return ApiResponse(res, 'error', 400, "Un-Authorized Access !");
@@ -1476,6 +1476,7 @@ async function uploadLead(req, res) {
       leadFromDB.product = loan_type;
       if (loan_amount) leadFromDB.loan_amount = loan_amount;
       if(bereau_score) leadFromDB.bereau_score = bereau_score
+      if(bereau_name) leadFromDB.bereau_name = bereau_name
       if(city) leadFromDB.city = city
       // if (email) leadFromDB.email = email;
 

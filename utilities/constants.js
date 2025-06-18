@@ -50,7 +50,17 @@ const  LEAD_STATUSES = [
     "Login Bank 5",
     "Login Bank 6",
     "All Clear",
-    "Negative Transaction"
+    "Negative Transaction",
+    "Re-Scheduled Call With Manager",
+    "Re-Scheduled For Walk-In",
+    "Appointment Pending",
+    "Appointment Cancelled",
+    "Appointment Completed",
+    "Appointment Rescheduled",
+    "Advisor Consultation Pending",
+    "Advisor Consultation Cancelled",
+    "Advisor Consultation Completed",
+    "Advisor Consultation Rescheduled"       
 ]
 
 const VERIFICATION_STATUSES = [
@@ -101,7 +111,9 @@ const APPLICATION_STATUSES = [
     "Application Closed",
     "Others",
     "Login Started",
-    "Login Date Changed"
+    "Login Date Changed",
+    "Maker Approved",
+    "Checker Approved"
 ]
 
 const CRM_BUCKETS = [

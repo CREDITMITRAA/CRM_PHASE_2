@@ -7,6 +7,7 @@ const {
   User,
   Activity,
   LeadTransfer,
+  WalkIn,
 } = require("../models"); // Adjust paths as needed
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
@@ -231,6 +232,32 @@ async function assignLeadsToEmployee(req, res) {
               },
             },
             // transaction,
+          }
+        );
+
+        // Update created_by in Activity table for reassigned leads
+        await Activity.update(
+          { created_by: assignedTo },
+          {
+            where: {
+              lead_id: {
+                [Op.in]: leadsToBeReAssigned.map((lead) => lead.id),
+              },
+            },
+            transaction,
+          }
+        );
+
+        // Update created_by in WalkIn table for reassigned leads
+        await WalkIn.update(
+          { created_by: assignedTo },
+          {
+            where: {
+              lead_id: {
+                [Op.in]: leadsToBeReAssigned.map((lead) => lead.id),
+              },
+            },
+            transaction,
           }
         );
       }
@@ -532,6 +559,7 @@ async function getLeadsByAssignedUserId(req, res) {
             "createdAt",
             "lead_status",
             "updatedAt",
+            "lead_bucket"
           ],
           include: [
             {
@@ -579,6 +607,7 @@ async function getLeadsByAssignedUserId(req, res) {
       phone: assignment.Lead.phone,
       leadSource: assignment.Lead.lead_source,
       leadStatus: assignment.Lead.lead_status,
+      leadBucket: assignment.Lead.lead_bucket,
       importedOn: assignment.Lead.createdAt,
       assignedAt: assignment.updatedAt,
       assignedBy: {

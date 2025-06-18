@@ -18,22 +18,28 @@ function toUTCFormat(dateString, timeString = "00:00:00") {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-function getErrorReason(error) {
-    // Check for specific error types and extract relevant messages
-    if (error.name === 'SequelizeValidationError') {
-      // Validation errors: Get specific error messages from the validation errors
-      return error.errors.map(err => err.message).join(', ');
-    }
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      // Unique constraint violation
-      if (Array.isArray(error.fields)) {
-        return `Unique constraint violation on ${error.fields.join(', ')}`;
-      }
-      return `Unique constraint violation occurred.`;
-    }
-    // Default case for other types of errors
-    return error.message || 'Unknown database error';
+function getErrorReason(err) {
+  if (!err) return "Unknown error";
+
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    const field = err?.errors?.[0]?.path || "unknown field";
+    return `Duplicate entry violates unique constraint on '${field}'`;
   }
+
+  if (err.name === 'SequelizeValidationError') {
+    return err.errors.map((e) => `${e.path}: ${e.message}`).join(", ");
+  }
+
+  if (err.original && err.original.sqlMessage) {
+    return err.original.sqlMessage;
+  }
+
+  if (typeof err.message === 'string') {
+    return err.message;
+  }
+
+  return JSON.stringify(err);
+}
 
   function getUpdatedFields(oldLead, newLead) {
     let updatedFields = {};

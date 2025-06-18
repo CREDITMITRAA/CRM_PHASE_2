@@ -72,6 +72,10 @@ LeadDocument.belongsTo(Lead, {
   as: 'lead'
 })
 
+
+
+
+
 module.exports = {
   sequelize,
   User,

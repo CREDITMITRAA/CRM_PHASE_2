@@ -84,14 +84,15 @@ async function scheduleWalkIn(req, res) {
 }
 
 async function getWalkIns(req, res) {
-  const transaction = await sequelize.transaction()
+  const transaction = await sequelize.transaction();
   try {
     let { page = 1, pageSize = 10, created_by, date, walk_in_status, date_time_range } = req.query;
     let whereConditions = {
-      walk_in_status:{
-        [Op.notIn]: ["Completed", "Cancelled"]
+      walk_in_status: {
+        [Op.notIn]: ["Completed"]
       }
     };
+    
     page = parseInt(page);
     pageSize = parseInt(pageSize);
 
@@ -100,83 +101,79 @@ async function getWalkIns(req, res) {
     if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
     const offset = (page - 1) * pageSize;
 
+    // Apply filters if they exist
     if (created_by) {
       whereConditions.created_by = created_by;
     }
 
-    // Date filter for specific day
-    if (date) {
-      const targetDate = moment.tz(date, "Asia/Kolkata").startOf("day").utc().toDate();
-      const endOfDay = moment.tz(date, "Asia/Kolkata").endOf("day").utc().toDate();
+    if (walk_in_status) {
+      whereConditions.walk_in_status = walk_in_status;
+    }
 
+    if (date) {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      
       whereConditions[Op.or] = [
         {
-          rescheduled_date_time: {
-            [Op.between]: [targetDate, endOfDay],
-          },
+          walk_in_date_time: {
+            [Op.between]: [startDate, endDate]
+          }
         },
         {
-          rescheduled_date_time: null,
-          walk_in_date_time: {
-            [Op.between]: [targetDate, endOfDay],
-          },
-        },
+          rescheduled_date_time: {
+            [Op.between]: [startDate, endDate]
+          }
+        }
       ];
     }
 
-    // Date-Time Range Filter
     if (date_time_range) {
-      const [startRange, endRange] = date_time_range.split(",");
-      if (startRange && endRange) {
-        const startOfRangeUTC = moment.tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-        const endOfRangeUTC = moment.tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-
-        whereConditions[Op.or] = [
-          {
-            rescheduled_date_time: {
-              [Op.between]: [startOfRangeUTC, endOfRangeUTC],
-            },
-          },
-          {
-            rescheduled_date_time: null,
-            walk_in_date_time: {
-              [Op.between]: [startOfRangeUTC, endOfRangeUTC],
-            },
-          },
-        ];
-      }
-    }
-
-    if(walk_in_status){
-      whereConditions.walk_in_status = walk_in_status
+      const [startDateTime, endDateTime] = date_time_range.split(',');
+      const startDate = new Date(startDateTime);
+      const endDate = new Date(endDateTime);
+      
+      whereConditions[Op.or] = [
+        {
+          walk_in_date_time: {
+            [Op.between]: [startDate, endDate]
+          }
+        },
+        {
+          rescheduled_date_time: {
+            [Op.between]: [startDate, endDate]
+          }
+        }
+      ];
     }
 
     // Fetch walk-ins with associated data
     const { rows, count } = await WalkIn.findAndCountAll({
       where: whereConditions,
       order: [
-        // First prioritize rescheduled_date_time, then fall back to walk_in_date_time
-        [sequelize.literal("rescheduled_date_time IS NOT NULL"), "DESC"], // Prioritize rows with rescheduled_date_time
-        ["walk_in_date_time", "DESC"], // Then order by walk_in_date_time in descending order
+        [sequelize.literal("rescheduled_date_time IS NOT NULL"), "DESC"],
+        ["walk_in_date_time", "DESC"],
       ],
       limit: pageSize,
       offset: offset,
       distinct: true,
       include: [
         {
-          model: Lead, // Include the Lead model
-          as: "lead", // The alias defined in the association
-          attributes: ["id", "name", "phone", "lead_status", "verification_status"], // Select only required fields from Lead
+          model: Lead,
+          as: "lead",
+          attributes: ["id", "name", "phone", "lead_status", "verification_status", "lead_bucket"],
           include: [
             {
-              model: LeadAssignment, // Include the LeadAssignment model
-              as: "LeadAssignments", // Alias for the association
+              model: LeadAssignment,
+              as: "LeadAssignments",
               required: false,
               include: [
                 {
-                  model: User, // Include the User model for the lead owner (AssignedTo)
-                  as: "AssignedTo", // Alias defined for the assignment owner
-                  attributes: ["id", "name"], // Select lead owner's name and id
+                  model: User,
+                  as: "AssignedTo",
+                  attributes: ["id", "name"],
                 },
               ],
             },
@@ -186,26 +183,74 @@ async function getWalkIns(req, res) {
       transaction
     });
 
-    const currentDateTime = new Date(new Date().toISOString())
+    const currentDateTime = new Date(new Date().toISOString());
     
-    for(let walkIn of rows){
-      if(walkIn.is_rescheduled){
-        if(walkIn.rescheduled_date_time && walkIn.rescheduled_date_time < currentDateTime && ["Upcoming","Rescheduled"].includes(walkIn.walk_in_status)){
-          walkIn.walk_in_status = "Pending";
-          if (walkIn.changed('walk_in_status')) { // Check if change is detected
-            await walkIn.save({ transaction });
-          }
+    // Identify walk-ins that need updating (only if we're not filtering by status)
+    const walkInsToUpdate = !walk_in_status ? rows.filter(walkIn => {
+      const checkDate = walkIn.is_rescheduled ? walkIn.rescheduled_date_time : walkIn.walk_in_date_time;
+      return checkDate && checkDate < currentDateTime && 
+             ["Upcoming", "Rescheduled"].includes(walkIn.walk_in_status);
+    }) : [];
+
+    if (walkInsToUpdate.length > 0) {
+      // Bulk update walk-ins
+      await WalkIn.update(
+        { walk_in_status: "Pending" },
+        {
+          where: {
+            id: { [Op.in]: walkInsToUpdate.map(w => w.id) }
+          },
+          transaction
         }
-      } else {
-        if(walkIn.walk_in_date_time && walkIn.walk_in_date_time < currentDateTime && ["Upcoming","Rescheduled"].includes(walkIn.walk_in_status)){
-          walkIn.walk_in_status = "Pending";
-          if (walkIn.changed('walk_in_status')) { // Check if change is detected
-            await walkIn.save({ transaction });
-          }
+      );
+
+      // Process leads in bulk with appropriate status text
+      const leadUpdates = walkInsToUpdate.map(walkIn => {
+        const statusText = walkIn.is_call ? "Advisor Consultation Pending" : "Appointment Pending";
+        return {
+          id: walkIn.lead.id,
+          lead_status: statusText,
+          last_updated_status: statusText
+        };
+      });
+
+      // Group by status to minimize update queries
+      const statusGroups = {};
+      leadUpdates.forEach(update => {
+        const key = update.lead_status;
+        if (!statusGroups[key]) {
+          statusGroups[key] = [];
         }
+        statusGroups[key].push(update.id);
+      });
+
+      // Execute updates for each status group
+      for (const [status, leadIds] of Object.entries(statusGroups)) {
+        await Lead.update(
+          {
+            lead_status: status,
+            last_updated_status: status
+          },
+          {
+            where: {
+              id: { [Op.in]: leadIds }
+            },
+            transaction
+          }
+        );
       }
+
+      // Update the status in our response data
+      walkInsToUpdate.forEach(walkIn => {
+        walkIn.walk_in_status = "Pending";
+        if (walkIn.lead) {
+          const statusText = walkIn.is_call ? "Advisor Consultation Pending" : "Appointment Pending";
+          walkIn.lead.lead_status = statusText;
+          walkIn.lead.last_updated_status = statusText;
+        }
+      });
     }
-    
+
     const totalPages = Math.ceil(count / pageSize);
     let pagination = {
       page: page,
@@ -214,7 +259,7 @@ async function getWalkIns(req, res) {
       pageSize,
     };
 
-    await transaction.commit()
+    await transaction.commit();
     return ApiResponse(
       res,
       "success",
@@ -226,7 +271,7 @@ async function getWalkIns(req, res) {
     );
   } catch (error) {
     console.log(error);
-    await transaction.rollback()
+    await transaction.rollback();
     return ApiResponse(
       res,
       "error",
@@ -240,50 +285,105 @@ async function getWalkIns(req, res) {
 }
 
 async function updateWalkInStatus(req, res) {
-  const transaction = await sequelize.transaction()
+  const transaction = await sequelize.transaction();
   try {
-    const { walk_in_id, walk_in_status, user_id, lead_id, lead_name } = req.body; // Assuming you're sending the data in the request body
+    const { walk_in_id, walk_in_status, user_id, lead_id, lead_name, is_call } = req.body;
 
     // Check if the necessary data is provided
     if (!walk_in_id || !walk_in_status) {
-      await transaction.rollback()
-      return ApiResponse(res,"error",400,"Missing required fields !");
+      await transaction.rollback();
+      return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
-    // Find the walk-in by ID
+    // Find the walk-in with its associated lead
     const walkIn = await WalkIn.findOne({
       where: { id: walk_in_id },
+      include: [{
+        model: Lead,
+        as: "lead",
+        transaction
+      }],
       transaction
     });
 
     if (!walkIn) {
-      await transaction.rollback()
-      return ApiResponse(res,"error",404,"Walk-in not found",null,null,null);
+      await transaction.rollback();
+      return ApiResponse(res, "error", 404, "Walk-in not found");
     }
 
-    // Update the walk-in status
+    // Update walk-in status
     walkIn.walk_in_status = walk_in_status;
-    if(walk_in_status === "Cancelled"){
+    if (walk_in_status === "Cancelled") {
       walkIn.status = "inactive";
     }
-    await walkIn.save({transaction});
+    await walkIn.save({ transaction });
 
+    // Update lead statuses based on walk-in status and is_call flag
+    if (walkIn.lead) {
+      const prefix = walkIn.is_call ? "Advisor Consultation" : "Appointment";
+      
+      let leadStatusUpdate = {
+        last_updated_status: `${prefix} ${walk_in_status}`
+      };
+
+      // Map walk-in status to appropriate lead status
+      switch (walk_in_status) {
+        case "Completed":
+          leadStatusUpdate.lead_status = `${prefix} Completed`;
+          break;
+        case "Cancelled":
+          leadStatusUpdate.lead_status = `${prefix} Cancelled`;
+          break;
+        case "Rescheduled":
+          leadStatusUpdate.lead_status = `${prefix} Rescheduled`;
+          break;
+        case "Pending":
+          leadStatusUpdate.lead_status = `${prefix} Pending`;
+          break;
+        case "No Show":
+          leadStatusUpdate.lead_status = `${prefix} No Show`;
+          break;
+        default:
+          leadStatusUpdate.lead_status = `${prefix} ${walk_in_status}`;
+      }
+
+      await walkIn.lead.update(leadStatusUpdate, { transaction });
+    }
+
+    // Create activity log
     let logData = createLogData(
       ACTIVITY_LOGS.WALK_IN_UPDATE(walk_in_status),
       ACTIVITY_TYPES.WALK_IN_UPDATE,
       user_id,
-      lead_id,
+      lead_id || walkIn.lead_id,
       null,
-      lead_name
-    )
+      lead_name || walkIn.lead?.name
+    );
 
-    await createActivityLog(logData,transaction)
+    await createActivityLog(logData, transaction);
     await transaction.commit();
-    return ApiResponse(res,"success",200,"Walk-in status updated successfully",walkIn,null,null);
+
+    return ApiResponse(
+      res,
+      "success",
+      200,
+      "Walk-in status updated successfully",
+      {
+        walkIn,
+        lead: walkIn.lead
+      }
+    );
   } catch (error) {
-    await transaction.rollback()
-    console.log(error);
-    return ApiResponse(res,"error",500,"Failed to update walk-in status!",null,error,null);
+    await transaction.rollback();
+    console.error("Error updating walk-in status:", error);
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      "Failed to update walk-in status!",
+      null,
+      error
+    );
   }
 }
 
@@ -336,7 +436,7 @@ async function rescheduleWalkIn(req, res) {
       }else{
         updatePayload = {
           last_updated_status:"Re-Scheduled For Walk-In",
-          lead_status: "Re-Scheduled Call With Manager"
+          lead_status: "Re-Scheduled For Walk-In"
         }
       }
       await lead.update(updatePayload, { transaction });

@@ -117,6 +117,16 @@ const CLOSING_DATE_CHANGED = "Closing Date Changed"
 const ADVANCE_AMOUNT_PAID = "Advance Amount Paid"
 const CLOSING_AMOUNT_PAID = "Closing Amount Paid"
 const LOGIN_DATE_CHANGED = "Login Date Changed"
+const APPOINTMENT_PENDING = "Appointment Pending"
+const APPOINTMENT_COMPLETED = "Appointment Cancelled"
+const APPOINTMENT_CANCELLED = "Appointment Completed"
+const APPOINTMENT_RESCHEDULED = "Appointment Rescheduled"
+const ADVISOR_CONSULTATION_PENDING = "Advisor Consultation Pending"
+const ADVISOR_CONSULTATION_COMPLETED = "Advisor Consultation Completed"
+const ADVISOR_CONSULTATION_CANCELLED = "Advisor Consultation Cancelled"
+const ADVISOR_CONSULTATION_RESCHEDULED = "Advisor Consultation Rescheduled"
+const MAKER_APPROVED = "Maker Approved"
+const CHECKER_APPROVED = "Checker Approved"
 
 const terminologiesMap = new Map([
     [NOT_CONTACTED, 'Unattended'],
@@ -169,7 +179,17 @@ const terminologiesMap = new Map([
   [CLOSING_DATE_CHANGED,CLOSING_DATE_CHANGED],
   [ADVANCE_AMOUNT_PAID,ADVANCE_AMOUNT_PAID],
   [CLOSING_AMOUNT_PAID,CLOSING_AMOUNT_PAID],
-  [LOGIN_DATE_CHANGED,LOGIN_DATE_CHANGED]
+  [LOGIN_DATE_CHANGED,LOGIN_DATE_CHANGED],
+  [APPOINTMENT_CANCELLED, APPOINTMENT_CANCELLED],
+  [APPOINTMENT_COMPLETED, APPOINTMENT_COMPLETED],
+  [APPOINTMENT_PENDING, APPOINTMENT_PENDING],
+  [APPOINTMENT_RESCHEDULED,APPOINTMENT_RESCHEDULED],
+  [ADVISOR_CONSULTATION_PENDING,ADVISOR_CONSULTATION_PENDING],
+  [ADVISOR_CONSULTATION_CANCELLED,ADVISOR_CONSULTATION_CANCELLED],
+  [ADVISOR_CONSULTATION_COMPLETED,ADVISOR_CONSULTATION_COMPLETED],
+  [ADVISOR_CONSULTATION_RESCHEDULED,ADVISOR_CONSULTATION_RESCHEDULED],
+  [MAKER_APPROVED, MAKER_APPROVED],
+  [CHECKER_APPROVED, CHECKER_APPROVED]
   ])
 
 const ACTIVITY_LOGS = {
@@ -194,17 +214,17 @@ const ACTIVITY_LOGS = {
     CREDIT_REPORTS_UPDATE : (credit_card_name, total_outstanding) => `Credit Card Report Uploaded ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
     LOAN_REPORT_DELETE : (loan_type, bank_name, loan_amount, emi, emi_date, outstanding) => `Loan Report Deleted ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, EMI Date : ${emi_date}, Outstanding : ${outstanding} )`,
     CREDIT_REPORT_DELETE : (credit_card_name, total_outstanding) => `Credit Card Report Deleted ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
-    WALK_IN_SCHEDULE : (date) => `Walk In scheduled on ${date}`,
-    WALK_IN_RESCHEDULE : (date) => `Walk In rescheduled on ${date}`,
+    WALK_IN_SCHEDULE : (date) => `Appointment scheduled on ${date}`,
+    WALK_IN_RESCHEDULE : (date) => `Appointment rescheduled on ${date}`,
     TASK_UPDATE : (task_type,task_status) => `Task ${terminologiesMap.get(task_type)} is updated to ${task_status}`,
-    WALK_IN_UPDATE : (new_status) => `Walk In status updated to ${new_status}`,
+    WALK_IN_UPDATE : (new_status) => `Appointment status updated to ${new_status}`,
     PAYSLIP_DELETE : (document_name) => `Payslip ${document_name} deleted`,
     OTHER_DOC_UPLOAD : (document_name) => `Other Doc ${document_name} uploaded`,
     OTHER_DOC_DELETE : (document_name) => `Other Doc ${document_name} deleted`,
     CREDIT_BUREAU_DELETE : (document_name) => `Credit Bureau ${document_name} deleted`,
     DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`,
-    CALL_SCHEDULE_WITH_MANAGER : (date) => `Call scheduled with manager on ${date}`,
-    RESCHEDULE_CALL_WITH_MANAGER : (date) => `Call re-scheduled with manager on ${date}`,
+    CALL_SCHEDULE_WITH_MANAGER : (date) => `Advisor consultation scheduled on ${date}`,
+    RESCHEDULE_CALL_WITH_MANAGER : (date) => `Advisor consultation re-scheduled on ${date}`,
     ADD_ACTIVITY_LOG_NOTE : `Note Added`,
     LEAD_SOURCE_UPDATE : 'Lead Source Updated',
     BEREAU_NAME_UPDATE : 'Bereau Name Updated',

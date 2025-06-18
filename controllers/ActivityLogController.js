@@ -1,5 +1,5 @@
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { ActivityLog, sequelize } = require("../models");
+const { ActivityLog, sequelize, Lead } = require("../models");
 const moment = require("moment-timezone");
 const { Op } = require("sequelize");
 const {
@@ -145,6 +145,38 @@ async function getActivityLogs(req, res) {
         totalPages,
       };
     }
+
+    if (result.rows.length > 0) {
+  // Get all unique lead IDs
+  const leadIds = [...new Set(
+    result.rows
+      .map(row => row.lead_id || row.get?.('lead_id')) // Handle both raw and model instances
+      .filter(id => id)
+  )];
+
+  // Fetch all lead buckets at once
+  const leads = await Lead.findAll({
+    where: { id: leadIds },
+    attributes: ['id', 'lead_bucket'],
+    raw: true
+  });
+
+  // Create a mapping of lead_id to lead_bucket
+  const leadBucketMap = leads.reduce((map, lead) => {
+    map[lead.id] = lead.lead_bucket;
+    return map;
+  }, {});
+
+  // Assign lead_bucket to each row
+  result.rows = result.rows.map(row => {
+    // Handle both raw results and model instances
+    const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
+    return {
+      ...rowData,
+      lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
+    };
+  });
+}
 
     return ApiResponse(
       res,

@@ -1,7 +1,22 @@
-const { LoanReport, Lead, sequelize, ActivityLog, Activity } = require("../models");
-const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
-const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
+const {
+  LoanReport,
+  Lead,
+  sequelize,
+  ActivityLog,
+  Activity,
+} = require("../models");
+const {
+  createLogData,
+  createActivityLog,
+} = require("../services/ActivityLogServices");
+const {
+  ACTIVITY_LOGS,
+  ACTIVITY_TYPES,
+} = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
+const {
+  generateLoanOrCreditReportChangeLog,
+} = require("../utilities/helper-functions");
 
 async function getLoanReportsByLeadId(req, res) {
   try {
@@ -27,7 +42,7 @@ async function getLoanReportsByLeadId(req, res) {
 
     // Fetch the loan reports for the valid leadId
     const loanReports = await LoanReport.findAll({
-      where: { lead_id: validLeadId, status:'active' },
+      where: { lead_id: validLeadId, status: "active" },
     });
 
     return ApiResponse(
@@ -76,16 +91,26 @@ async function getAllLoanReports(req, res) {
   }
 }
 
-async function updateLoanReport(req,res){
+async function updateLoanReport(req, res) {
   try {
-    const { id, lead_id, loan_amount, bank_name, loan_type, emi, outstanding, status, updated_by } = req.body;
+    const {
+      id,
+      lead_id,
+      loan_amount,
+      bank_name,
+      loan_type,
+      emi,
+      outstanding,
+      status,
+      updated_by,
+    } = req.body;
     if (!id) {
-      return ApiResponse(res, 'error', 400, 'LoanReport ID is required.');
+      return ApiResponse(res, "error", 400, "LoanReport ID is required.");
     }
 
     const loanReport = await LoanReport.findByPk(id);
     if (!loanReport) {
-      return ApiResponse(res, 'error', 404, 'LoanReport not found.');
+      return ApiResponse(res, "error", 404, "LoanReport not found.");
     }
 
     const updateData = {};
@@ -99,10 +124,24 @@ async function updateLoanReport(req,res){
     if (updated_by !== undefined) updateData.updated_by = updated_by;
 
     await loanReport.update(updateData);
-    return ApiResponse(res, 'success', 200, 'LoanReport updated successfully.', loanReport);
+    return ApiResponse(
+      res,
+      "success",
+      200,
+      "LoanReport updated successfully.",
+      loanReport
+    );
   } catch (error) {
     console.log(error);
-    return ApiResponse(res,'error', 500, "Failed to update loan report !", null, error,null)
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      "Failed to update loan report !",
+      null,
+      error,
+      null
+    );
   }
 }
 
@@ -114,28 +153,28 @@ async function deleteLoanReport(req, res) {
 
     if (!id) {
       await transaction.rollback();
-      return ApiResponse(res, 'error', 400, "Id is required!");
+      return ApiResponse(res, "error", 400, "Id is required!");
     }
 
     if (!updated_by) {
       await transaction.rollback();
-      return ApiResponse(res, 'error', 400, "Updated by ID is required!");
+      return ApiResponse(res, "error", 400, "Updated by ID is required!");
     }
 
     if (!loanReport) {
       await transaction.rollback();
-      return ApiResponse(res, 'error', 400, "Loan report data is missing!");
+      return ApiResponse(res, "error", 400, "Loan report data is missing!");
     }
 
     // Soft delete loan report
     const [updatedCount] = await LoanReport.update(
-      { status: 'deleted', updated_by: updated_by },
+      { status: "deleted", updated_by: updated_by },
       { where: { id: loanReport.id }, transaction } // FIX: Ensure transaction is passed correctly
     );
 
     if (updatedCount === 0) {
       await transaction.rollback();
-      return ApiResponse(res, 'error', 404, "Loan Report Not Found!");
+      return ApiResponse(res, "error", 404, "Loan Report Not Found!");
     }
 
     // Log activity
@@ -154,35 +193,74 @@ async function deleteLoanReport(req, res) {
       lead_name
     );
 
-    await ActivityLog.create(
-      {...logData},
-      {transaction}
-    )
+    await ActivityLog.create({ ...logData }, { transaction });
 
     await transaction.commit(); // Commit only if everything succeeds
 
-    return ApiResponse(res, 'success', 200, "Loan Report Soft Deleted Successfully!", {id:loanReport.id});
+    return ApiResponse(
+      res,
+      "success",
+      200,
+      "Loan Report Soft Deleted Successfully!",
+      { id: loanReport.id }
+    );
   } catch (error) {
     await transaction.rollback(); // Rollback on error
     console.error(error);
-    return ApiResponse(res, 'error', 500, "Failed to soft delete loan report!", null, error, null);
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      "Failed to soft delete loan report!",
+      null,
+      error,
+      null
+    );
   }
 }
 
 async function addLoanReport(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, lead_name, emi_date, loan_disbursal_date } = req.body;
+    const {
+      lead_id,
+      loan_amount,
+      bank_name,
+      loan_type,
+      emi,
+      outstanding,
+      created_by,
+      lead_name,
+      emi_date,
+      loan_disbursal_date,
+    } = req.body;
 
-    if (!lead_id || !loan_amount || !bank_name || !loan_type || !emi || !outstanding || !created_by || !lead_name || !emi_date) {
-      return ApiResponse(res, 'error', 400, "Missing required fields!", null, null);
+    if (
+      !lead_id ||
+      !loan_amount ||
+      !bank_name ||
+      !loan_type ||
+      !emi ||
+      !outstanding ||
+      !created_by ||
+      !lead_name ||
+      !emi_date
+    ) {
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "Missing required fields!",
+        null,
+        null
+      );
     }
 
     // Check for recent Activity
     const recentActivity = await Activity.findOne({
       where: { lead_id },
-      order: [['createdAt', 'DESC']],
-      transaction
+      order: [["createdAt", "DESC"]],
+      transaction,
     });
 
     if (recentActivity) {
@@ -195,10 +273,10 @@ async function addLoanReport(req, res) {
           lead_id,
           created_by,
           lead_name,
-          activity_status: 'Not Contacted',
+          activity_status: "Not Contacted",
           docs_collected: true,
           // task_status: TASK_STATUSES[0], // Set default task status
-          status: 'active'
+          status: "active",
         },
         { transaction }
       );
@@ -206,7 +284,17 @@ async function addLoanReport(req, res) {
 
     // Create Loan Report
     const newLoanReport = await LoanReport.create(
-      { lead_id, loan_amount, bank_name, loan_type, emi, outstanding, created_by, emi_date, loan_disbursal_date },
+      {
+        lead_id,
+        loan_amount,
+        bank_name,
+        loan_type,
+        emi,
+        outstanding,
+        created_by,
+        emi_date,
+        loan_disbursal_date,
+      },
       { transaction }
     );
 
@@ -215,19 +303,149 @@ async function addLoanReport(req, res) {
       {
         created_by,
         activity_type: ACTIVITY_TYPES.LOAN_REPORT_ADD,
-        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date),
+        activity_desc: ACTIVITY_LOGS.LOAN_REPORT_ADD(
+          loan_type,
+          bank_name,
+          loan_amount,
+          emi,
+          outstanding,
+          emi_date,
+          loan_disbursal_date
+        ),
         lead_id,
         lead_name,
-        status: 'active'
+        status: "active",
       },
       { transaction }
     );
 
     await transaction.commit();
-    return ApiResponse(res, 'success', 201, "Loan Report added successfully!", newLoanReport, null, null);
+    return ApiResponse(
+      res,
+      "success",
+      201,
+      "Loan Report added successfully!",
+      newLoanReport,
+      null,
+      null
+    );
   } catch (error) {
     await transaction.rollback();
-    return ApiResponse(res, 'error', 500, "Failed to add loan report!", null, error, null);
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      "Failed to add loan report!",
+      null,
+      error,
+      null
+    );
+  }
+}
+
+async function editLoanReport(req, res) {
+  const transaction = await sequelize.transaction();
+  try {
+    const {
+      id,
+      lead_id,
+      loan_amount,
+      bank_name,
+      loan_type,
+      emi,
+      outstanding,
+      updated_by,
+      lead_name,
+      emi_date,
+      loan_disbursal_date,
+    } = req.body;
+
+    if (
+      !id ||
+      !lead_id ||
+      !loan_amount ||
+      !bank_name ||
+      !loan_type ||
+      !emi ||
+      !outstanding ||
+      !updated_by ||
+      !lead_name ||
+      !emi_date ||
+      !loan_disbursal_date
+    ) {
+      await transaction.rollback();
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "Missing required fields!",
+        null,
+        null
+      );
+    }
+
+    const loanReportFromDB = await LoanReport.findOne({
+      where: { id, lead_id },
+      transaction,
+    });
+
+    if (!loanReportFromDB) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Loan report not found !");
+    }
+
+    const [updatedCount] = await LoanReport.update(
+      {
+        loan_amount,
+        bank_name,
+        loan_type,
+        emi,
+        outstanding,
+        updated_by,
+        lead_name,
+        emi_date,
+        loan_disbursal_date,
+      },
+      { where: { id, lead_id }, transaction }
+    );
+
+    const changeLog = generateLoanOrCreditReportChangeLog(loanReportFromDB, req.body, "LOAN");
+
+    // Log Loan Report Edit in ActivityLog
+    await ActivityLog.create(
+      {
+        created_by: updated_by,
+        activity_type: ACTIVITY_TYPES.LOAN_REPORT_EDIT,
+        activity_desc: changeLog,
+        lead_id,
+        lead_name,
+        status: "active",
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      201,
+      updatedCount > 0
+        ? "Loan report updated successfully!"
+        : "No changes made.",
+      { ...req.body }
+    );
+  } catch (error) {
+    console.log("error in edit loan report api = ", error);
+
+    await transaction.rollback();
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      "Something went wrong !",
+      null,
+      error
+    );
   }
 }
 
@@ -236,5 +454,6 @@ module.exports = {
   getAllLoanReports,
   updateLoanReport,
   deleteLoanReport,
-  addLoanReport
+  addLoanReport,
+  editLoanReport,
 };

@@ -21,12 +21,12 @@ function toUTCFormat(dateString, timeString = "00:00:00") {
 function getErrorReason(err) {
   if (!err) return "Unknown error";
 
-  if (err.name === 'SequelizeUniqueConstraintError') {
+  if (err.name === "SequelizeUniqueConstraintError") {
     const field = err?.errors?.[0]?.path || "unknown field";
     return `Duplicate entry violates unique constraint on '${field}'`;
   }
 
-  if (err.name === 'SequelizeValidationError') {
+  if (err.name === "SequelizeValidationError") {
     return err.errors.map((e) => `${e.path}: ${e.message}`).join(", ");
   }
 
@@ -34,64 +34,108 @@ function getErrorReason(err) {
     return err.original.sqlMessage;
   }
 
-  if (typeof err.message === 'string') {
+  if (typeof err.message === "string") {
     return err.message;
   }
 
   return JSON.stringify(err);
 }
 
-  function getUpdatedFields(oldLead, newLead) {
-    let updatedFields = {};
+function getUpdatedFields(oldLead, newLead) {
+  let updatedFields = {};
 
-    Object.keys(newLead).forEach((key) => {
-        if (
-            oldLead[key] !== newLead[key] && 
-            !(oldLead[key] == null && newLead[key] == "") // Handle null vs empty string equivalence
-        ) {
-            updatedFields[key] = {
-                newValue: oldLead[key],
-                oldValue: newLead[key]
-            };
-        }
-    });
-
-    return updatedFields;
-  }
-
-  function getActivityType(keyName){
-    switch(keyName){
-      case 'name' :
-        return ACTIVITY_TYPES.NAME_UPDATE;
-      case 'email' :
-        return ACTIVITY_TYPES.EMAIL_UPDATE;
-      case 'city' :
-        return ACTIVITY_TYPES.CITY_UPDATE;
-      case 'salary' :
-        return ACTIVITY_TYPES.SALARY_UPDATE;
-      case 'company' :
-        return ACTIVITY_TYPES.COMPANY_UPDATE;
-      case 'company_category_name' :
-        return ACTIVITY_TYPES.COMPANY_CATEGORY_UPDATE
-      case 'lead_source' : 
-        return ACTIVITY_TYPES.LEAD_SOURCE_UPDATE
-      case 'bereau_name' :
-        return ACTIVITY_TYPES.BEREAU_NAME_UPDATE
-      case 'bereau_score' :
-        return ACTIVITY_TYPES.BEREAU_SCORE_UPDATE
+  Object.keys(newLead).forEach((key) => {
+    if (
+      oldLead[key] !== newLead[key] &&
+      !(oldLead[key] == null && newLead[key] == "") // Handle null vs empty string equivalence
+    ) {
+      updatedFields[key] = {
+        newValue: oldLead[key],
+        oldValue: newLead[key],
+      };
     }
-  }
+  });
 
-  function formatString(str) {
-    return str
-        .replace(/_/g, ' ')                  // Replace underscores with spaces
-        .replace(/\b\w/g, (char) => char.toUpperCase());  // Capitalize the first letter of each word
+  return updatedFields;
+}
+
+function getActivityType(keyName) {
+  switch (keyName) {
+    case "name":
+      return ACTIVITY_TYPES.NAME_UPDATE;
+    case "email":
+      return ACTIVITY_TYPES.EMAIL_UPDATE;
+    case "city":
+      return ACTIVITY_TYPES.CITY_UPDATE;
+    case "salary":
+      return ACTIVITY_TYPES.SALARY_UPDATE;
+    case "company":
+      return ACTIVITY_TYPES.COMPANY_UPDATE;
+    case "company_category_name":
+      return ACTIVITY_TYPES.COMPANY_CATEGORY_UPDATE;
+    case "lead_source":
+      return ACTIVITY_TYPES.LEAD_SOURCE_UPDATE;
+    case "bereau_name":
+      return ACTIVITY_TYPES.BEREAU_NAME_UPDATE;
+    case "bereau_score":
+      return ACTIVITY_TYPES.BEREAU_SCORE_UPDATE;
   }
+}
+
+function formatString(str) {
+  return str
+    .replace(/_/g, " ") // Replace underscores with spaces
+    .replace(/\b\w/g, (char) => char.toUpperCase()); // Capitalize the first letter of each word
+}
+
+function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
+  const fieldsToCheck =
+    reportType === "LOAN"
+      ? [
+          "loan_type",
+          "loan_amount",
+          "bank_name",
+          "emi",
+          "outstanding",
+          "emi_date",
+          "loan_disbursal_date",
+        ]
+      : ["credit_card_name", "total_outstanding"];
+
+  const formatDate = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    return !isNaN(date) ? date.toISOString().split("T")[0] : value;
+  };
+
+  let log =
+    reportType === "LOAN"
+      ? "Loan report updated:\n"
+      : "Credit report updated:\n";
+
+  fieldsToCheck.forEach((field) => {
+    let oldVal = oldData[field];
+    let newVal = newData[field];
+
+    // If it's a date field, format it
+    if (["emi_date", "loan_disbursal_date"].includes(field)) {
+      oldVal = formatDate(oldVal);
+      newVal = formatDate(newVal);
+    }
+
+    if (String(oldVal) !== String(newVal)) {
+      log += `& ${field}: "${oldVal}" → "${newVal}"\n`;
+    }
+  });
+
+  return log.trim(); // remove trailing newline
+}
 
 module.exports = {
   toUTCFormat,
   getErrorReason,
   getUpdatedFields,
   getActivityType,
-  formatString
+  formatString,
+  generateLoanOrCreditReportChangeLog,
 };

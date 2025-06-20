@@ -35,6 +35,8 @@ const ACTIVITY_TYPES = {
     LEAD_UPDATE: 'LEAD_UPDATE',
     LOAN_REPORT_ADD : 'LOAN_REPORT_ADD',
     CREDIT_REPORT_ADD : 'CREDIT_REPORT_ADD',
+    LOAN_REPORT_EDIT : 'LOAN_REPORT_EDIT',
+    CREDIT_REPORT_EDIT : 'CREDIT_REPORT_EDIT',
 }
 
 const ASSIGNED_TABLE = "ASSIGNED_TABLE";
@@ -232,7 +234,7 @@ const ACTIVITY_LOGS = {
     LEAD_UPDATE: 'Lead Details Updated',
     LOAN_REPORT_ADD: (loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding}, EMI Date : ${emi_date}, Loan Disbursal Date : ${loan_disbursal_date} )`,
     CREDIT_REPORT_ADD : (credit_card_name, total_outstanding) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
-    VERIFICATION_STATUS_UPDATE: (verification_status) => `Updated Verification Status to : ${terminologiesMap.get(verification_status)}`
+    VERIFICATION_STATUS_UPDATE: (verification_status) => `Updated Verification Status to : ${terminologiesMap.get(verification_status)}`,
 }
 
 module.exports = {

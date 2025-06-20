@@ -5,6 +5,7 @@ const {
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
+const { generateLoanOrCreditReportChangeLog } = require("../utilities/helper-functions");
 
 async function getCreditReportsByLeadId(req, res) {
   try {
@@ -284,10 +285,99 @@ async function addCreditReport(req, res) {
   }
 }
 
+async function editCreditReport(req, res) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const {
+      id,
+      lead_id,
+      credit_card_name,
+      total_outstanding,
+      updated_by,
+      lead_name
+    } = req.body;
+
+    // Validate required fields
+    if (
+      !id ||
+      !lead_id ||
+      !credit_card_name ||
+      !total_outstanding ||
+      !updated_by ||
+      !lead_name
+    ) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Missing required fields!");
+    }
+
+    // Fetch current record
+    const creditReportFromDB = await CreditReport.findOne({
+      where: { id, lead_id },
+      transaction,
+    });
+
+    if (!creditReportFromDB) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Credit report not found!");
+    }
+
+    // Only update changed fields
+    const updateData = {
+      credit_card_name,
+      total_outstanding,
+      updated_by,
+    };
+
+    const [updatedCount] = await CreditReport.update(updateData, {
+      where: { id, lead_id },
+      transaction,
+    });
+
+    // Log activity - only if something changed
+    if (updatedCount > 0) {
+      const changeLog = generateLoanOrCreditReportChangeLog(
+        creditReportFromDB,
+        updateData,
+        "CREDIT"
+      );
+
+      await ActivityLog.create(
+        {
+          created_by: updated_by,
+          activity_type: ACTIVITY_TYPES.CREDIT_REPORT_EDIT,
+          activity_desc: changeLog,
+          lead_id,
+          lead_name,
+          status: "active",
+        },
+        { transaction }
+      );
+    }
+
+    await transaction.commit();
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      updatedCount > 0
+        ? "Credit report updated successfully!"
+        : "No changes made.",
+      { ...req.body }
+    );
+  } catch (error) {
+    console.error("Error in edit credit report API:", error);
+    await transaction.rollback();
+    return ApiResponse(res, "ERROR", 500, "Something went wrong!", null, error);
+  }
+}
+
 module.exports = {
   getCreditReportsByLeadId,
   getAllCreditReports,
   deleteCreditReportById,
   deleteCreditReport,
   addCreditReport,
+  editCreditReport
 };

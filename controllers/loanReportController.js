@@ -184,6 +184,7 @@ async function deleteLoanReport(req, res) {
         loanReport.bank_name,
         loanReport.loan_amount,
         loanReport.emi,
+        loanReport.emi_date,
         loanReport.outstanding
       ),
       ACTIVITY_TYPES.LOAN_REPORT_DELETE,

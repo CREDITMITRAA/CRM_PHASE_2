@@ -89,7 +89,7 @@ async function getWalkIns(req, res) {
     let { page = 1, pageSize = 10, created_by, date, walk_in_status, date_time_range } = req.query;
     let whereConditions = {
       walk_in_status: {
-        [Op.notIn]: ["Completed"]
+        [Op.notIn]: ["Completed", "Cancelled"]
       }
     };
     

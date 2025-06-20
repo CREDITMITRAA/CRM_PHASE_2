@@ -147,7 +147,7 @@ async function deleteCreditReport(req, res) {
     if (updatedCount === 0) {
       await transaction.rollback();
       // No record was updated, meaning the record does not exist
-      return ApiResponse(res, "error", 404, "Loan Report Not Found!");
+      return ApiResponse(res, "error", 404, "Credit Report Not Found!");
     }
 
     // Log Activity

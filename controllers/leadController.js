@@ -747,7 +747,7 @@ async function getAllLeadsWithPagination(req, res) {
     // SQL to get call count grouped by created_by
     const callCounts = await sequelize.query(
       `SELECT created_by, COUNT(*) as count 
-   FROM ${process.env.DB_NAME} activities 
+   FROM activities 
    WHERE (:startDate IS NULL OR createdAt >= :startDate) 
      AND (:endDate IS NULL OR createdAt <= :endDate)
    GROUP BY created_by`,

@@ -1986,6 +1986,7 @@ async function uploadLead(req, res) {
     const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
 
     if (leadFromDB) {
+      const prev_lead_data = leadFromDB.toJSON();
       // Update current lead source
       leadFromDB.lead_source = lead_source;
 
@@ -2003,6 +2004,34 @@ async function uploadLead(req, res) {
       // if (email) leadFromDB.email = email;
 
       await leadFromDB.save({ transaction });
+
+      const updatedLead = leadFromDB.toJSON()
+      let logMessages = []
+
+      for (const key in req.body) {
+  const prevValue = prev_lead_data[key];
+  const newValue = updatedLead[key];
+
+  if (
+    prevValue != null &&
+    newValue != null &&
+    String(prevValue) !== String(newValue)
+  ) {
+    logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+  }
+}
+
+      if(logMessages.length > 0){
+        let logData = createLogData(
+          `Lead details updated: ${logMessages.join(", ")}`,
+          ACTIVITY_TYPES.LEAD_UPDATE,
+          0,
+          leadFromDB.id,
+          null,
+          leadFromDB.name
+        )
+        await createActivityLog(logData, transaction)
+      }
 
       await transaction.commit();
       return ApiResponse(res, "success", 201, "Lead updated successfully!");

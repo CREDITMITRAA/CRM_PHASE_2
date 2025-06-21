@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+ const { DataTypes } = require('sequelize');
 const { LEAD_STATUSES, VERIFICATION_STATUSES, APPLICATION_STATUSES, CRM_BUCKETS } = require('../utilities/constants');
 
 module.exports = (sequelize) => {

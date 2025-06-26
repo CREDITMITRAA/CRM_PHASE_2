@@ -746,11 +746,11 @@ async function getAllLeadsWithPagination(req, res) {
 
     // SQL to get call count grouped by created_by
     const callCounts = await sequelize.query(
-      `SELECT created_by, COUNT(*) as count 
-   FROM Activities 
-   WHERE (:startDate IS NULL OR createdAt >= :startDate) 
-     AND (:endDate IS NULL OR createdAt <= :endDate)
-   GROUP BY created_by`,
+      `SELECT lead_id, COUNT(*) AS total_changes
+        FROM Activities
+        WHERE (:startDate IS NULL OR createdAt >= :startDate)
+          AND (:endDate IS NULL OR createdAt <= :endDate)
+        GROUP BY lead_id`,
       {
         replacements: {
           startDate: callsStartDate,
@@ -760,19 +760,20 @@ async function getAllLeadsWithPagination(req, res) {
       }
     );
 
-    // Map for quick loopup
+    // Map for quick lookup by lead_id
     const callCountMap = {};
-    callCounts.forEach(({ created_by, count }) => {
-      callCountMap[created_by] = parseInt(count);
+    callCounts.forEach(({ lead_id, total_changes }) => {
+      callCountMap[lead_id] = parseInt(total_changes);
     });
 
-    
+
+
     rows.forEach((lead) => {
-      const activity = lead.dataValues?.Activities?.[0];
-      const createdBy = activity?.created_by;
+      const leadId = lead.dataValues?.id;
 
-      lead.dataValues.calls_count = createdBy ? callCountMap[createdBy] || 0 : 0;
+      lead.dataValues.calls_count = leadId ? callCountMap[leadId] || 0 : 0;
     });
+
 
 
     const totalPages = isPaginationEnabled ? Math.ceil(count / pageSize) : 1;
@@ -976,8 +977,7 @@ async function updateLeadReportsActivities(req, res) {
       const activityLogs = Object.keys(updatedFields).map((field) => ({
         created_by: userId,
         activity_type: getActivityType(field),
-        activity_desc: `${formatString(field)} updated from "${
-          updatedFields[field].oldValue
+        activity_desc: `${formatString(field)} updated from "${updatedFields[field].oldValue
           }" to "${updatedFields[field].newValue}"`,
         lead_id: leadId,
         lead_name: lead_name,
@@ -2051,19 +2051,19 @@ async function uploadLead(req, res) {
       let logMessages = []
 
       for (const key in req.body) {
-  const prevValue = prev_lead_data[key];
-  const newValue = updatedLead[key];
+        const prevValue = prev_lead_data[key];
+        const newValue = updatedLead[key];
 
-  if (
-    prevValue != null &&
-    newValue != null &&
-    String(prevValue) !== String(newValue)
-  ) {
-    logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
-  }
-}
+        if (
+          prevValue != null &&
+          newValue != null &&
+          String(prevValue) !== String(newValue)
+        ) {
+          logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+        }
+      }
 
-      if(logMessages.length > 0){
+      if (logMessages.length > 0) {
         let logData = createLogData(
           `Lead details updated: ${logMessages.join(", ")}`,
           ACTIVITY_TYPES.LEAD_UPDATE,

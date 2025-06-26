@@ -1,4 +1,7 @@
 const { ACTIVITY_TYPES } = require("./ActivityLogConstants");
+const crypto = require("crypto");
+const { LEAD_AGGREGATOR } = require("./constants");
+const { LeadPartner } = require("../models");
 
 function toUTCFormat(dateString, timeString = "00:00:00") {
   // Combine date and time strings
@@ -131,6 +134,21 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
   return log.trim(); // remove trailing newline
 }
 
+function generateApiCredentials() {
+  const api_key = crypto.randomBytes(16).toString("hex");
+  const api_secret = crypto.randomBytes(32).toString("hex");
+  return { api_key, api_secret };
+}
+
+async function generatePartnerCode(type) {
+  const prefix = type === LEAD_AGGREGATOR ? "LA" : "CN";
+
+  const count = await LeadPartner.count({ where: { lead_partner_type: type } });
+  const serial = String(count + 1).padStart(4, "0");
+
+  return `${prefix}${serial}`;
+}
+
 module.exports = {
   toUTCFormat,
   getErrorReason,
@@ -138,4 +156,6 @@ module.exports = {
   getActivityType,
   formatString,
   generateLoanOrCreditReportChangeLog,
+  generateApiCredentials,
+  generatePartnerCode
 };

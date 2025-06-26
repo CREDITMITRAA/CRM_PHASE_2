@@ -22,6 +22,7 @@ const NotificationRoutes = require('./NotificationRoutes')
 const CallLogRoutes = require('./CallLogRoutes')
 const ProfileImageUrlRoutes = require('./ProfileImageUrlRoutes')
 const ExEmployeeRoutes = require('./ExEmployeeRoutes')
+const LeadPartnerRoutes = require("./LeadPartnerRoutes")
 // Add more routes as needed...
 
 // Set up routes
@@ -45,6 +46,7 @@ router.use('/notifications', NotificationRoutes)
 router.use('/call-logs', CallLogRoutes)
 router.use('/profile-image-urls', ProfileImageUrlRoutes)
 router.use('/ex-employees', ExEmployeeRoutes)
+router.use('/lead-partner', LeadPartnerRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

@@ -58,96 +58,6 @@ async function createBulkLeads(req, res) {
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    const isValidIndianMobile = (phone) => {
-      if (!phone || typeof phone !== 'string') return false;
-
-      // Remove all whitespace and hyphens
-      const cleaned = phone.replace(/[\s-]/g, "");
-
-      // Check for alphabetic characters
-      if (/[a-zA-Z]/.test(cleaned)) return false;
-
-      // Extract only digits
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      // Check for valid 10-digit mobile number (without prefix)
-      if (/^[6-9]\d{9}$/.test(digitsOnly)) return true;
-
-      // Check for valid prefixed numbers (+91, 91, 0, 0091, 091)
-      if (/^(\+|0{0,2}91)/.test(cleaned)) {
-        // Should have exactly 12 digits (91 + 10) or 11 digits (0 + 10)
-        if (digitsOnly.length === 12 && digitsOnly.startsWith('91') && /^[6-9]/.test(digitsOnly.substring(2))) {
-          return true;
-        }
-        if (digitsOnly.length === 11 && digitsOnly.startsWith('0') && /^[6-9]/.test(digitsOnly.substring(1))) {
-          return true;
-        }
-        // Handle 0091/091 cases (14 digits total for 0091, 13 for 091)
-        if ((digitsOnly.startsWith('0091') && digitsOnly.length === 14 && /^[6-9]/.test(digitsOnly.substring(4)))) {
-          return true;
-        }
-        if ((digitsOnly.startsWith('091') && digitsOnly.length === 13 && /^[6-9]/.test(digitsOnly.substring(3)))) {
-          return true;
-        }
-      }
-
-      return false;
-    };
-
-    const extractTenDigitMobile = (phone) => {
-      if (!isValidIndianMobile(phone)) return null;
-
-      const cleaned = phone.replace(/[\s-]/g, "");
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      // Handle +91/0091/91/091 prefixes
-      if (digitsOnly.startsWith('0091') && digitsOnly.length === 14) {
-        return digitsOnly.substring(4);
-      }
-      if (digitsOnly.startsWith('091') && digitsOnly.length === 13) {
-        return digitsOnly.substring(3);
-      }
-      if ((digitsOnly.startsWith('+91') || digitsOnly.startsWith('91')) && digitsOnly.length === 12) {
-        return digitsOnly.substring(2);
-      }
-      if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-        return digitsOnly.substring(1);
-      }
-
-      // Plain 10-digit number
-      if (digitsOnly.length === 10) {
-        return digitsOnly;
-      }
-
-      return null;
-    };
-
-    const getPhoneValidationReason = (rawPhone) => {
-      if (!rawPhone || typeof rawPhone !== "string") return "Phone is missing";
-      if (/[a-zA-Z]/.test(rawPhone)) return "Contains alphabetic characters";
-
-      const cleaned = rawPhone.replace(/[\s-]/g, "");
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      if (isValidIndianMobile(rawPhone)) return null;
-
-      // Specific error messages
-      if (digitsOnly.length > 14) return "Too many digits (maximum 14 with 0091 prefix)";
-      if (digitsOnly.length < 10) return `Only ${digitsOnly.length} digits (need 10)`;
-
-      if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
-        return "Invalid starting digit (must be 6-9)";
-      }
-
-      if (/^00[^91]/.test(cleaned)) return "Invalid international prefix";
-      if (/^\+[^9]/.test(cleaned)) return "Invalid international prefix";
-
-      // Landline specific checks
-      if (/^[02]/.test(digitsOnly)) return "Landline numbers not accepted";
-
-      return "Invalid phone format";
-    };
-
     // Rest of your existing workflow remains the same
     req.body.forEach((lead) => {
       let isValid = true;
@@ -234,6 +144,8 @@ async function createBulkLeads(req, res) {
         email: l.email,
         phone: l.phone,
         lead_source: l.lead_source,
+        ...(l.bereau_score && {bereau_score: l.bereau_score}),
+        ...(l.campaign && {campaign: l.campaign})
       })),
       invalidLeads,
     });
@@ -2105,7 +2017,7 @@ async function uploadLead(req, res) {
 async function addNewLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { name, email, phone, source } = req.body;
+    const { name, email, phone, source, bereau_score, campaign } = req.body;
 
     // Validate mandatory fields
     if (!name || !phone || !source) {
@@ -2113,21 +2025,61 @@ async function addNewLead(req, res) {
       return ApiResponse(res, "error", 400, "Name, Phone, and Source are required fields!");
     }
 
-    // Check if lead already exists
-    const existingLead = await Lead.findOne({ where: { phone }, transaction });
-    if (existingLead) {
+    // Validate phone number
+    if (!isValidIndianMobile(phone)) {
       await transaction.rollback();
-      return ApiResponse(res, "error", 409, "Lead with this phone already exists.");
+      const reason = getPhoneValidationReason(phone);
+      return ApiResponse(res, "error", 400, `Invalid phone number: ${reason}`);
     }
 
-    // Create new lead
+    const normalizedPhone = extractTenDigitMobile(phone);
+    if (!normalizedPhone) {
+      await transaction.rollback();
+      return ApiResponse(res, "error", 400, "Unable to normalize phone number");
+    }
+
+    // More efficient search for existing leads
+    const existingLead = await Lead.findOne({
+      where: {
+        [Op.or]: [
+          // Exact match (for normalized numbers)
+          { phone: normalizedPhone },
+          
+          // Match numbers containing the normalized 10 digits
+          { phone: { [Op.substring]: normalizedPhone } },
+          
+          // Match numbers ending with the 10 digits
+          { phone: { [Op.endsWith]: normalizedPhone } },
+          
+          // Match common Indian phone formats
+          { phone: { [Op.eq]: `+91${normalizedPhone}` } },
+          { phone: { [Op.eq]: `91${normalizedPhone}` } },
+          { phone: { [Op.eq]: `0${normalizedPhone}` } },
+          
+          // Match with spaces/dashes in different positions
+          { phone: { [Op.eq]: `+91 ${normalizedPhone.slice(0, 5)} ${normalizedPhone.slice(5)}` } },
+          { phone: { [Op.eq]: `${normalizedPhone.slice(0, 5)}-${normalizedPhone.slice(5)}` } }
+        ]
+      },
+      transaction
+    });
+
+    if (existingLead) {
+      await transaction.rollback();
+      return ApiResponse(res, "error", 409, 
+        `Lead with this phone already exists (as ${existingLead.phone})`);
+    }
+
+    // Create new lead with normalized phone
     const newLead = await Lead.create(
       {
         name,
         email,
-        phone,
+        phone: normalizedPhone,
         lead_source: source,
         last_updated_status: "Not Contacted",
+        ...(bereau_score && {bereau_score: bereau_score}),
+        ...(campaign && {campaign: campaign})
       },
       { transaction }
     );
@@ -2137,10 +2089,104 @@ async function addNewLead(req, res) {
 
   } catch (error) {
     await transaction.rollback();
+    
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return ApiResponse(res, "error", 409, "Lead with this phone already exists.");
+    }
+    
     return ApiResponse(res, "error", 500, "Failed to add lead!", null, error);
   }
 }
 
+const isValidIndianMobile = (phone) => {
+      if (!phone || typeof phone !== 'string') return false;
+
+      // Remove all whitespace and hyphens
+      const cleaned = phone.replace(/[\s-]/g, "");
+
+      // Check for alphabetic characters
+      if (/[a-zA-Z]/.test(cleaned)) return false;
+
+      // Extract only digits
+      const digitsOnly = cleaned.replace(/\D/g, "");
+
+      // Check for valid 10-digit mobile number (without prefix)
+      if (/^[6-9]\d{9}$/.test(digitsOnly)) return true;
+
+      // Check for valid prefixed numbers (+91, 91, 0, 0091, 091)
+      if (/^(\+|0{0,2}91)/.test(cleaned)) {
+        // Should have exactly 12 digits (91 + 10) or 11 digits (0 + 10)
+        if (digitsOnly.length === 12 && digitsOnly.startsWith('91') && /^[6-9]/.test(digitsOnly.substring(2))) {
+          return true;
+        }
+        if (digitsOnly.length === 11 && digitsOnly.startsWith('0') && /^[6-9]/.test(digitsOnly.substring(1))) {
+          return true;
+        }
+        // Handle 0091/091 cases (14 digits total for 0091, 13 for 091)
+        if ((digitsOnly.startsWith('0091') && digitsOnly.length === 14 && /^[6-9]/.test(digitsOnly.substring(4)))) {
+          return true;
+        }
+        if ((digitsOnly.startsWith('091') && digitsOnly.length === 13 && /^[6-9]/.test(digitsOnly.substring(3)))) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    const extractTenDigitMobile = (phone) => {
+      if (!isValidIndianMobile(phone)) return null;
+
+      const cleaned = phone.replace(/[\s-]/g, "");
+      const digitsOnly = cleaned.replace(/\D/g, "");
+
+      // Handle +91/0091/91/091 prefixes
+      if (digitsOnly.startsWith('0091') && digitsOnly.length === 14) {
+        return digitsOnly.substring(4);
+      }
+      if (digitsOnly.startsWith('091') && digitsOnly.length === 13) {
+        return digitsOnly.substring(3);
+      }
+      if ((digitsOnly.startsWith('+91') || digitsOnly.startsWith('91')) && digitsOnly.length === 12) {
+        return digitsOnly.substring(2);
+      }
+      if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
+        return digitsOnly.substring(1);
+      }
+
+      // Plain 10-digit number
+      if (digitsOnly.length === 10) {
+        return digitsOnly;
+      }
+
+      return null;
+    };
+
+    const getPhoneValidationReason = (rawPhone) => {
+      if (!rawPhone || typeof rawPhone !== "string") return "Phone is missing";
+      if (/[a-zA-Z]/.test(rawPhone)) return "Contains alphabetic characters";
+
+      const cleaned = rawPhone.replace(/[\s-]/g, "");
+      const digitsOnly = cleaned.replace(/\D/g, "");
+
+      if (isValidIndianMobile(rawPhone)) return null;
+
+      // Specific error messages
+      if (digitsOnly.length > 14) return "Too many digits (maximum 14 with 0091 prefix)";
+      if (digitsOnly.length < 10) return `Only ${digitsOnly.length} digits (need 10)`;
+
+      if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
+        return "Invalid starting digit (must be 6-9)";
+      }
+
+      if (/^00[^91]/.test(cleaned)) return "Invalid international prefix";
+      if (/^\+[^9]/.test(cleaned)) return "Invalid international prefix";
+
+      // Landline specific checks
+      if (/^[02]/.test(digitsOnly)) return "Landline numbers not accepted";
+
+      return "Invalid phone format";
+    };
 
 module.exports = {
   createBulkLeads,

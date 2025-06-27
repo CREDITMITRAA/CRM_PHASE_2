@@ -221,6 +221,8 @@ async function uploadLeadsFromLeadPartner(req, res) {
         lead_source: leadPartnerName,
         status: "active",
         last_updated_status: "Not Contacted",
+        ...(lead.bereau_score && {bereau_score: lead.bereau_score}),
+        ...(lead.campaign && {campaign: lead.campaign})
       });
     }
 
@@ -273,6 +275,8 @@ async function uploadLeadsFromLeadPartner(req, res) {
         name: l.name,
         phone: l.phone,
         email: l.email,
+        ...(bereau_score && {bereau_score: l.bereau_score}),
+        ...(campaign && {campaign: l.campaign})
       })),
       invalidLeads: invalidLeads.map((l) => ({
         reason: l.reason,

@@ -42,6 +42,7 @@ module.exports = (sequelize) => {
     prev_lead_sources: { type: DataTypes.JSON, defaultValue: [], allowNull: true },
     visit_count: { type: DataTypes.INTEGER, defaultValue:0, allowNull:true },
     product: { type: DataTypes.STRING },
+    campaign: { type: DataTypes.STRING, allowNull:true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

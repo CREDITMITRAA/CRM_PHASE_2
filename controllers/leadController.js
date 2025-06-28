@@ -1529,7 +1529,7 @@ async function updateApplicationStatus(req, res) {
             application_status
           )} (Login Date : ${login_date})`
           : application_status === "Application Closed" ?
-          `Updated Application Status to : ${terminologiesMap.get(application_status)} & Updated Lead Status to : ${terminologiesMap.get(application_status)}`
+          `Updated Application Status to : Application Closed & Updated Lead Status to : Application Closed`
           : `Updated Application Status to : ${terminologiesMap.get(
             application_status
           )}`;

@@ -1490,7 +1490,16 @@ async function updateApplicationStatus(req, res) {
       updateData.login_date = login_date;
       updateData.is_paid = true;
       updateData.application_status = application_status;
-    } else {
+    } else if(application_status === "Application Closed"){
+        // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      updateData.application_status_note = application_status_note;
+      updateData.is_rejected = false;
+      updateData.rejection_reason = null;
+      updateData.rejected_by_id = null;
+      updateData.rejected_at = null;
+      updateData.updated_by = user_id;
+      updateData.lead_status = "Closed"
+    }else{
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
@@ -1519,6 +1528,8 @@ async function updateApplicationStatus(req, res) {
           ? `Updated Application Status to : ${terminologiesMap.get(
             application_status
           )} (Login Date : ${login_date})`
+          : application_status === "Application Closed" ?
+          `Updated Application Status to : ${terminologiesMap.get(application_status)} & Updated Lead Status to : ${terminologiesMap.get(application_status)}`
           : `Updated Application Status to : ${terminologiesMap.get(
             application_status
           )}`;

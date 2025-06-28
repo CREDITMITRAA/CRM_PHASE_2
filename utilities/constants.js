@@ -60,7 +60,8 @@ const  LEAD_STATUSES = [
     "Advisor Consultation Pending",
     "Advisor Consultation Cancelled",
     "Advisor Consultation Completed",
-    "Advisor Consultation Rescheduled"       
+    "Advisor Consultation Rescheduled",
+    "Closed"       
 ]
 
 const VERIFICATION_STATUSES = [

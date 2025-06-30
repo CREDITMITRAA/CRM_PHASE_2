@@ -174,7 +174,7 @@ async function getAllLeadsWithPagination(req, res) {
       assigned_to = "true",
       lead_status,
       assigned_to_name,
-      application_status,
+      application_status=null,
       lead_source,
       isPaginationOff = "false",
       last_updated,
@@ -187,6 +187,7 @@ async function getAllLeadsWithPagination(req, res) {
       closing_date,
       verification_date,
       is_paid = false,
+      table_type
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -376,6 +377,15 @@ async function getAllLeadsWithPagination(req, res) {
     const verification_statuses = Array.isArray(verification_status)
       ? verification_status.filter((s) => s !== "")
       : [verification_status].filter((s) => s !== "");
+
+    if(table_type === "Normal Login"){
+        whereConditions[Op.or] = [
+          { verification_status: { [Op.like]: "Normal Login" } },
+          // { verification_status: { [Op.eq]: null } },
+          { application_status: { [Op.like]: "Normal Login" } },
+          // { application_status: { [Op.eq]: null } },
+        ];
+      }
 
     if (lead_bucket) {
       whereConditions.lead_bucket = lead_bucket;
@@ -577,44 +587,39 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (for_walk_ins_page) {
-      if (!application_status) {
-        console.log("application status is not given");
-
-        whereConditions[Op.or] = [
+  if (!application_status) {
+    console.log("application status is not given");
+    
+    // Modified condition to exclude "Normal Login" but include null and others
+    whereConditions[Op.and] = [
+      {
+        [Op.or]: [
           { application_status: { [Op.notLike]: "Normal Login" } },
-          { application_status: { [Op.eq]: null } },
-        ];
-      } else {
-        whereConditions.application_status = {
-          [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
-        };
-      }
-      // whereConditions[Op.or] = [
-      //   { lead_bucket: { [Op.ne]: 'APPROVED_APPLICATIONS' } },
-      //   { lead_bucket: { [Op.eq]: null } }
-      // ];
-      includeConditions.push({
-        model: WalkIn,
-        as: "walkIns",
-        attributes: walk_in_attributes,
-        required: false,
-        order: [
-          // [Sequelize.literal(`COALESCE(rescheduled_date_time, walk_in_date_time)`), "DESC"]
-          ["id", "DESC"],
-        ],
-        limit: 1,
-      });
-      if (for_walk_ins_page && !application_status) {
-        whereConditions[Op.or] = [
-          { application_status: { [Op.ne]: "Normal Login" } },
-          { application_status: { [Op.eq]: null } },
-        ];
-        whereConditions[Op.or] = [
+          { application_status: { [Op.eq]: null } }
+        ]
+      },
+      {
+        [Op.or]: [
           { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
-          { lead_bucket: { [Op.eq]: null } },
-        ];
+          { lead_bucket: { [Op.eq]: null } }
+        ]
       }
-    }
+    ];
+  } else {
+    whereConditions.application_status = {
+      [Op.like]: `%${application_status}%`,
+    };
+  }
+
+  includeConditions.push({
+    model: WalkIn,
+    as: "walkIns",
+    attributes: walk_in_attributes,
+    required: false,
+    order: [["id", "DESC"]],
+    limit: 1,
+  });
+}
 
     if (user_status === "inactive") {
       leadAssignmentConditions.status = user_status;

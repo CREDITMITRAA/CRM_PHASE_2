@@ -127,6 +127,24 @@ const CRM_BUCKETS = [
 const LEAD_AGGREGATOR = "LEAD_AGGREGATOR"
 const CONNECTOR = "CONNECTOR"
 
+const CLOSING_LOAN_STATUSES = [
+    "Loan Closed",
+    "Dispute Raised",
+    "Dispute Updated"
+]
+
+const LOAN_STATUS_OPTIONS = [
+    "Closed",
+    "Not Closing",
+    "Others"
+]
+
+const DISPUTE_STATUS_OPTIONS = [
+    "Dispute Raised",
+    "Dispute Updated",
+    "Others"
+]
+
 module.exports = {
     LEAD_STATUSES,
     VERIFICATION_STATUSES,
@@ -140,5 +158,8 @@ module.exports = {
     INITIAL_LEAD_STATUSES,
     CRM_BUCKETS,
     LEAD_AGGREGATOR,
-    CONNECTOR
+    CONNECTOR,
+    CLOSING_LOAN_STATUSES,
+    LOAN_STATUS_OPTIONS,
+    DISPUTE_STATUS_OPTIONS
 }

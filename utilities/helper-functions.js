@@ -102,8 +102,12 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
           "outstanding",
           "emi_date",
           "loan_disbursal_date",
+          "loan_status",
+          "closing_date",
+          "dispute_status",
+          "dispute_date"
         ]
-      : ["credit_card_name", "total_outstanding"];
+      : ["credit_card_name", "total_outstanding", "loan_status", "closing_date", "dispute_status", "dispute_date"];
 
   const formatDate = (value) => {
     if (!value) return "";

@@ -145,6 +145,13 @@ const DISPUTE_STATUS_OPTIONS = [
     "Others"
 ]
 
+const LOGIN_STATUS_OPTIONS = [
+    "In Progress",
+    "Rejected",
+    "Approved",
+    "Disbursed "
+]
+
 module.exports = {
     LEAD_STATUSES,
     VERIFICATION_STATUSES,
@@ -161,5 +168,6 @@ module.exports = {
     CONNECTOR,
     CLOSING_LOAN_STATUSES,
     LOAN_STATUS_OPTIONS,
-    DISPUTE_STATUS_OPTIONS
+    DISPUTE_STATUS_OPTIONS,
+    LOGIN_STATUS_OPTIONS
 }

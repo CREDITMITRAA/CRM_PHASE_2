@@ -74,7 +74,8 @@ const VERIFICATION_STATUSES = [
     "Approved for Walk-In",
     "Rejected",
     "Normal Login",
-    "Scheduled Call With Manager"
+    "Scheduled Call With Manager",
+    "Send To Login"
 ]
 
 const TASK_STATUSES = [
@@ -87,6 +88,9 @@ const ROLE_ADMIN = "ROLE_ADMIN"
 const ROLE_EMPLOYEE = "ROLE_EMPLOYEE"
 const ROLE_MANAGER = "ROLE_MANAGER"
 const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
+const LOGINS = "LOGINS"
+const NORMAL_LOGIN = "Normal Login"
+const PAID = "Paid"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -114,14 +118,19 @@ const APPLICATION_STATUSES = [
     "Login Started",
     "Login Date Changed",
     "Maker Approved",
-    "Checker Approved"
+    "Checker Approved",
+    "Send To Login",
+    "Under Process",
+    "Application On Hold",
+    "Disbursed From Banks"
 ]
 
 const CRM_BUCKETS = [
     "PIPELINE_ENTRIES",
     "PRELIMINERY_CHECK",
     "APPOINTMENTS",
-    "APPROVED_APPLICATIONS"
+    "APPROVED_APPLICATIONS",
+    "LOGINS"
 ]
 
 const LEAD_AGGREGATOR = "LEAD_AGGREGATOR"
@@ -169,5 +178,8 @@ module.exports = {
     CLOSING_LOAN_STATUSES,
     LOAN_STATUS_OPTIONS,
     DISPUTE_STATUS_OPTIONS,
-    LOGIN_STATUS_OPTIONS
+    LOGIN_STATUS_OPTIONS,
+    LOGINS,
+    NORMAL_LOGIN,
+    PAID
 }

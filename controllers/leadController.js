@@ -22,6 +22,9 @@ const {
   ROLE_EMPLOYEE,
   LEAD_STATUSES,
   ROLE_OPERATIONS_TEAM,
+  LOGINS,
+  NORMAL_LOGIN,
+  PAID,
 } = require("../utilities/constants");
 const {
   getErrorReason,
@@ -187,7 +190,8 @@ async function getAllLeadsWithPagination(req, res) {
       closing_date,
       verification_date,
       is_paid = false,
-      table_type
+      table_type,
+      lead_type
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -263,7 +267,11 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (lead_status) {
-      whereConditions.last_updated_status = lead_status;
+      if(lead_bucket === LOGINS){
+        whereConditions.lead_status = lead_status;  
+      }else{
+        whereConditions.last_updated_status = lead_status;
+      }
     }
 
     if (closing_date) {
@@ -372,6 +380,17 @@ async function getAllLeadsWithPagination(req, res) {
       //   [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
       // }
       whereConditions.lead_source = lead_source;
+    }
+
+    if(lead_type){
+      switch(lead_type){
+        case NORMAL_LOGIN:
+          whereConditions.is_paid = false;
+          break;
+        case PAID:
+          whereConditions.is_paid = true;
+          break;
+      }
     }
 
     const verification_statuses = Array.isArray(verification_status)
@@ -1232,6 +1251,10 @@ async function updateVerificationStatus(req, res) {
       updateData.rejected_at = null;
       updateData.updated_by = user_id;
     }
+
+    if(verification_status === "Send To Login"){
+      updateData.lead_bucket = LOGINS
+    }
     // Update lead
     const updatedLead = await LeadServices.updateLead(
       lead_id,
@@ -1437,14 +1460,18 @@ async function updateApplicationStatus(req, res) {
       "Application Closed",
       "Login Date Changed",
       "Maker Approved",
-      "Checker Approved"
+      "Checker Approved",
+      "Send To Login",
+      "Under Process",
+      "Application On Hold",
+      "Disbursed from Banks"
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
-    if (lead_status !== "12 documents collected") {
+    if (lead_bucket !== LOGINS && lead_status !== "12 documents collected") {
       if (lead_bucket !== "APPROVED_APPLICATIONS") {
         return ApiResponse(
           res,
@@ -1504,6 +1531,14 @@ async function updateApplicationStatus(req, res) {
       updateData.rejected_at = null;
       updateData.updated_by = user_id;
       updateData.lead_status = "Closed"
+    }else if(application_status === "Send To Login"){
+      updateData.application_status_note = application_status_note;
+      updateData.is_rejected = false;
+      updateData.rejection_reason = null;
+      updateData.rejected_by_id = null;
+      updateData.rejected_at = null;
+      updateData.updated_by = user_id;
+      updateData.lead_bucket = LOGINS
     }else{
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
       updateData.application_status_note = application_status_note;
@@ -1585,7 +1620,7 @@ async function updateApplicationStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update application status !",
+      error.message || "Failed to update application status !",
       null,
       error,
       null
@@ -1688,7 +1723,7 @@ async function updateLeadStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update lead status !",
+      error.message || "Failed to update lead status !",
       null,
       error,
       null

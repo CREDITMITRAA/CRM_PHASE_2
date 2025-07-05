@@ -91,6 +91,17 @@ const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
 const LOGINS = "LOGINS"
 const NORMAL_LOGIN = "Normal Login"
 const PAID = "Paid"
+const LOGIN_BANK_1 = "Login Bank 1"
+const LOGIN_BANK_2 = "Login Bank 2"
+const LOGIN_BANK_3 = "Login Bank 3"
+const LOGIN_BANK_4 = "Login Bank 4"
+const LOGIN_BANK_5 = "Login Bank 5"
+const LOGIN_BANK_6 = "Login Bank 6"
+const UNDER_PROCESS = "Under Process"
+const START_LOGIN = "Start Login"
+const DISBURSED_FROM_BANKS = "Disbursed from Banks"
+const APPLICATION_IS_CLOSED = "Application Closed";
+const OTHERS = "Others"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -122,7 +133,8 @@ const APPLICATION_STATUSES = [
     "Send To Login",
     "Under Process",
     "Application On Hold",
-    "Disbursed From Banks"
+    "Disbursed From Banks",
+    "Start Login"
 ]
 
 const CRM_BUCKETS = [
@@ -181,5 +193,16 @@ module.exports = {
     LOGIN_STATUS_OPTIONS,
     LOGINS,
     NORMAL_LOGIN,
-    PAID
+    PAID,
+    LOGIN_BANK_1,
+    LOGIN_BANK_2,
+    LOGIN_BANK_3,
+    LOGIN_BANK_4,
+    LOGIN_BANK_5,
+    LOGIN_BANK_6,
+    UNDER_PROCESS,
+    START_LOGIN,
+    DISBURSED_FROM_BANKS,
+    APPLICATION_IS_CLOSED,
+    OTHERS
 }

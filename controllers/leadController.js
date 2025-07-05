@@ -25,6 +25,13 @@ const {
   LOGINS,
   NORMAL_LOGIN,
   PAID,
+  LOGIN_BANK_1,
+  LOGIN_BANK_2,
+  LOGIN_BANK_3,
+  LOGIN_BANK_4,
+  LOGIN_BANK_5,
+  LOGIN_BANK_6,
+  UNDER_PROCESS,
 } = require("../utilities/constants");
 const {
   getErrorReason,
@@ -1253,7 +1260,8 @@ async function updateVerificationStatus(req, res) {
     }
 
     if(verification_status === "Send To Login"){
-      updateData.lead_bucket = LOGINS
+      updateData.lead_bucket = LOGINS,
+      updateData.application_status = "Send To Login"
     }
     // Update lead
     const updatedLead = await LeadServices.updateLead(
@@ -1464,7 +1472,8 @@ async function updateApplicationStatus(req, res) {
       "Send To Login",
       "Under Process",
       "Application On Hold",
-      "Disbursed from Banks"
+      "Disbursed from Banks",
+      "Start Login"
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
@@ -1683,6 +1692,10 @@ async function updateLeadStatus(req, res) {
     // Add `verification_date` if `lead_status` is between the two values
     if (["All Clear", "Negative Transaction"].includes(lead_status)) {
       updatePayload.verification_date = verification_date;
+    }
+
+    if([LOGIN_BANK_1,LOGIN_BANK_2,LOGIN_BANK_3,LOGIN_BANK_4,LOGIN_BANK_5,LOGIN_BANK_6].includes(lead_status)){
+      updatePayload.application_status = UNDER_PROCESS
     }
 
     updatedLead = await LeadServices.updateLead(

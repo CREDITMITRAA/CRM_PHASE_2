@@ -43,6 +43,7 @@ module.exports = (sequelize) => {
     visit_count: { type: DataTypes.INTEGER, defaultValue:0, allowNull:true },
     product: { type: DataTypes.STRING },
     campaign: { type: DataTypes.STRING, allowNull:true },
+    preferred_bank_name: { type: DataTypes.STRING },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

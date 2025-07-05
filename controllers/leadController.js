@@ -1979,7 +1979,7 @@ async function getAllLeadsOfExEmployees(req, res) {
 async function uploadLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const {
+    let {
       name,
       phone,
       email,
@@ -1990,6 +1990,7 @@ async function uploadLead(req, res) {
       bereau_score,
       city,
       bereau_name,
+      preferred_bank_name
     } = req.body;
     if (client_secret !== "SQ") {
       await transaction.rollback();
@@ -1999,6 +2000,9 @@ async function uploadLead(req, res) {
     if (!name || !phone || !lead_source || !loan_type) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
+    }
+    if(loan_amount){
+      loan_amount = Number(loan_amount).toFixed(0)
     }
 
     const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
@@ -2019,6 +2023,7 @@ async function uploadLead(req, res) {
       if (bereau_score) leadFromDB.bereau_score = bereau_score;
       if (bereau_name) leadFromDB.bereau_name = bereau_name;
       if (city) leadFromDB.city = city;
+      if (preferred_bank_name) leadFromDB.preferred_bank_name = preferred_bank_name
       // if (email) leadFromDB.email = email;
 
       await leadFromDB.save({ transaction });

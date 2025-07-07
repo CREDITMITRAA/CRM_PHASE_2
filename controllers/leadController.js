@@ -2021,7 +2021,11 @@ async function uploadLead(req, res) {
       leadFromDB.product = loan_type;
       if (loan_amount) leadFromDB.loan_amount = loan_amount;
       if (bereau_score) leadFromDB.bereau_score = bereau_score;
-      if (bereau_name) leadFromDB.bereau_name = bereau_name;
+      if (bereau_name){
+         leadFromDB.bereau_name = bereau_name;
+      }else{
+        leadFromDB.bereau_name = 'Others';
+      }
       if (city) leadFromDB.city = city;
       if (preferred_bank_name) leadFromDB.preferred_bank_name = preferred_bank_name
       // if (email) leadFromDB.email = email;

@@ -2165,6 +2165,8 @@ async function uploadLead(req, res) {
       );
     }
   } catch (error) {
+    console.log('error in uploading leads = ', error);
+    
     await transaction.rollback();
     return ApiResponse(
       res,

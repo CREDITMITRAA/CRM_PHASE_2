@@ -289,13 +289,17 @@ async function editCreditReport(req, res) {
   const transaction = await sequelize.transaction();
 
   try {
-    const {
+    let {
       id,
       lead_id,
       credit_card_name,
       total_outstanding,
       updated_by,
-      lead_name
+      lead_name,
+      loan_status,
+        closing_date,
+        dispute_status,
+        dispute_date
     } = req.body;
 
     // Validate required fields
@@ -322,11 +326,74 @@ async function editCreditReport(req, res) {
       return ApiResponse(res, "ERROR", 400, "Credit report not found!");
     }
 
+    // Convert all dates to Date objects for proper comparison
+    const dbClosingDate = new Date(creditReportFromDB.closing_date);
+    const inputClosingDate = closing_date ? new Date(closing_date) : null;
+    const dbDisputeDate = creditReportFromDB.dispute_date ? new Date(creditReportFromDB.dispute_date) : null;
+    const inputDisputeDate = dispute_date ? new Date(dispute_date) : null;
+
+    // Treat "Others" status the same as "Not Closing"
+    const isLoanClosed = loan_status === "Closed";
+    const isLoanNotClosed = !isLoanClosed || loan_status === "Others";
+
+    // 1. Reset dispute fields if loan status changed to/from Closed or closing date changed
+    if (creditReportFromDB.loan_status !== loan_status || 
+        (inputClosingDate && dbClosingDate.toISOString() !== inputClosingDate.toISOString())) {
+      dispute_date = null;
+      dispute_status = null;
+      
+      // If we're resetting dispute fields, update them in the DB
+      if (dispute_date === null || dispute_status === null) {
+        await LoanReport.update(
+          { dispute_date: null, dispute_status: null },
+          { where: { id, lead_id }, transaction }
+        );
+      }
+    }
+
+    // 2. All dispute operations require loan to be closed (not "Others" or "Not Closing")
+    if (isLoanNotClosed && (dispute_status || dispute_date)) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Loan must be closed to modify disputes!");
+    }
+
+    // 3. Dispute Raised validations (only if loan is closed)
+    if (isLoanClosed && dispute_status === "Dispute Raised") {
+      if (!inputDisputeDate) {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Dispute date is required!");
+      }
+      if (inputDisputeDate <= dbClosingDate) {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Dispute date must be after closing date!");
+      }
+    }
+
+    // 4. Dispute Updated validations (only if loan is closed)
+    else if (isLoanClosed && dispute_status === "Dispute Updated") {
+      if (creditReportFromDB.dispute_status !== "Dispute Raised") {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Must raise dispute before updating!");
+      }
+      if (!inputDisputeDate) {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Updated dispute date is required!");
+      }
+      if (inputDisputeDate <= dbDisputeDate) {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Updated dispute date must be after previous dispute date!");
+      }
+    }
+
     // Only update changed fields
     const updateData = {
       credit_card_name,
       total_outstanding,
       updated_by,
+      loan_status,
+      closing_date,
+      dispute_status,
+      dispute_date
     };
 
     const [updatedCount] = await CreditReport.update(updateData, {

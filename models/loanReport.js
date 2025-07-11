@@ -1,18 +1,32 @@
 const { DataTypes } = require('sequelize');
+const { LOAN_STATUS_OPTIONS, DISPUTE_STATUS_OPTIONS } = require('../utilities/constants');
 
 module.exports = (sequelize) => {
-  return sequelize.define('LoanReport', {
+  const LoanReport = sequelize.define('LoanReport', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     lead_id: { type: DataTypes.INTEGER },
     loan_amount: { type: DataTypes.DECIMAL(15, 2) },
     bank_name: { type: DataTypes.STRING },
     loan_type: { type: DataTypes.STRING },
     emi: { type: DataTypes.DECIMAL(10, 2) },
-    emi_date: { type: DataTypes.DATE, allowNull:true },
-    loan_disbursal_date: { type: DataTypes.DATE, allowNull:true },
+    emi_date: { type: DataTypes.DATE, allowNull: true },
+    loan_disbursal_date: { type: DataTypes.DATE, allowNull: true },
     outstanding: { type: DataTypes.DECIMAL(15, 2) },
-    status: { type: DataTypes.ENUM('active', 'inactive', 'deleted'), defaultValue: 'active' },
-    updated_by: {type: DataTypes.INTEGER},
-    created_by: {type: DataTypes.INTEGER}
-  }, { timestamps: true });
+    loan_status: {type: DataTypes.ENUM(...LOAN_STATUS_OPTIONS), 
+      defaultValue: 'Not Closing' },
+    closing_date: { type: DataTypes.DATE, allowNull: true },
+    dispute_status: {type: DataTypes.ENUM(...DISPUTE_STATUS_OPTIONS) },
+    dispute_date: { type: DataTypes.DATE, allowNull: true },
+    status: { 
+      type: DataTypes.ENUM('active', 'inactive', 'deleted'), 
+      defaultValue: 'active' 
+    },
+    updated_by: { type: DataTypes.INTEGER },
+    created_by: { type: DataTypes.INTEGER }
+  }, { 
+    timestamps: true,
+    paranoid: true // Optional: for soft deletion
+  });
+
+  return LoanReport;
 };

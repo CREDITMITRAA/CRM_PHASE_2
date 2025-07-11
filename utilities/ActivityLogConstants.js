@@ -1,3 +1,5 @@
+const { START_LOGIN, UNDER_PROCESS, DISBURSED_FROM_BANKS } = require("./constants");
+
 const ACTIVITY_TYPES = {
     LEAD_ASSIGNMENT: 'LEAD_ASSIGNMENT',
     LEAD_REASSIGNMENT: 'LEAD_REASSIGNMENT',
@@ -37,6 +39,9 @@ const ACTIVITY_TYPES = {
     CREDIT_REPORT_ADD : 'CREDIT_REPORT_ADD',
     LOAN_REPORT_EDIT : 'LOAN_REPORT_EDIT',
     CREDIT_REPORT_EDIT : 'CREDIT_REPORT_EDIT',
+    LOGIN_ADD : 'LOGIN_ADD',
+    LOGIN_EDIT : "LOGIN_EDIT",
+    LOGIN_DELETE: "LOGIN_DELETE"
 }
 
 const ASSIGNED_TABLE = "ASSIGNED_TABLE";
@@ -191,7 +196,12 @@ const terminologiesMap = new Map([
   [ADVISOR_CONSULTATION_COMPLETED,ADVISOR_CONSULTATION_COMPLETED],
   [ADVISOR_CONSULTATION_RESCHEDULED,ADVISOR_CONSULTATION_RESCHEDULED],
   [MAKER_APPROVED, MAKER_APPROVED],
-  [CHECKER_APPROVED, CHECKER_APPROVED]
+  [CHECKER_APPROVED, CHECKER_APPROVED],
+  [START_LOGIN,START_LOGIN],
+  [UNDER_PROCESS,UNDER_PROCESS],
+  [DISBURSED_FROM_BANKS,DISBURSED_FROM_BANKS],
+  [APPLICATION_IS_CLOSED,APPLICATION_IS_CLOSED],
+  [OTHERS,OTHERS]
   ])
 
 const ACTIVITY_LOGS = {
@@ -235,6 +245,8 @@ const ACTIVITY_LOGS = {
     LOAN_REPORT_ADD: (loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding}, EMI Date : ${emi_date}, Loan Disbursal Date : ${loan_disbursal_date} )`,
     CREDIT_REPORT_ADD : (credit_card_name, total_outstanding) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
     VERIFICATION_STATUS_UPDATE: (verification_status) => `Updated Verification Status to : ${terminologiesMap.get(verification_status)}`,
+    LOGIN_ADD: (bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Added ( Bank Name : ${bank_name},  Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`,
+    LOGIN_DELETE: (login_id, bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Deleted ( Login ID : ${login_id}, Bank Name : ${bank_name}, Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`
 }
 
 module.exports = {

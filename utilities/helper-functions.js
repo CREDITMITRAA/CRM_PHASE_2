@@ -102,8 +102,19 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
           "outstanding",
           "emi_date",
           "loan_disbursal_date",
+          "loan_status",
+          "closing_date",
+          "dispute_status",
+          "dispute_date"
         ]
-      : ["credit_card_name", "total_outstanding"];
+      : [
+          "credit_card_name",
+          "total_outstanding",
+          "loan_status",
+          "closing_date",
+          "dispute_status",
+          "dispute_date"
+        ];
 
   const formatDate = (value) => {
     if (!value) return "";
@@ -111,27 +122,39 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
     return !isNaN(date) ? date.toISOString().split("T")[0] : value;
   };
 
-  let log =
-    reportType === "LOAN"
-      ? "Loan report updated:\n"
-      : "Credit report updated:\n";
+  const changes = fieldsToCheck
+    .filter(field => {
+      let oldVal = oldData[field];
+      let newVal = newData[field];
 
-  fieldsToCheck.forEach((field) => {
-    let oldVal = oldData[field];
-    let newVal = newData[field];
+      // Format date fields if needed
+      if (field.includes('date') || field === 'emi_date' || field === 'loan_disbursal_date') {
+        oldVal = formatDate(oldVal);
+        newVal = formatDate(newVal);
+      }
 
-    // If it's a date field, format it
-    if (["emi_date", "loan_disbursal_date"].includes(field)) {
-      oldVal = formatDate(oldVal);
-      newVal = formatDate(newVal);
-    }
+      return String(oldVal) !== String(newVal);
+    })
+    .map(field => {
+      let oldVal = oldData[field];
+      let newVal = newData[field];
 
-    if (String(oldVal) !== String(newVal)) {
-      log += `& ${field}: "${oldVal}" → "${newVal}"\n`;
-    }
-  });
+      // Format date fields if needed
+      if (field.includes('date') || field === 'emi_date' || field === 'loan_disbursal_date') {
+        oldVal = formatDate(oldVal);
+        newVal = formatDate(newVal);
+      }
 
-  return log.trim(); // remove trailing newline
+      return `${field}: "${oldVal}" → "${newVal}"`;
+    });
+
+  const prefix = reportType === "LOAN" 
+    ? "Loan report updated: " 
+    : "Credit report updated: ";
+
+  return changes.length > 0
+    ? prefix + changes.join(" & ")
+    : prefix + "No changes detected";
 }
 
 function generateApiCredentials() {
@@ -149,6 +172,25 @@ async function generatePartnerCode(type) {
   return `${prefix}${serial}`;
 }
 
+function generateLoginDetailChangeLog(oldData, newData) {
+  const fieldsToCheck = [
+    "bank_name",
+    "application_number",
+    "login_date",
+    "disbursal_date",
+    "dsa_name",
+    "login_status"
+  ];
+
+  const changes = fieldsToCheck
+    .filter(field => String(oldData[field]) !== String(newData[field]))
+    .map(field => `${field}: "${oldData[field]}" → "${newData[field]}"`);
+
+  return changes.length > 0 
+    ? `Login Detail Updated : ${changes.join(" & ")}`
+    : ""; // or return empty string if no changes
+}
+
 module.exports = {
   toUTCFormat,
   getErrorReason,
@@ -157,5 +199,6 @@ module.exports = {
   formatString,
   generateLoanOrCreditReportChangeLog,
   generateApiCredentials,
-  generatePartnerCode
+  generatePartnerCode,
+  generateLoginDetailChangeLog
 };

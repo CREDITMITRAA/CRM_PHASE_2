@@ -2048,6 +2048,9 @@ async function uploadLead(req, res) {
       preferred_bank_name,
       utm_campaign,
       utm_source,
+      income_type,
+      company,
+      salary
     } = req.body;
     if (client_secret !== "SQ") {
       await transaction.rollback();
@@ -2058,6 +2061,11 @@ async function uploadLead(req, res) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
+
+    if(income_type === "Salaried" && (!company || !salary)){
+      return ApiResponse(res, "ERROR", 400, "Please proivde company and salary if you are salaried")
+    }
+
     if (loan_amount) {
       loan_amount = Number(loan_amount).toFixed(0);
     }
@@ -2101,6 +2109,11 @@ async function uploadLead(req, res) {
       if (preferred_bank_name)
         leadFromDB.preferred_bank_name = preferred_bank_name;
       // if (email) leadFromDB.email = email;
+      if(income_type) leadFromDB.income_type = income_type;
+      if(company) leadFromDB.company = company;
+      if(salary) leadFromDB.salary = salary;
+      if(name) leadFromDB.name = name;
+      if(email) leadFromDB.email = email;
 
       await leadFromDB.save({ transaction });
 
@@ -2154,6 +2167,10 @@ async function uploadLead(req, res) {
         }
         leadToBeSaved.utm_source = utm_source;
       }
+      if(income_type) leadToBeSaved.income_type = income_type;
+      if(company) leadToBeSaved.company = company;
+      if(salary) leadToBeSaved.salary = salary;
+
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
       await transaction.commit();
       return ApiResponse(

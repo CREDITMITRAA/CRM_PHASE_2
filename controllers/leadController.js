@@ -2105,7 +2105,12 @@ async function uploadLead(req, res) {
       } else {
         leadFromDB.bereau_name = "Others";
       }
-      if (city) leadFromDB.city = city;
+      if (city) {
+        leadFromDB.city = city
+        if(!leadFromDB.address){
+          leadFromDB.address = city
+        }
+      };
       if (preferred_bank_name)
         leadFromDB.preferred_bank_name = preferred_bank_name;
       // if (email) leadFromDB.email = email;
@@ -2170,6 +2175,9 @@ async function uploadLead(req, res) {
       if(income_type) leadToBeSaved.income_type = income_type;
       if(company) leadToBeSaved.company = company;
       if(salary) leadToBeSaved.salary = salary;
+      if(!bereau_name){
+        leadToBeSaved.bereau_name = "Others"
+      }
 
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
       await transaction.commit();
@@ -2199,7 +2207,7 @@ async function uploadLead(req, res) {
 async function addNewLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { name, email, phone, source, bereau_score, utm_campaign, utm_source } = req.body;
+    const { name, email, phone, source, bereau_score, utm_campaign, utm_source, bereau_name } = req.body;
 
     // Validate mandatory fields
     if (!name || !phone || !source) {
@@ -2212,8 +2220,12 @@ async function addNewLead(req, res) {
       );
     }
 
-    if(utm_campaign && !utm_source){
-      return ApiResponse(res, "ERROR", 400, "utm source is required for utm campaign")
+    // if(utm_campaign && !utm_source){
+    //   return ApiResponse(res, "ERROR", 400, "utm source is required for utm campaign")
+    // }
+
+    if(bereau_score && !bereau_name){
+      return ApiResponse(res, "ERROR", 400, "Bureau Name is required for Bureau Score")
     }
 
     // Validate phone number
@@ -2287,6 +2299,7 @@ async function addNewLead(req, res) {
         lead_source: source,
         last_updated_status: "Not Contacted",
         ...(bereau_score && { bereau_score: bereau_score }),
+        ...(bereau_name && { bereau_name: bereau_name }),
         ...(utm_campaign && { utm_campaign }),
         ...(utm_source && { utm_source }),
       },

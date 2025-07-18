@@ -105,7 +105,7 @@ async function createBulkLeads(req, res) {
         phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
         last_updated_status: "Not Contacted",
         ...(lead.bereau_score && lead.bereau_name
-          ? { bereau_name }
+          ? { bereau_name: lead.bereau_name }
           : { bereau_name: "TransUnion Cibil" }),
       };
 
@@ -2187,11 +2187,11 @@ async function uploadLead(req, res) {
       if (company) leadToBeSaved.company = company;
       if (salary) leadToBeSaved.salary = salary;
       if (bereau_score) {
-        leadFromDB.bereau_score = bereau_score;
+        leadToBeSaved.bereau_score = bereau_score;
         if (bereau_name) {
-          leadFromDB.bereau_name = bereau_name;
+          leadToBeSaved.bereau_name = bereau_name;
         } else {
-          leadFromDB.bereau_name = "Others";
+          leadToBeSaved.bereau_name = "Others";
         }
       }
 

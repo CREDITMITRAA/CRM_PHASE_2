@@ -104,10 +104,15 @@ async function createBulkLeads(req, res) {
         original_phone: phoneRaw,
         phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
         last_updated_status: "Not Contacted",
-        ...(lead.bereau_score && lead.bereau_name
-          ? { bereau_name: lead.bereau_name }
-          : { bereau_name: "TransUnion Cibil" }),
       };
+
+      if(lead.bereau_score){
+        if(!lead.bereau_name){
+          formattedLead.bereau_name = "TransUnion Cibil"
+        }else{
+          formattedLead.bereau_name = lead.bereau_name
+        }
+      }
 
       if (isValid && extractedPhone) {
         validLeads.push(formattedLead);

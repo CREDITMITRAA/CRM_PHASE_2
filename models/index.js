@@ -17,6 +17,8 @@ const Notification = require("./Notification")(sequelize)
 const CallLog = require('./CallLog')(sequelize)
 const UserMetrics = require('./UserMetrics')(sequelize)
 const ProfileImageUrl = require('./ProfileImageUrl')(sequelize)
+const LeadPartner = require('./LeadPartner')(sequelize)
+const LoginDetail = require('./LoginDetail')(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -72,9 +74,15 @@ LeadDocument.belongsTo(Lead, {
   as: 'lead'
 })
 
+Lead.hasMany(LoginDetail, {
+  foreignKey: 'lead_id',
+  as: 'loginDetails'
+})
 
-
-
+LoginDetail.belongsTo(Lead, {
+  foreignKey: 'lead_id',
+  as: 'lead'
+})
 
 module.exports = {
   sequelize,
@@ -95,5 +103,7 @@ module.exports = {
   Notification,
   CallLog,
   UserMetrics,
-  ProfileImageUrl
+  ProfileImageUrl,
+  LeadPartner,
+  LoginDetail
 };

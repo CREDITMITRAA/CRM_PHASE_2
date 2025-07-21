@@ -22,6 +22,16 @@ const {
   ROLE_EMPLOYEE,
   LEAD_STATUSES,
   ROLE_OPERATIONS_TEAM,
+  LOGINS,
+  NORMAL_LOGIN,
+  PAID,
+  LOGIN_BANK_1,
+  LOGIN_BANK_2,
+  LOGIN_BANK_3,
+  LOGIN_BANK_4,
+  LOGIN_BANK_5,
+  LOGIN_BANK_6,
+  UNDER_PROCESS,
 } = require("../utilities/constants");
 const {
   getErrorReason,
@@ -50,103 +60,18 @@ async function createBulkLeads(req, res) {
 
   try {
     if (!Array.isArray(req.body) || req.body.length === 0) {
-      return ApiResponse(res, "error", 400, "Invalid input. Please provide an array of leads.");
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "Invalid input. Please provide an array of leads."
+      );
     }
 
     let validLeads = [];
     let invalidLeads = [];
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    const isValidIndianMobile = (phone) => {
-      if (!phone || typeof phone !== 'string') return false;
-
-      // Remove all whitespace and hyphens
-      const cleaned = phone.replace(/[\s-]/g, "");
-
-      // Check for alphabetic characters
-      if (/[a-zA-Z]/.test(cleaned)) return false;
-
-      // Extract only digits
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      // Check for valid 10-digit mobile number (without prefix)
-      if (/^[6-9]\d{9}$/.test(digitsOnly)) return true;
-
-      // Check for valid prefixed numbers (+91, 91, 0, 0091, 091)
-      if (/^(\+|0{0,2}91)/.test(cleaned)) {
-        // Should have exactly 12 digits (91 + 10) or 11 digits (0 + 10)
-        if (digitsOnly.length === 12 && digitsOnly.startsWith('91') && /^[6-9]/.test(digitsOnly.substring(2))) {
-          return true;
-        }
-        if (digitsOnly.length === 11 && digitsOnly.startsWith('0') && /^[6-9]/.test(digitsOnly.substring(1))) {
-          return true;
-        }
-        // Handle 0091/091 cases (14 digits total for 0091, 13 for 091)
-        if ((digitsOnly.startsWith('0091') && digitsOnly.length === 14 && /^[6-9]/.test(digitsOnly.substring(4)))) {
-          return true;
-        }
-        if ((digitsOnly.startsWith('091') && digitsOnly.length === 13 && /^[6-9]/.test(digitsOnly.substring(3)))) {
-          return true;
-        }
-      }
-
-      return false;
-    };
-
-    const extractTenDigitMobile = (phone) => {
-      if (!isValidIndianMobile(phone)) return null;
-
-      const cleaned = phone.replace(/[\s-]/g, "");
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      // Handle +91/0091/91/091 prefixes
-      if (digitsOnly.startsWith('0091') && digitsOnly.length === 14) {
-        return digitsOnly.substring(4);
-      }
-      if (digitsOnly.startsWith('091') && digitsOnly.length === 13) {
-        return digitsOnly.substring(3);
-      }
-      if ((digitsOnly.startsWith('+91') || digitsOnly.startsWith('91')) && digitsOnly.length === 12) {
-        return digitsOnly.substring(2);
-      }
-      if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-        return digitsOnly.substring(1);
-      }
-
-      // Plain 10-digit number
-      if (digitsOnly.length === 10) {
-        return digitsOnly;
-      }
-
-      return null;
-    };
-
-    const getPhoneValidationReason = (rawPhone) => {
-      if (!rawPhone || typeof rawPhone !== "string") return "Phone is missing";
-      if (/[a-zA-Z]/.test(rawPhone)) return "Contains alphabetic characters";
-
-      const cleaned = rawPhone.replace(/[\s-]/g, "");
-      const digitsOnly = cleaned.replace(/\D/g, "");
-
-      if (isValidIndianMobile(rawPhone)) return null;
-
-      // Specific error messages
-      if (digitsOnly.length > 14) return "Too many digits (maximum 14 with 0091 prefix)";
-      if (digitsOnly.length < 10) return `Only ${digitsOnly.length} digits (need 10)`;
-
-      if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
-        return "Invalid starting digit (must be 6-9)";
-      }
-
-      if (/^00[^91]/.test(cleaned)) return "Invalid international prefix";
-      if (/^\+[^9]/.test(cleaned)) return "Invalid international prefix";
-
-      // Landline specific checks
-      if (/^[02]/.test(digitsOnly)) return "Landline numbers not accepted";
-
-      return "Invalid phone format";
-    };
 
     // Rest of your existing workflow remains the same
     req.body.forEach((lead) => {
@@ -159,7 +84,10 @@ async function createBulkLeads(req, res) {
       if (validateName && !lead.name) {
         isValid = false;
         reason = "Missing name";
-      } else if (validateEmail && (!lead.email || !emailRegex.test(lead.email))) {
+      } else if (
+        validateEmail &&
+        (!lead.email || !emailRegex.test(lead.email))
+      ) {
         isValid = false;
         reason = "Invalid email";
       } else if (validateSource && !lead.lead_source) {
@@ -175,8 +103,16 @@ async function createBulkLeads(req, res) {
         ...lead,
         original_phone: phoneRaw,
         phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
-        last_updated_status: "Not Contacted"
+        last_updated_status: "Not Contacted",
       };
+
+      if(lead.bereau_score){
+        if(!lead.bereau_name){
+          formattedLead.bereau_name = "TransUnion Cibil"
+        }else{
+          formattedLead.bereau_name = lead.bereau_name
+        }
+      }
 
       if (isValid && extractedPhone) {
         validLeads.push(formattedLead);
@@ -234,6 +170,8 @@ async function createBulkLeads(req, res) {
         email: l.email,
         phone: l.phone,
         lead_source: l.lead_source,
+        ...(l.bereau_score && { bereau_score: l.bereau_score }),
+        ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
       })),
       invalidLeads,
     });
@@ -244,7 +182,6 @@ async function createBulkLeads(req, res) {
     });
   }
 }
-
 
 async function getAllLeadsWithPagination(req, res) {
   try {
@@ -262,7 +199,7 @@ async function getAllLeadsWithPagination(req, res) {
       assigned_to = "true",
       lead_status,
       assigned_to_name,
-      application_status,
+      application_status = null,
       lead_source,
       isPaginationOff = "false",
       last_updated,
@@ -275,6 +212,8 @@ async function getAllLeadsWithPagination(req, res) {
       closing_date,
       verification_date,
       is_paid = false,
+      table_type,
+      lead_type,
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -314,9 +253,9 @@ async function getAllLeadsWithPagination(req, res) {
           assigned_to === "not_assigned"
             ? false
             : !!assigned_to ||
-            !!assigned_to_name ||
-            !!assigned_on ||
-            !!user_status,
+              !!assigned_to_name ||
+              !!assigned_on ||
+              !!user_status,
         where: leadAssignmentConditions,
         include: [
           {
@@ -350,7 +289,11 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (lead_status) {
-      whereConditions.last_updated_status = lead_status;
+      if (lead_bucket === LOGINS) {
+        whereConditions.lead_status = lead_status;
+      } else {
+        whereConditions.last_updated_status = lead_status;
+      }
     }
 
     if (closing_date) {
@@ -461,9 +404,29 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions.lead_source = lead_source;
     }
 
+    if (lead_type) {
+      switch (lead_type) {
+        case NORMAL_LOGIN:
+          whereConditions.is_paid = false;
+          break;
+        case PAID:
+          whereConditions.is_paid = true;
+          break;
+      }
+    }
+
     const verification_statuses = Array.isArray(verification_status)
       ? verification_status.filter((s) => s !== "")
       : [verification_status].filter((s) => s !== "");
+
+    if (table_type === "Normal Login") {
+      whereConditions[Op.or] = [
+        { verification_status: { [Op.like]: "Normal Login" } },
+        // { verification_status: { [Op.eq]: null } },
+        { application_status: { [Op.like]: "Normal Login" } },
+        // { application_status: { [Op.eq]: null } },
+      ];
+    }
 
     if (lead_bucket) {
       whereConditions.lead_bucket = lead_bucket;
@@ -668,40 +631,35 @@ async function getAllLeadsWithPagination(req, res) {
       if (!application_status) {
         console.log("application status is not given");
 
-        whereConditions[Op.or] = [
-          { application_status: { [Op.notLike]: "Normal Login" } },
-          { application_status: { [Op.eq]: null } },
+        // Modified condition to exclude "Normal Login" but include null and others
+        whereConditions[Op.and] = [
+          {
+            [Op.or]: [
+              { application_status: { [Op.notLike]: "Normal Login" } },
+              { application_status: { [Op.eq]: null } },
+            ],
+          },
+          {
+            [Op.or]: [
+              { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
+              { lead_bucket: { [Op.eq]: null } },
+            ],
+          },
         ];
       } else {
         whereConditions.application_status = {
-          [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
+          [Op.like]: `%${application_status}%`,
         };
       }
-      // whereConditions[Op.or] = [
-      //   { lead_bucket: { [Op.ne]: 'APPROVED_APPLICATIONS' } },
-      //   { lead_bucket: { [Op.eq]: null } }
-      // ];
+
       includeConditions.push({
         model: WalkIn,
         as: "walkIns",
         attributes: walk_in_attributes,
         required: false,
-        order: [
-          // [Sequelize.literal(`COALESCE(rescheduled_date_time, walk_in_date_time)`), "DESC"]
-          ["id", "DESC"],
-        ],
+        order: [["id", "DESC"]],
         limit: 1,
       });
-      if (for_walk_ins_page && !application_status) {
-        whereConditions[Op.or] = [
-          { application_status: { [Op.ne]: "Normal Login" } },
-          { application_status: { [Op.eq]: null } },
-        ];
-        whereConditions[Op.or] = [
-          { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
-          { lead_bucket: { [Op.eq]: null } },
-        ];
-      }
     }
 
     if (user_status === "inactive") {
@@ -714,14 +672,14 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions?.activity_status;
     const orderConditions = shouldOrderByUpdatedAt
       ? [
-        ["updatedAt", "DESC"], // Apply updatedAt sorting if verification_status is included
-        ["createdAt", "DESC"],
-        ["id", "DESC"],
-      ]
+          ["updatedAt", "DESC"], // Apply updatedAt sorting if verification_status is included
+          ["createdAt", "DESC"],
+          ["id", "DESC"],
+        ]
       : [
-        ["createdAt", "DESC"], // Default ordering
-        ["id", "DESC"],
-      ];
+          ["createdAt", "DESC"], // Default ordering
+          ["id", "DESC"],
+        ];
 
     const isPaginationEnabled = isPaginationOff === "false";
     const { count, rows } = await Lead.findAndCountAll({
@@ -739,8 +697,14 @@ async function getAllLeadsWithPagination(req, res) {
     if (importedOn) {
       const [start, end] = importedOn.split(",");
       if (start && end) {
-        callsStartDate = moment.tz(start, "YYYY-MM-DDTHH:mm", "Asia/Kolkata").utc().toDate();
-        callsEndDate = moment.tz(end, "YYYY-MM-DDTHH:mm", "Asia/Kolkata").utc().toDate();
+        callsStartDate = moment
+          .tz(start, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        callsEndDate = moment
+          .tz(end, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
       }
     }
 
@@ -766,24 +730,20 @@ async function getAllLeadsWithPagination(req, res) {
       callCountMap[lead_id] = parseInt(total_changes);
     });
 
-
-
     rows.forEach((lead) => {
       const leadId = lead.dataValues?.id;
 
       lead.dataValues.calls_count = leadId ? callCountMap[leadId] || 0 : 0;
     });
 
-
-
     const totalPages = isPaginationEnabled ? Math.ceil(count / pageSize) : 1;
     let pagination = isPaginationEnabled
       ? {
-        page: page,
-        totalPages: totalPages,
-        total: count,
-        pageSize,
-      }
+          page: page,
+          totalPages: totalPages,
+          total: count,
+          pageSize,
+        }
       : null;
 
     return ApiResponse(
@@ -925,7 +885,15 @@ async function updateLeadReportsActivities(req, res) {
     const user = await User.findByPk(userId, { transaction });
     if (!user) {
       await transaction.rollback();
-      return ApiResponse(res, "error", 400, "User Not Found!", null, null, null);
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "User Not Found!",
+        null,
+        null,
+        null
+      );
     }
 
     // Validate role and application_status
@@ -942,15 +910,26 @@ async function updateLeadReportsActivities(req, res) {
       "Login",
     ];
 
-    if (application_status && !validApplicationStatuses.includes(application_status)) {
+    if (
+      application_status &&
+      !validApplicationStatuses.includes(application_status)
+    ) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid Application Status!");
     }
 
     // If application_status is provided, validate lead status
-    if (application_status && verification_status !== "12 documents collected") {
+    if (
+      application_status &&
+      verification_status !== "12 documents collected"
+    ) {
       await transaction.rollback();
-      return ApiResponse(res, "error", 400, "Application Status Cannot be Updated Now!");
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "Application Status Cannot be Updated Now!"
+      );
     }
 
     // Define the update data for lead
@@ -977,8 +956,9 @@ async function updateLeadReportsActivities(req, res) {
       const activityLogs = Object.keys(updatedFields).map((field) => ({
         created_by: userId,
         activity_type: getActivityType(field),
-        activity_desc: `${formatString(field)} updated from "${updatedFields[field].oldValue
-          }" to "${updatedFields[field].newValue}"`,
+        activity_desc: `${formatString(field)} updated from "${
+          updatedFields[field].oldValue
+        }" to "${updatedFields[field].newValue}"`,
         lead_id: leadId,
         lead_name: lead_name,
         status: "active",
@@ -995,7 +975,12 @@ async function updateLeadReportsActivities(req, res) {
       if (application_status === "Rejected") {
         if (!rejection_reason) {
           await transaction.rollback();
-          return ApiResponse(res, "error", 400, "Rejection reason is required!");
+          return ApiResponse(
+            res,
+            "error",
+            400,
+            "Rejection reason is required!"
+          );
         }
         updateData.is_rejected = true;
         updateData.rejection_reason = rejection_reason;
@@ -1100,12 +1085,15 @@ async function updateLeadReportsActivities(req, res) {
           "Previous task is pending! Please complete it before adding a new task."
         );
       }
-      createdActivity = await ActivityServices.addActivity(activity, transaction);
+      createdActivity = await ActivityServices.addActivity(
+        activity,
+        transaction
+      );
 
       // Prepare lead update data
       const leadUpdateData = {
         lead_status: activity.activity_status,
-        last_updated_status: activity.activity_status // Always update last_updated_status
+        last_updated_status: activity.activity_status, // Always update last_updated_status
       };
 
       // Special handling for verification statuses
@@ -1129,7 +1117,10 @@ async function updateLeadReportsActivities(req, res) {
         )
       ) {
         let logDataForTask = createLogData(
-          ACTIVITY_LOGS.TASK_CREATE(activity.activity_status, activity.follow_up),
+          ACTIVITY_LOGS.TASK_CREATE(
+            activity.activity_status,
+            activity.follow_up
+          ),
           ACTIVITY_TYPES.TASK_CREATE,
           userId,
           leadId,
@@ -1137,7 +1128,10 @@ async function updateLeadReportsActivities(req, res) {
           lead_name
         );
         logData = createLogData(
-          ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status, activity.activity_status),
+          ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+            activity.prev_status,
+            activity.activity_status
+          ),
           ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
           userId,
           leadId,
@@ -1155,7 +1149,10 @@ async function updateLeadReportsActivities(req, res) {
         );
       } else {
         logData = createLogData(
-          ACTIVITY_LOGS.LEAD_STATUS_UPDATE(activity.prev_status, activity.activity_status),
+          ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+            activity.prev_status,
+            activity.activity_status
+          ),
           ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
           userId,
           leadId,
@@ -1191,7 +1188,7 @@ async function updateLeadReportsActivities(req, res) {
           {
             verification_status: docsCollectedPayload.docs_collected,
             last_updated_status: docsCollectedPayload.docs_collected,
-            verification_date: new Date()
+            verification_date: new Date(),
           },
           transaction
         );
@@ -1314,6 +1311,11 @@ async function updateVerificationStatus(req, res) {
       updateData.rejected_by_id = null;
       updateData.rejected_at = null;
       updateData.updated_by = user_id;
+    }
+
+    if (verification_status === "Send To Login") {
+      (updateData.lead_bucket = LOGINS),
+        (updateData.application_status = "Send To Login");
     }
     // Update lead
     const updatedLead = await LeadServices.updateLead(
@@ -1520,14 +1522,19 @@ async function updateApplicationStatus(req, res) {
       "Application Closed",
       "Login Date Changed",
       "Maker Approved",
-      "Checker Approved"
+      "Checker Approved",
+      "Send To Login",
+      "Under Process",
+      "Application On Hold",
+      "Disbursed from Banks",
+      "Start Login",
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
-    if (lead_status !== "12 documents collected") {
+    if (lead_bucket !== LOGINS && lead_status !== "12 documents collected") {
       if (lead_bucket !== "APPROVED_APPLICATIONS") {
         return ApiResponse(
           res,
@@ -1578,6 +1585,23 @@ async function updateApplicationStatus(req, res) {
       updateData.login_date = login_date;
       updateData.is_paid = true;
       updateData.application_status = application_status;
+    } else if (application_status === "Application Closed") {
+      // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      updateData.application_status_note = application_status_note;
+      updateData.is_rejected = false;
+      updateData.rejection_reason = null;
+      updateData.rejected_by_id = null;
+      updateData.rejected_at = null;
+      updateData.updated_by = user_id;
+      updateData.lead_status = "Closed";
+    } else if (application_status === "Send To Login") {
+      updateData.application_status_note = application_status_note;
+      updateData.is_rejected = false;
+      updateData.rejection_reason = null;
+      updateData.rejected_by_id = null;
+      updateData.rejected_at = null;
+      updateData.updated_by = user_id;
+      updateData.lead_bucket = LOGINS;
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
       updateData.application_status_note = application_status_note;
@@ -1601,13 +1625,15 @@ async function updateApplicationStatus(req, res) {
     const activity_desc =
       application_status === "Closing Date Changed"
         ? `Updated Application Status to : ${terminologiesMap.get(
-          application_status
-        )} (closing date ${closing_date})`
+            application_status
+          )} (closing date ${closing_date})`
         : specialStatuses.includes(application_status)
-          ? `Updated Application Status to : ${terminologiesMap.get(
+        ? `Updated Application Status to : ${terminologiesMap.get(
             application_status
           )} (Login Date : ${login_date})`
-          : `Updated Application Status to : ${terminologiesMap.get(
+        : application_status === "Application Closed"
+        ? `Updated Application Status to : Application Closed & Updated Lead Status to : Application Closed`
+        : `Updated Application Status to : ${terminologiesMap.get(
             application_status
           )}`;
 
@@ -1657,7 +1683,7 @@ async function updateApplicationStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update application status !",
+      error.message || "Failed to update application status !",
       null,
       error,
       null
@@ -1722,6 +1748,19 @@ async function updateLeadStatus(req, res) {
       updatePayload.verification_date = verification_date;
     }
 
+    if (
+      [
+        LOGIN_BANK_1,
+        LOGIN_BANK_2,
+        LOGIN_BANK_3,
+        LOGIN_BANK_4,
+        LOGIN_BANK_5,
+        LOGIN_BANK_6,
+      ].includes(lead_status)
+    ) {
+      updatePayload.application_status = UNDER_PROCESS;
+    }
+
     updatedLead = await LeadServices.updateLead(
       lead_id,
       updatePayload,
@@ -1760,7 +1799,7 @@ async function updateLeadStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update lead status !",
+      error.message || "Failed to update lead status !",
       null,
       error,
       null
@@ -2003,7 +2042,7 @@ async function getAllLeadsOfExEmployees(req, res) {
 async function uploadLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const {
+    let {
       name,
       phone,
       email,
@@ -2014,6 +2053,12 @@ async function uploadLead(req, res) {
       bereau_score,
       city,
       bereau_name,
+      preferred_bank_name,
+      utm_campaign,
+      utm_source,
+      income_type,
+      company,
+      salary,
     } = req.body;
     if (client_secret !== "SQ") {
       await transaction.rollback();
@@ -2023,6 +2068,19 @@ async function uploadLead(req, res) {
     if (!name || !phone || !lead_source || !loan_type) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
+    }
+
+    if (income_type === "Salaried" && (!company || !salary)) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Please proivde company and salary if you are salaried"
+      );
+    }
+
+    if (loan_amount) {
+      loan_amount = Number(loan_amount).toFixed(0);
     }
 
     const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
@@ -2039,16 +2097,49 @@ async function uploadLead(req, res) {
 
       leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;
       leadFromDB.product = loan_type;
+
+      // update utm campaign and source array to track marketing performance
+      if (utm_campaign && utm_source) {
+        leadFromDB.utm_campaign = utm_campaign;
+        const prevUtmCampaigns = leadFromDB.prev_utm_campaigns || [];
+        const updatedUtmCampaigns = [utm_campaign, ...prevUtmCampaigns];
+        leadFromDB.prev_utm_campaigns = updatedUtmCampaigns;
+
+        leadFromDB.utm_source = utm_source;
+        const prevUtmSources = leadFromDB.prev_utm_sources || [];
+        const updatedUtmSources = [utm_source, ...prevUtmSources];
+        leadFromDB.prev_utm_sources = updatedUtmSources;
+      }
+
       if (loan_amount) leadFromDB.loan_amount = loan_amount;
-      if (bereau_score) leadFromDB.bereau_score = bereau_score;
-      if (bereau_name) leadFromDB.bereau_name = bereau_name;
-      if (city) leadFromDB.city = city;
+      if (bereau_score) {
+        leadFromDB.bereau_score = bereau_score;
+        if (bereau_name) {
+          leadFromDB.bereau_name = bereau_name;
+        } else {
+          leadFromDB.bereau_name = "Others";
+        }
+      }
+
+      if (city) {
+        leadFromDB.city = city;
+        if (!leadFromDB.address) {
+          leadFromDB.address = city;
+        }
+      }
+      if (preferred_bank_name)
+        leadFromDB.preferred_bank_name = preferred_bank_name;
       // if (email) leadFromDB.email = email;
+      if (income_type) leadFromDB.income_type = income_type;
+      if (company) leadFromDB.company = company;
+      if (salary) leadFromDB.salary = salary;
+      if (name) leadFromDB.name = name;
+      if (email) leadFromDB.email = email;
 
       await leadFromDB.save({ transaction });
 
-      const updatedLead = leadFromDB.toJSON()
-      let logMessages = []
+      const updatedLead = leadFromDB.toJSON();
+      let logMessages = [];
 
       for (const key in req.body) {
         const prevValue = prev_lead_data[key];
@@ -2059,7 +2150,9 @@ async function uploadLead(req, res) {
           newValue != null &&
           String(prevValue) !== String(newValue)
         ) {
-          logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+          logMessages.push(
+            `${key} changed from '${prevValue}' to '${newValue}'`
+          );
         }
       }
 
@@ -2071,14 +2164,42 @@ async function uploadLead(req, res) {
           leadFromDB.id,
           null,
           leadFromDB.name
-        )
-        await createActivityLog(logData, transaction)
+        );
+        await createActivityLog(logData, transaction);
       }
 
       await transaction.commit();
       return ApiResponse(res, "success", 201, "Lead updated successfully!");
     } else {
-      let leadToBeSaved = { ...req.body, product: loan_type, last_updated_status: "Not Contacted" };
+      let leadToBeSaved = {
+        ...req.body,
+        product: loan_type,
+        last_updated_status: "Not Contacted",
+      };
+      if (utm_campaign) {
+        leadToBeSaved.utm_campaign = utm_campaign;
+        if (!utm_source) {
+          return ApiResponse(
+            res,
+            "ERROR",
+            400,
+            "utm source is required for utm campaign"
+          );
+        }
+        leadToBeSaved.utm_source = utm_source;
+      }
+      if (income_type) leadToBeSaved.income_type = income_type;
+      if (company) leadToBeSaved.company = company;
+      if (salary) leadToBeSaved.salary = salary;
+      if (bereau_score) {
+        leadToBeSaved.bereau_score = bereau_score;
+        if (bereau_name) {
+          leadToBeSaved.bereau_name = bereau_name;
+        } else {
+          leadToBeSaved.bereau_name = "Others";
+        }
+      }
+
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
       await transaction.commit();
       return ApiResponse(
@@ -2090,6 +2211,8 @@ async function uploadLead(req, res) {
       );
     }
   } catch (error) {
+    console.log("error in uploading leads = ", error);
+
     await transaction.rollback();
     return ApiResponse(
       res,
@@ -2105,42 +2228,253 @@ async function uploadLead(req, res) {
 async function addNewLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { name, email, phone, source } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      source,
+      bereau_score,
+      utm_campaign,
+      utm_source,
+      bereau_name,
+    } = req.body;
 
     // Validate mandatory fields
     if (!name || !phone || !source) {
       await transaction.rollback();
-      return ApiResponse(res, "error", 400, "Name, Phone, and Source are required fields!");
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "Name, Phone, and Source are required fields!"
+      );
     }
 
-    // Check if lead already exists
-    const existingLead = await Lead.findOne({ where: { phone }, transaction });
+    // if(utm_campaign && !utm_source){
+    //   return ApiResponse(res, "ERROR", 400, "utm source is required for utm campaign")
+    // }
+
+    if (bereau_score && !bereau_name) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Bureau Name is required for Bureau Score"
+      );
+    }
+
+    // Validate phone number
+    if (!isValidIndianMobile(phone)) {
+      await transaction.rollback();
+      const reason = getPhoneValidationReason(phone);
+      return ApiResponse(res, "error", 400, `Invalid phone number: ${reason}`);
+    }
+
+    const normalizedPhone = extractTenDigitMobile(phone);
+    if (!normalizedPhone) {
+      await transaction.rollback();
+      return ApiResponse(res, "error", 400, "Unable to normalize phone number");
+    }
+
+    // More efficient search for existing leads
+    const existingLead = await Lead.findOne({
+      where: {
+        [Op.or]: [
+          // Exact match (for normalized numbers)
+          { phone: normalizedPhone },
+
+          // Match numbers containing the normalized 10 digits
+          { phone: { [Op.substring]: normalizedPhone } },
+
+          // Match numbers ending with the 10 digits
+          { phone: { [Op.endsWith]: normalizedPhone } },
+
+          // Match common Indian phone formats
+          { phone: { [Op.eq]: `+91${normalizedPhone}` } },
+          { phone: { [Op.eq]: `91${normalizedPhone}` } },
+          { phone: { [Op.eq]: `0${normalizedPhone}` } },
+
+          // Match with spaces/dashes in different positions
+          {
+            phone: {
+              [Op.eq]: `+91 ${normalizedPhone.slice(
+                0,
+                5
+              )} ${normalizedPhone.slice(5)}`,
+            },
+          },
+          {
+            phone: {
+              [Op.eq]: `${normalizedPhone.slice(0, 5)}-${normalizedPhone.slice(
+                5
+              )}`,
+            },
+          },
+        ],
+      },
+      transaction,
+    });
+
     if (existingLead) {
       await transaction.rollback();
-      return ApiResponse(res, "error", 409, "Lead with this phone already exists.");
+      return ApiResponse(
+        res,
+        "error",
+        409,
+        `Lead with this phone already exists (as ${existingLead.phone})`
+      );
     }
 
-    // Create new lead
+    // Create new lead with normalized phone
     const newLead = await Lead.create(
       {
         name,
         email,
-        phone,
+        phone: normalizedPhone,
         lead_source: source,
         last_updated_status: "Not Contacted",
+        ...(bereau_score && { bereau_score: bereau_score }),
+        ...(bereau_name && { bereau_name: bereau_name }),
+        ...(utm_campaign && { utm_campaign }),
+        ...(utm_source && { utm_source }),
       },
       { transaction }
     );
 
     await transaction.commit();
-    return ApiResponse(res, "success", 201, "Lead added successfully!", newLead);
-
+    return ApiResponse(
+      res,
+      "success",
+      201,
+      "Lead added successfully!",
+      newLead
+    );
   } catch (error) {
     await transaction.rollback();
+
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return ApiResponse(
+        res,
+        "error",
+        409,
+        "Lead with this phone already exists."
+      );
+    }
+
     return ApiResponse(res, "error", 500, "Failed to add lead!", null, error);
   }
 }
 
+const isValidIndianMobile = (phone) => {
+  if (!phone || typeof phone !== "string") return false;
+
+  // Remove all whitespace and hyphens
+  const cleaned = phone.replace(/[\s-]/g, "");
+
+  // Check for alphabetic characters
+  if (/[a-zA-Z]/.test(cleaned)) return false;
+
+  // Extract only digits
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  // Check for valid 10-digit mobile number (without prefix)
+  if (/^[6-9]\d{9}$/.test(digitsOnly)) return true;
+
+  // Check for valid prefixed numbers (+91, 91, 0, 0091, 091)
+  if (/^(\+|0{0,2}91)/.test(cleaned)) {
+    // Should have exactly 12 digits (91 + 10) or 11 digits (0 + 10)
+    if (
+      digitsOnly.length === 12 &&
+      digitsOnly.startsWith("91") &&
+      /^[6-9]/.test(digitsOnly.substring(2))
+    ) {
+      return true;
+    }
+    if (
+      digitsOnly.length === 11 &&
+      digitsOnly.startsWith("0") &&
+      /^[6-9]/.test(digitsOnly.substring(1))
+    ) {
+      return true;
+    }
+    // Handle 0091/091 cases (14 digits total for 0091, 13 for 091)
+    if (
+      digitsOnly.startsWith("0091") &&
+      digitsOnly.length === 14 &&
+      /^[6-9]/.test(digitsOnly.substring(4))
+    ) {
+      return true;
+    }
+    if (
+      digitsOnly.startsWith("091") &&
+      digitsOnly.length === 13 &&
+      /^[6-9]/.test(digitsOnly.substring(3))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const extractTenDigitMobile = (phone) => {
+  if (!isValidIndianMobile(phone)) return null;
+
+  const cleaned = phone.replace(/[\s-]/g, "");
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  // Handle +91/0091/91/091 prefixes
+  if (digitsOnly.startsWith("0091") && digitsOnly.length === 14) {
+    return digitsOnly.substring(4);
+  }
+  if (digitsOnly.startsWith("091") && digitsOnly.length === 13) {
+    return digitsOnly.substring(3);
+  }
+  if (
+    (digitsOnly.startsWith("+91") || digitsOnly.startsWith("91")) &&
+    digitsOnly.length === 12
+  ) {
+    return digitsOnly.substring(2);
+  }
+  if (digitsOnly.startsWith("0") && digitsOnly.length === 11) {
+    return digitsOnly.substring(1);
+  }
+
+  // Plain 10-digit number
+  if (digitsOnly.length === 10) {
+    return digitsOnly;
+  }
+
+  return null;
+};
+
+const getPhoneValidationReason = (rawPhone) => {
+  if (!rawPhone || typeof rawPhone !== "string") return "Phone is missing";
+  if (/[a-zA-Z]/.test(rawPhone)) return "Contains alphabetic characters";
+
+  const cleaned = rawPhone.replace(/[\s-]/g, "");
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  if (isValidIndianMobile(rawPhone)) return null;
+
+  // Specific error messages
+  if (digitsOnly.length > 14)
+    return "Too many digits (maximum 14 with 0091 prefix)";
+  if (digitsOnly.length < 10)
+    return `Only ${digitsOnly.length} digits (need 10)`;
+
+  if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
+    return "Invalid starting digit (must be 6-9)";
+  }
+
+  if (/^00[^91]/.test(cleaned)) return "Invalid international prefix";
+  if (/^\+[^9]/.test(cleaned)) return "Invalid international prefix";
+
+  // Landline specific checks
+  if (/^[02]/.test(digitsOnly)) return "Landline numbers not accepted";
+
+  return "Invalid phone format";
+};
 
 module.exports = {
   createBulkLeads,
@@ -2156,5 +2490,5 @@ module.exports = {
   updateLeadDetails,
   getAllLeadsOfExEmployees,
   uploadLead,
-  addNewLead
+  addNewLead,
 };

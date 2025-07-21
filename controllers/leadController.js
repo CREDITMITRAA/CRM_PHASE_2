@@ -106,6 +106,14 @@ async function createBulkLeads(req, res) {
         last_updated_status: "Not Contacted",
       };
 
+      if(lead.bereau_score){
+        if(!lead.bereau_name){
+          formattedLead.bereau_name = "TransUnion Cibil"
+        }else{
+          formattedLead.bereau_name = lead.bereau_name
+        }
+      }
+
       if (isValid && extractedPhone) {
         validLeads.push(formattedLead);
       } else {
@@ -2050,7 +2058,7 @@ async function uploadLead(req, res) {
       utm_source,
       income_type,
       company,
-      salary
+      salary,
     } = req.body;
     if (client_secret !== "SQ") {
       await transaction.rollback();
@@ -2062,8 +2070,13 @@ async function uploadLead(req, res) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
-    if(income_type === "Salaried" && (!company || !salary)){
-      return ApiResponse(res, "ERROR", 400, "Please proivde company and salary if you are salaried")
+    if (income_type === "Salaried" && (!company || !salary)) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Please proivde company and salary if you are salaried"
+      );
     }
 
     if (loan_amount) {
@@ -2087,38 +2100,41 @@ async function uploadLead(req, res) {
 
       // update utm campaign and source array to track marketing performance
       if (utm_campaign && utm_source) {
-        leadFromDB.utm_campaign = utm_campaign
+        leadFromDB.utm_campaign = utm_campaign;
         const prevUtmCampaigns = leadFromDB.prev_utm_campaigns || [];
         const updatedUtmCampaigns = [utm_campaign, ...prevUtmCampaigns];
         leadFromDB.prev_utm_campaigns = updatedUtmCampaigns;
 
-        leadFromDB.utm_source = utm_source
+        leadFromDB.utm_source = utm_source;
         const prevUtmSources = leadFromDB.prev_utm_sources || [];
         const updatedUtmSources = [utm_source, ...prevUtmSources];
         leadFromDB.prev_utm_sources = updatedUtmSources;
       }
 
       if (loan_amount) leadFromDB.loan_amount = loan_amount;
-      if (bereau_score) leadFromDB.bereau_score = bereau_score;
-      if (bereau_name) {
-        leadFromDB.bereau_name = bereau_name;
-      } else {
-        leadFromDB.bereau_name = "Others";
-      }
-      if (city) {
-        leadFromDB.city = city
-        if(!leadFromDB.address){
-          leadFromDB.address = city
+      if (bereau_score) {
+        leadFromDB.bereau_score = bereau_score;
+        if (bereau_name) {
+          leadFromDB.bereau_name = bereau_name;
+        } else {
+          leadFromDB.bereau_name = "Others";
         }
-      };
+      }
+
+      if (city) {
+        leadFromDB.city = city;
+        if (!leadFromDB.address) {
+          leadFromDB.address = city;
+        }
+      }
       if (preferred_bank_name)
         leadFromDB.preferred_bank_name = preferred_bank_name;
       // if (email) leadFromDB.email = email;
-      if(income_type) leadFromDB.income_type = income_type;
-      if(company) leadFromDB.company = company;
-      if(salary) leadFromDB.salary = salary;
-      if(name) leadFromDB.name = name;
-      if(email) leadFromDB.email = email;
+      if (income_type) leadFromDB.income_type = income_type;
+      if (company) leadFromDB.company = company;
+      if (salary) leadFromDB.salary = salary;
+      if (name) leadFromDB.name = name;
+      if (email) leadFromDB.email = email;
 
       await leadFromDB.save({ transaction });
 
@@ -2172,11 +2188,16 @@ async function uploadLead(req, res) {
         }
         leadToBeSaved.utm_source = utm_source;
       }
-      if(income_type) leadToBeSaved.income_type = income_type;
-      if(company) leadToBeSaved.company = company;
-      if(salary) leadToBeSaved.salary = salary;
-      if(!bereau_name){
-        leadToBeSaved.bereau_name = "Others"
+      if (income_type) leadToBeSaved.income_type = income_type;
+      if (company) leadToBeSaved.company = company;
+      if (salary) leadToBeSaved.salary = salary;
+      if (bereau_score) {
+        leadToBeSaved.bereau_score = bereau_score;
+        if (bereau_name) {
+          leadToBeSaved.bereau_name = bereau_name;
+        } else {
+          leadToBeSaved.bereau_name = "Others";
+        }
       }
 
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
@@ -2190,8 +2211,8 @@ async function uploadLead(req, res) {
       );
     }
   } catch (error) {
-    console.log('error in uploading leads = ', error);
-    
+    console.log("error in uploading leads = ", error);
+
     await transaction.rollback();
     return ApiResponse(
       res,
@@ -2207,7 +2228,16 @@ async function uploadLead(req, res) {
 async function addNewLead(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { name, email, phone, source, bereau_score, utm_campaign, utm_source, bereau_name } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      source,
+      bereau_score,
+      utm_campaign,
+      utm_source,
+      bereau_name,
+    } = req.body;
 
     // Validate mandatory fields
     if (!name || !phone || !source) {
@@ -2224,8 +2254,13 @@ async function addNewLead(req, res) {
     //   return ApiResponse(res, "ERROR", 400, "utm source is required for utm campaign")
     // }
 
-    if(bereau_score && !bereau_name){
-      return ApiResponse(res, "ERROR", 400, "Bureau Name is required for Bureau Score")
+    if (bereau_score && !bereau_name) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Bureau Name is required for Bureau Score"
+      );
     }
 
     // Validate phone number

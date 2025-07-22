@@ -1,4 +1,4 @@
-const { CreditReport, Lead, sequelize, ActivityLog, Activity } = require("../models");
+const { CreditReport, Lead, sequelize, ActivityLog, Activity, LoanReport } = require("../models");
 const { createLogData } = require("../services/ActivityLogServices");
 const {
   ACTIVITY_LOGS,

@@ -134,6 +134,7 @@ const ADVISOR_CONSULTATION_CANCELLED = "Advisor Consultation Cancelled"
 const ADVISOR_CONSULTATION_RESCHEDULED = "Advisor Consultation Rescheduled"
 const MAKER_APPROVED = "Maker Approved"
 const CHECKER_APPROVED = "Checker Approved"
+const SEND_TO_LOGIN = "Send To Login"
 
 const terminologiesMap = new Map([
     [NOT_CONTACTED, 'Unattended'],
@@ -201,7 +202,8 @@ const terminologiesMap = new Map([
   [UNDER_PROCESS,UNDER_PROCESS],
   [DISBURSED_FROM_BANKS,DISBURSED_FROM_BANKS],
   [APPLICATION_IS_CLOSED,APPLICATION_IS_CLOSED],
-  [OTHERS,OTHERS]
+  [OTHERS,OTHERS],
+  [SEND_TO_LOGIN,SEND_TO_LOGIN]
   ])
 
 const ACTIVITY_LOGS = {

@@ -174,12 +174,18 @@ async function generatePartnerCode(type) {
 
 function generateLoginDetailChangeLog(oldData, newData) {
   const fieldsToCheck = [
-    "bank_name",
-    "application_number",
-    "login_date",
-    "disbursal_date",
-    "dsa_name",
-    "login_status"
+        "bank_name",
+        "dsa_name",
+        "application_number",
+        "login_date",
+        "scheme",
+        "login_amount",
+        "login_status",
+        "sanction_date",
+        "sanction_amount",
+        "disbursal_date",
+        "disbursal_amount",
+        "note",
   ];
 
   const changes = fieldsToCheck

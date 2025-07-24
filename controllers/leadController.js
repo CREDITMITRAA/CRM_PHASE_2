@@ -1709,12 +1709,12 @@ async function updateLeadStatus(req, res) {
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
-    if (![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM].includes(role)) {
+    if (![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM, ROLE_MANAGER].includes(role)) {
       return ApiResponse(
         res,
         "error",
         403,
-        "Only Admin or Employee can change lead status !"
+        "Access Denied !"
       );
     }
 

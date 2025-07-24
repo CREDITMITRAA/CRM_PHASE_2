@@ -135,6 +135,7 @@ const ADVISOR_CONSULTATION_RESCHEDULED = "Advisor Consultation Rescheduled"
 const MAKER_APPROVED = "Maker Approved"
 const CHECKER_APPROVED = "Checker Approved"
 const SEND_TO_LOGIN = "Send To Login"
+const APPLICATION_ON_HOLD = "Application On Hold"
 
 const terminologiesMap = new Map([
     [NOT_CONTACTED, 'Unattended'],
@@ -203,7 +204,8 @@ const terminologiesMap = new Map([
   [DISBURSED_FROM_BANKS,DISBURSED_FROM_BANKS],
   [APPLICATION_IS_CLOSED,APPLICATION_IS_CLOSED],
   [OTHERS,OTHERS],
-  [SEND_TO_LOGIN,SEND_TO_LOGIN]
+  [SEND_TO_LOGIN,SEND_TO_LOGIN],
+  [APPLICATION_ON_HOLD,APPLICATION_ON_HOLD]
   ])
 
 const ACTIVITY_LOGS = {
@@ -247,8 +249,43 @@ const ACTIVITY_LOGS = {
     LOAN_REPORT_ADD: (loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding}, EMI Date : ${emi_date}, Loan Disbursal Date : ${loan_disbursal_date} )`,
     CREDIT_REPORT_ADD : (credit_card_name, total_outstanding) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
     VERIFICATION_STATUS_UPDATE: (verification_status) => `Updated Verification Status to : ${terminologiesMap.get(verification_status)}`,
-    LOGIN_ADD: (bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Added ( Bank Name : ${bank_name},  Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`,
-    LOGIN_DELETE: (login_id, bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Deleted ( Login ID : ${login_id}, Bank Name : ${bank_name}, Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`
+    LOGIN_DELETE: (login_id, bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Deleted ( Login ID : ${login_id}, Bank Name : ${bank_name}, Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`,
+    LOGIN_ADD: (
+  bank_name,
+  dsa_name,
+  application_number,
+  login_date,
+  scheme,
+  login_amount,
+  login_status,
+  sanction_date,
+  sanction_amount,
+  disbursal_date,
+  disbursal_amount,
+  note
+) => {
+  const fields = [
+    ["Bank Name", bank_name],
+    ["DSA Name", dsa_name],
+    ["Application No", application_number],
+    ["Login Date", login_date],
+    ["Scheme", scheme],
+    ["Login Amount", login_amount],
+    ["Login Status", login_status],
+    ["Sanction Date", sanction_date],
+    ["Sanction Amount", sanction_amount],
+    ["Disbursal Date", disbursal_date],
+    ["Disbursal Amount", disbursal_amount],
+    ["Note", note]
+  ];
+
+  const message = fields
+    .filter(([, value]) => !!value) // only truthy values
+    .map(([key, value]) => `${key} : ${value}`)
+    .join(", ");
+
+  return `Login Added (${message})`;
+}
 }
 
 module.exports = {

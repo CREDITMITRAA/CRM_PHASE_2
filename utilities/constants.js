@@ -167,10 +167,22 @@ const DISPUTE_STATUS_OPTIONS = [
 ]
 
 const LOGIN_STATUS_OPTIONS = [
+    "Sent For Login",
+    "Login",
+    "Hold",
     "In Progress",
+    "Sanctioned",
     "Rejected",
-    "Approved",
-    "Disbursed "
+    "Rework",
+    "Disbursed",
+    "Others",
+]
+
+const LOGIN_SCHEME_OPTIONS = [
+    "Fresh",
+    "Top Up",
+    "Parallel",
+    "BT"
 ]
 
 module.exports = {
@@ -204,5 +216,6 @@ module.exports = {
     START_LOGIN,
     DISBURSED_FROM_BANKS,
     APPLICATION_IS_CLOSED,
-    OTHERS
+    OTHERS,
+    LOGIN_SCHEME_OPTIONS
 }

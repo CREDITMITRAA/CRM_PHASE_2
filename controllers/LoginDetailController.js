@@ -15,11 +15,17 @@ async function addLoginDetails(req, res) {
   try {
     const {
       bank_name,
+      dsa_name,
       application_number,
       login_date,
-      disbursal_date,
-      dsa_name,
+      scheme,
+      login_amount,
       login_status,
+      sanction_date,
+      sanction_amount,
+      disbursal_date,
+      disbursal_amount,
+      note,
       user_id,
       lead_id,
       lead_name,
@@ -28,10 +34,12 @@ async function addLoginDetails(req, res) {
     const requiredFields = [
       "lead_id",
       "bank_name",
-      "application_number",
-      "login_date",
-      "disbursal_date",
-      "dsa_name",
+      // "application_number",
+      // "login_date",
+      // "disbursal_date",
+      // "dsa_name",
+      // "login_status",
+      "login_amount",
       "login_status",
       "user_id",
       "lead_name",
@@ -65,11 +73,17 @@ async function addLoginDetails(req, res) {
         activity_type: ACTIVITY_TYPES.LOGIN_ADD,
         activity_desc: ACTIVITY_LOGS.LOGIN_ADD(
           bank_name,
+          dsa_name,
           application_number,
           login_date,
+          scheme,
+          login_amount,
+          login_status,
+          sanction_date,
+          sanction_amount,
           disbursal_date,
-          dsa_name,
-          login_status
+          disbursal_amount,
+          note
         ),
         lead_id,
         lead_name,
@@ -109,8 +123,8 @@ async function getLoginDetails(req, res) {
       bank_name,
       login_status,
     } = req.query;
-    console.log('params received = ', req.query);
-    
+    console.log("params received = ", req.query);
+
     // const limit = parseInt(req.query.limit) || 50;
     page = parseInt(page);
     pageSize = parseInt(pageSize);
@@ -198,11 +212,17 @@ async function editLoginDetails(req, res) {
       id,
       lead_id,
       bank_name,
+      dsa_name,
       application_number,
       login_date,
-      disbursal_date,
-      dsa_name,
+      scheme,
+      login_amount,
       login_status,
+      sanction_date,
+      sanction_amount,
+      disbursal_date,
+      disbursal_amount,
+      note,
       user_id,
       lead_name,
     } = req.body;
@@ -210,10 +230,11 @@ async function editLoginDetails(req, res) {
       !id ||
       !lead_id ||
       !bank_name ||
-      !application_number ||
-      !login_date ||
-      !disbursal_date ||
-      !dsa_name ||
+      // !application_number ||
+      // !login_date ||
+      // !disbursal_date ||
+      // !dsa_name ||
+      !login_amount ||
       !login_status ||
       !user_id ||
       !lead_name
@@ -235,11 +256,17 @@ async function editLoginDetails(req, res) {
     const [updatedCount] = await LoginDetail.update(
       {
         bank_name,
+        dsa_name,
         application_number,
         login_date,
-        disbursal_date,
-        dsa_name,
+        scheme,
+        login_amount,
         login_status,
+        sanction_date,
+        sanction_amount,
+        disbursal_date,
+        disbursal_amount,
+        note,
         updated_by: user_id,
       },
       { where: { id, lead_id }, transaction }
@@ -286,47 +313,58 @@ async function editLoginDetails(req, res) {
 async function deleteLoginDetails(req, res) {
   const transaction = await sequelize.transaction();
   try {
-    const { id, lead_id, lead_name, user_id,  bank_name, application_number, login_date,  disbursal_date, dsa_name, login_status } = req.body;
+    const {
+      id,
+      lead_id,
+      lead_name,
+      user_id,
+      bank_name,
+      application_number,
+      login_date,
+      disbursal_date,
+      dsa_name,
+      login_status,
+    } = req.body;
     if (!id || !lead_id || !lead_name || !user_id) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-   const [leadCount, loginCount] = await Promise.all([
-    Lead.count({
-        where:{id:lead_id, status:'active'},
-        transaction
-    }),
-    LoginDetail.count({
-        where: {id, lead_id,  status:'active'},
-        transaction
-    })
-   ])
+    const [leadCount, loginCount] = await Promise.all([
+      Lead.count({
+        where: { id: lead_id, status: "active" },
+        transaction,
+      }),
+      LoginDetail.count({
+        where: { id, lead_id, status: "active" },
+        transaction,
+      }),
+    ]);
 
-   if(leadCount === 0){
-    await transaction.rollback();
-    return ApiResponse(res, "ERROR", 404, "Lead not found !");
-   }
+    if (leadCount === 0) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 404, "Lead not found !");
+    }
 
-   if(loginCount === 0){
-    await transaction.rollback();
-    return ApiResponse(res, "ERROR", 404, "Login details not found !");
-   }
+    if (loginCount === 0) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 404, "Login details not found !");
+    }
 
-   const [updatedCount] = await LoginDetail.update(
-    {status:'inactive', updated_by: user_id},
-    {where:{id, lead_id}, transaction}
-   )
+    const [updatedCount] = await LoginDetail.update(
+      { status: "inactive", updated_by: user_id },
+      { where: { id, lead_id }, transaction }
+    );
 
-   if(updatedCount === 0){
-    await transaction.rollback();
-    return ApiResponse(res, "ERROR", 404, "Login details not found !");
-   }
+    if (updatedCount === 0) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 404, "Login details not found !");
+    }
 
-   // Log activity
+    // Log activity
     let logData = createLogData(
       ACTIVITY_LOGS.LOGIN_DELETE(
-        login_id=id,
+        (login_id = id),
         bank_name,
         application_number,
         login_date,
@@ -335,7 +373,7 @@ async function deleteLoginDetails(req, res) {
         login_status
       ),
       ACTIVITY_TYPES.LOGIN_DELETE,
-      updated_by=user_id,
+      (updated_by = user_id),
       lead_id,
       null,
       lead_name
@@ -352,7 +390,6 @@ async function deleteLoginDetails(req, res) {
       "Loan Report Soft Deleted Successfully!",
       { id }
     );
-
   } catch (error) {
     await transaction.rollback();
     return ApiResponse(
@@ -370,5 +407,5 @@ module.exports = {
   addLoginDetails,
   getLoginDetails,
   editLoginDetails,
-  deleteLoginDetails
+  deleteLoginDetails,
 };

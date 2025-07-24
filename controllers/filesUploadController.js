@@ -90,18 +90,19 @@ async function uploadFile(req, res) {
     }
 
     let logData = null
-    switch(document_type){
+    switch(document_type.toLowerCase()){
       case 'payslip':
         logData = createLogData(ACTIVITY_LOGS.PAYSLIP_UPLOAD(file.originalname), ACTIVITY_TYPES.PAYSLIP_UPLOAD,user_id,leadID, null,leadName)
         break;
-      case 'creditBureau':
+      case 'creditbureau':
         logData = createLogData(ACTIVITY_LOGS.CREDIT_BUREAU_UPLOAD(file.originalname), ACTIVITY_TYPES.CREDIT_BUREAU_UPLOAD, user_id, leadID ,null,leadName)
         break;
-      case 'otherDocs':
+      case 'otherdocs':
         logData = createLogData(ACTIVITY_LOGS.OTHER_DOC_UPLOAD(file.originalname), ACTIVITY_TYPES.OTHER_DOC_UPLOAD, user_id, leadID, null,leadName)
         break;
-      case 'closingDocument':
+      case 'closingdocument':
         logData = createLogData(ACTIVITY_LOGS.CLOSING_DOC_UPLOAD(file.originalname), ACTIVITY_TYPES.CLOSING_DOC_UPLOAD, user_id, leadID, null,leadName)
+        break;
     }
 
     await createActivityLog(logData,transaction)

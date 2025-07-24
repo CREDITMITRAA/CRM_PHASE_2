@@ -299,7 +299,8 @@ async function editCreditReport(req, res) {
       loan_status,
         closing_date,
         dispute_status,
-        dispute_date
+        dispute_date,
+        closing_document_url
     } = req.body;
 
     // Validate required fields
@@ -393,7 +394,8 @@ async function editCreditReport(req, res) {
       loan_status,
       closing_date,
       dispute_status,
-      dispute_date
+      dispute_date,
+      closing_document_url
     };
 
     const [updatedCount] = await CreditReport.update(updateData, {

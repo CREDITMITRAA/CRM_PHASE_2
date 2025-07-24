@@ -363,6 +363,7 @@ async function editLoanReport(req, res) {
       closing_date,
       dispute_status,
       dispute_date,
+      closing_document_url
     } = req.body;
 
     // Validate required fields
@@ -455,6 +456,7 @@ async function editLoanReport(req, res) {
         loan_disbursal_date,
         loan_status,
         closing_date,
+        closing_document_url,
         dispute_status: isLoanNotClosed ? null : dispute_status, // Clear dispute if not closed
         dispute_date: isLoanNotClosed ? null : dispute_date,    // Clear dispute if not closed
       },

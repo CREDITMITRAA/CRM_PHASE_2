@@ -104,6 +104,7 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
           "loan_disbursal_date",
           "loan_status",
           "closing_date",
+          "closing_document_url",
           "dispute_status",
           "dispute_date"
         ]
@@ -113,7 +114,8 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
           "loan_status",
           "closing_date",
           "dispute_status",
-          "dispute_date"
+          "dispute_date",
+          "closing_document_url"
         ];
 
   const formatDate = (value) => {

@@ -100,6 +100,8 @@ async function uploadFile(req, res) {
       case 'otherDocs':
         logData = createLogData(ACTIVITY_LOGS.OTHER_DOC_UPLOAD(file.originalname), ACTIVITY_TYPES.OTHER_DOC_UPLOAD, user_id, leadID, null,leadName)
         break;
+      case 'closingDocument':
+        logData = createLogData(ACTIVITY_LOGS.CLOSING_DOC_UPLOAD(file.originalname), ACTIVITY_TYPES.CLOSING_DOC_UPLOAD, user_id, leadID, null,leadName)
     }
 
     await createActivityLog(logData,transaction)

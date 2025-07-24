@@ -41,7 +41,8 @@ const ACTIVITY_TYPES = {
     CREDIT_REPORT_EDIT : 'CREDIT_REPORT_EDIT',
     LOGIN_ADD : 'LOGIN_ADD',
     LOGIN_EDIT : "LOGIN_EDIT",
-    LOGIN_DELETE: "LOGIN_DELETE"
+    LOGIN_DELETE: "LOGIN_DELETE",
+    CLOSING_DOC_UPLOAD: "CLOSING_DOC_UPLOAD"
 }
 
 const ASSIGNED_TABLE = "ASSIGNED_TABLE";
@@ -236,6 +237,7 @@ const ACTIVITY_LOGS = {
     WALK_IN_UPDATE : (new_status) => `Appointment status updated to ${new_status}`,
     PAYSLIP_DELETE : (document_name) => `Payslip ${document_name} deleted`,
     OTHER_DOC_UPLOAD : (document_name) => `Other Doc ${document_name} uploaded`,
+    CLOSING_DOC_UPLOAD: (document_name) => `Closing Doc ${document_name} uploaded`,
     OTHER_DOC_DELETE : (document_name) => `Other Doc ${document_name} deleted`,
     CREDIT_BUREAU_DELETE : (document_name) => `Credit Bureau ${document_name} deleted`,
     DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`,

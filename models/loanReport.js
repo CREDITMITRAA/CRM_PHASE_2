@@ -15,6 +15,7 @@ module.exports = (sequelize) => {
     loan_status: {type: DataTypes.ENUM(...LOAN_STATUS_OPTIONS), 
       defaultValue: 'Not Closing' },
     closing_date: { type: DataTypes.DATE, allowNull: true },
+    closing_document_url: {type: DataTypes.STRING, allowNull: true},
     dispute_status: {type: DataTypes.ENUM(...DISPUTE_STATUS_OPTIONS) },
     dispute_date: { type: DataTypes.DATE, allowNull: true },
     status: { 

@@ -49,6 +49,7 @@ const {
   createActivityLog,
 } = require("../services/ActivityLogServices");
 const { getIo } = require("../socket/socket");
+const { default: axios } = require("axios");
 
 async function createBulkLeads(req, res) {
   console.log(req.body, "Received leads data");
@@ -2476,6 +2477,77 @@ const getPhoneValidationReason = (rawPhone) => {
   return "Invalid phone format";
 };
 
+async function getCrifReportByCustomerIdOrPhone(req, res) {
+  try {
+    const { customer_id, mob1, lead_id } = req.query;
+    console.log("params received = ", req.query);
+
+    // Validation: lead_id is mandatory, and either customer_id or mob1 must be present
+    if (!lead_id || (!customer_id && !mob1)) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Missing required fields! 'lead_id' is mandatory along with either 'customer_id' or 'mob1'."
+      );
+    }
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-b2c-report-by-customer-phone-or-id`,
+      {
+        params: {
+          ...(customer_id && { customer_id }),
+          ...(mob1 && { mob1 }),
+        },
+        validateStatus: () => true, // ✅ Always resolve response
+      }
+    );
+
+    // Handle response
+    if (response.data.statusCode === 200 && response.data.status === "SUCCESS") {
+      const fetchedCustomerId = response.data.data.customer_id;
+
+      if (!fetchedCustomerId) {
+        return ApiResponse(res, "ERROR", 400, "Customer ID not found in response.");
+      }
+
+      await Lead.update(
+        { customer_id: fetchedCustomerId },
+        { where: { id: lead_id } }
+      );
+
+      return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        response.data
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch report."
+      );
+    }
+  } catch (error) {
+    // Unexpected server/network error
+    console.error("Unexpected error:", error);
+
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error.message || "Something went wrong!",
+      null,
+      error
+    );
+  }
+}
+
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -2491,4 +2563,5 @@ module.exports = {
   getAllLeadsOfExEmployees,
   uploadLead,
   addNewLead,
+  getCrifReportByCustomerIdOrPhone
 };

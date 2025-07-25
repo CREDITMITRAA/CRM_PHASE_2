@@ -48,6 +48,7 @@ module.exports = (sequelize) => {
     prev_utm_sources: { type: DataTypes.JSON, defaultValue: [], allowNull: true },
     preferred_bank_name: { type: DataTypes.STRING },
     income_type: { type: DataTypes.STRING },
+    customer_id: { type: DataTypes.INTEGER },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

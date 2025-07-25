@@ -17,6 +17,7 @@ router.get('/get-lead-source-by-name', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROL
 router.put('/update-lead-details/:id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.updateLeadDetails)
 router.get('/get-all-leads-of-ex-emp', authenticate([ROLE_ADMIN]), leadController.getAllLeadsOfExEmployees)
 router.post('/upload-lead', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM], true), leadController.uploadLead)
-router.post('/add-new-lead', authenticate([ROLE_ADMIN]), leadController.addNewLead)
+router.post('/add-new-lead', authenticate([ROLE_ADMIN]), leadController.addNewLead),
+router.get('/get-crif-report-by-customer-id-or-phone', authenticate([ROLE_ADMIN]), leadController.getCrifReportByCustomerIdOrPhone)
 
 module.exports = router

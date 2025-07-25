@@ -208,5 +208,5 @@ module.exports = {
   generateLoanOrCreditReportChangeLog,
   generateApiCredentials,
   generatePartnerCode,
-  generateLoginDetailChangeLog
+  generateLoginDetailChangeLog,
 };

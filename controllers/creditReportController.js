@@ -442,11 +442,75 @@ async function editCreditReport(req, res) {
   }
 }
 
+async function deleteCreditReportClosingDocument(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const {id,lead_id, lead_name, deleted_by} = req.body
+    if(!id || !lead_id || !lead_name || !deleted_by){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 400, "Missing required fields")
+    }
+
+    const creditReportFromDB = await CreditReport.findOne({
+      where: {id, lead_id, status: "active"},
+      transaction
+    })
+
+    if(!creditReportFromDB){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 400, "Credit Report Not Found !")
+    }
+
+    if(!creditReportFromDB.closing_document_url){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 400, "No closing document exists")
+    }
+
+    const documentUrl = creditReportFromDB.closing_document_url
+
+    const [updatedCount] = await CreditReport.update(
+      {
+        closing_document_url: null,
+        updated_by: deleted_by
+      },
+      {
+        where: {id, lead_id, status: "active"},
+        transaction
+      }
+    )
+
+    if(updatedCount === 0){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 500, "Failed to remove closing document")
+    }
+
+    const logData = createLogData(
+      ACTIVITY_LOGS.CLOSING_DOC_DELETE(documentUrl),
+      ACTIVITY_TYPES.CLOSING_DOC_DELETE,
+      deleted_by,
+      lead_id,
+      null,
+      lead_name
+    )
+
+    await ActivityLog.create({...logData}, {transaction})
+    await transaction.commit()
+
+    return ApiResponse(res, "SUCCESS", 200, "Closing document deleted successfully")
+
+  } catch (error) {
+    console.log('error in deleting closing document = ', error);
+    await transaction.rollback()
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to delete closing document", null, error)
+  }
+}
+
 module.exports = {
   getCreditReportsByLeadId,
   getAllCreditReports,
   deleteCreditReportById,
   deleteCreditReport,
   addCreditReport,
-  editCreditReport
+  editCreditReport,
+  deleteCreditReportClosingDocument
 };

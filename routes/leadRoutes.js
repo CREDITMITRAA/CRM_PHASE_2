@@ -11,7 +11,7 @@ router.post('/update-lead-reports-activity', authenticate([ROLE_ADMIN,ROLE_MANAG
 router.post('/update-verification-status', authenticate([ROLE_ADMIN,ROLE_MANAGER]), leadController.updateVerificationStatus)
 router.get('/get-total-leads-count', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.getTotalLeadsCount)
 router.post('/update-application-status', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM]), leadController.updateApplicationStatus)
-router.post('/update-lead-status', authenticate([ROLE_ADMIN,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.updateLeadStatus)
+router.post('/update-lead-status', authenticate([ROLE_ADMIN,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM, ROLE_MANAGER]), leadController.updateLeadStatus)
 router.get('/get-all-lead-sources', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.getAllDistinctLeadSources)
 router.get('/get-lead-source-by-name', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.getLeadSourceByName)
 router.put('/update-lead-details/:id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM]), leadController.updateLeadDetails)

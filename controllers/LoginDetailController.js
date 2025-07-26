@@ -9,6 +9,7 @@ const {
   ACTIVITY_LOGS,
 } = require("../utilities/ActivityLogConstants");
 const { createLogData } = require("../services/ActivityLogServices");
+const { START_LOGIN } = require("../utilities/constants");
 
 async function addLoginDetails(req, res) {
   const transaction = await sequelize.transaction();
@@ -29,6 +30,7 @@ async function addLoginDetails(req, res) {
       user_id,
       lead_id,
       lead_name,
+      application_status,
     } = req.body;
     // Validate required fields
     const requiredFields = [
@@ -43,6 +45,7 @@ async function addLoginDetails(req, res) {
       "login_status",
       "user_id",
       "lead_name",
+      "application_status",
     ];
 
     const missingFields = requiredFields.filter((field) => !req.body[field]);
@@ -52,11 +55,17 @@ async function addLoginDetails(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-    const count = await Lead.count({
-      where: { id: lead_id },
+    if (application_status !== START_LOGIN) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
+    }
+
+    const lead = await Lead.findOne({
+      where: { id: lead_id, status: "active" },
+      transaction,
     });
 
-    if (!count > 0) {
+    if (!lead) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Lead not found !");
     }
@@ -64,6 +73,24 @@ async function addLoginDetails(req, res) {
     const savedLogin = await LoginDetail.create(
       { ...req.body, updated_by: user_id, created_by: user_id },
       { transaction }
+    );
+
+    const totalLogins = await LoginDetail.count({
+      where: { lead_id, status: "active" },
+      transaction,
+    });
+
+    const newLeadStatus = `Login Bank ${totalLogins}`;
+
+    await Lead.update(
+      {
+        lead_status: newLeadStatus,
+        updated_by: user_id,
+      },
+      {
+        where: { id: lead_id, status: "active" },
+        transaction,
+      }
     );
 
     // Log Loan Report Addition in ActivityLog
@@ -85,6 +112,19 @@ async function addLoginDetails(req, res) {
           disbursal_amount,
           note
         ),
+        lead_id,
+        lead_name,
+        status: "active",
+      },
+      { transaction }
+    );
+
+    // ✅ Log lead status change
+    await ActivityLog.create(
+      {
+        created_by: user_id,
+        activity_type: ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+        activity_desc: `Lead status updated to "${newLeadStatus}"`,
         lead_id,
         lead_name,
         status: "active",
@@ -225,6 +265,7 @@ async function editLoginDetails(req, res) {
       note,
       user_id,
       lead_name,
+      application_status,
     } = req.body;
     if (
       !id ||
@@ -237,10 +278,16 @@ async function editLoginDetails(req, res) {
       !login_amount ||
       !login_status ||
       !user_id ||
-      !lead_name
+      !lead_name ||
+      !application_status
     ) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
+    }
+
+    if (application_status !== START_LOGIN) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
     }
 
     const loginFromDB = await LoginDetail.findOne({
@@ -359,6 +406,42 @@ async function deleteLoginDetails(req, res) {
     if (updatedCount === 0) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 404, "Login details not found !");
+    }
+
+    // count remaining active login records
+    const remainingLogins = await LoginDetail.count({
+      where: { lead_id, status: "active" },
+      transaction,
+    });
+
+    let newLeadStatus = null;
+
+    if (remainingLogins > 0) {
+      newLeadStatus = `Login Bank ${remainingLogins}`;
+      // update the lead status
+      await Lead.update(
+        {
+          lead_status: newLeadStatus,
+          updated_by: user_id,
+        },
+        {
+          where: { id: lead_id },
+          transaction,
+        }
+      );
+
+      // Activity log: lead_status update
+      await ActivityLog.create(
+        {
+          created_by: user_id,
+          activity_type: ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+          activity_desc: `Lead status updated to "${newLeadStatus}"`,
+          lead_id,
+          lead_name,
+          status: "active",
+        },
+        { transaction }
+      );
     }
 
     // Log activity

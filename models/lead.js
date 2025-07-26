@@ -19,7 +19,7 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM(...VERIFICATION_STATUSES), // Spread the array values into the ENUM type
       defaultValue: 'Under Review' // Set a default value
     },
-    lead_status: { type: DataTypes.ENUM(...LEAD_STATUSES), defaultValue: 'Not Contacted' },
+    lead_status: { type: DataTypes.STRING, defaultValue: 'Not Contacted' },
     application_status : { type: DataTypes.ENUM(...APPLICATION_STATUSES) },
     is_rejected: { type: DataTypes.BOOLEAN, defaultValue: false },
     rejection_reason: { type: DataTypes.TEXT },

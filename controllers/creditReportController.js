@@ -473,7 +473,9 @@ async function deleteCreditReportClosingDocument(req,res){
         closing_document_url: null,
         updated_by: deleted_by,
         loan_status: "Not Closing",
-        dispute_status: null
+        dispute_status: null,
+        closing_date: null,
+        dispute_date: null
       },
       {
         where: {id, lead_id, status: "active"},
@@ -489,10 +491,13 @@ async function deleteCreditReportClosingDocument(req,res){
     // Log activity - only if something changed
     if (updatedCount > 0) {
       let updateData = {
+        ...creditReportFromDB,
         closing_document_url: null,
         updated_by: deleted_by,
         loan_status: "Not Closing",
-        dispute_status: null
+        dispute_status: null,
+        closing_date: null,
+        dispute_date: null
       }
 
       const changeLog = generateLoanOrCreditReportChangeLog(

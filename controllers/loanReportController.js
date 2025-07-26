@@ -526,7 +526,11 @@ async function deleteLoanReportClosingDocument(req,res){
     const [updatedCount] = await LoanReport.update(
       {
         closing_document_url: null,
-        updated_by: deleted_by
+        updated_by: deleted_by,
+        loan_status: "Not Closing",
+        dispute_status: null,
+        closing_date: null,
+        dispute_date: null
       },
       {
         where: {id, lead_id, status: "active"},
@@ -539,16 +543,48 @@ async function deleteLoanReportClosingDocument(req,res){
       return ApiResponse(res, "ERROR", 500, "Failed to remove closing document")
     }
 
-    const logData = createLogData(
-      ACTIVITY_LOGS.CLOSING_DOC_DELETE(documentUrl),
-      ACTIVITY_TYPES.CLOSING_DOC_DELETE,
-      deleted_by,
-      lead_id,
-      null,
-      lead_name
-    )
+    // Log activity - only if something changed
+    if (updatedCount > 0) {
+      let oldData = loanReportFromDB.get({plain:true})
+      let updateData = {
+        ...oldData,
+        closing_document_url: null,
+        updated_by: deleted_by,
+        loan_status: "Not Closing",
+        dispute_status: null,
+        closing_date: null,
+        dispute_date: null
+      }
 
-    await ActivityLog.create({...logData}, {transaction})
+      const changeLog = generateLoanOrCreditReportChangeLog(
+        loanReportFromDB,
+        updateData,
+        "LOAN"
+      );
+
+      await ActivityLog.create(
+        {
+          created_by: deleted_by,
+          activity_type: ACTIVITY_TYPES.CLOSING_DOC_DELETE,
+          activity_desc: changeLog,
+          lead_id,
+          lead_name,
+          status: "active",
+        },
+        { transaction }
+      );
+    }
+
+    // const logData = createLogData(
+    //   ACTIVITY_LOGS.CLOSING_DOC_DELETE(documentUrl),
+    //   ACTIVITY_TYPES.CLOSING_DOC_DELETE,
+    //   deleted_by,
+    //   lead_id,
+    //   null,
+    //   lead_name
+    // )
+
+    // await ActivityLog.create({...logData}, {transaction})
     await transaction.commit()
 
     return ApiResponse(res, "SUCCESS", 200, "Closing document deleted successfully")

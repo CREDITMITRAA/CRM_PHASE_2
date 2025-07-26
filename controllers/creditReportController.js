@@ -490,8 +490,9 @@ async function deleteCreditReportClosingDocument(req,res){
 
     // Log activity - only if something changed
     if (updatedCount > 0) {
+      let oldData = creditReportFromDB.get({plain:true})
       let updateData = {
-        ...creditReportFromDB,
+        ...oldData,
         closing_document_url: null,
         updated_by: deleted_by,
         loan_status: "Not Closing",

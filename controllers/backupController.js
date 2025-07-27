@@ -81,15 +81,15 @@ async function processDatabase(databaseName, io, userId, fullRefresh) {
       if (!fullRefresh && hasTimestampColumn) {
         // Delta backup - only get records modified since last backup
         [rows] = await dbConnection.query(`
-          SELECT * FROM ?? 
-          WHERE updated_at > ?
-          ORDER BY updated_at ASC
-        `, [table_name, lastBackup]);
+  SELECT * FROM \`${table_name}\` 
+  WHERE updated_at > ?
+  ORDER BY updated_at ASC
+`, { replacements: [lastBackup] });
         
         backupType = 'delta';
       } else {
         // Full backup - get all records
-        [rows] = await dbConnection.query(`SELECT * FROM ??`, [table_name]);
+        [rows] = await dbConnection.query(`SELECT * FROM \`${table_name}\``);
       }
 
       if (rows.length === 0) {

@@ -88,12 +88,21 @@ sequelize
     console.error('Failed to connect to the database:', err.message);
   });
 
- io = socketIo(server,{
-  cors:{
-    origin:process.env.FRONTEND_ORIGIN_URL,
-    methods:["GET","POST"]
+ const allowedSocketOrigins = process.env.FRONTEND_ORIGIN_URL.split(",");
+
+io = socketIo(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // Allow requests with no origin (like mobile apps)
+      if (allowedSocketOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: ["GET", "POST"],
+    credentials: true
   }
-})
+});
 
 // let count = 0;
 // io.on("connect", (socket)=>{

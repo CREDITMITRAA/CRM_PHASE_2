@@ -42,10 +42,10 @@ async function processDatabase(databaseName, io, userId, fullRefresh) {
 
     // Get all tables in this database
     const [tables] = await dbConnection.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = ?
-    `, [databaseName]);
+  SELECT table_name 
+  FROM information_schema.tables 
+  WHERE table_schema = ?
+`, { replacements: [databaseName] });
 
     let processedTables = 0;
 
@@ -69,12 +69,13 @@ async function processDatabase(databaseName, io, userId, fullRefresh) {
 
       // Check if table has updated_at column for delta backup
       const [columns] = await dbConnection.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_schema = ? 
-        AND table_name = ? 
-        AND column_name IN ('updated_at', 'modified_at')
-      `, [databaseName, table_name]);
+  SELECT column_name 
+  FROM information_schema.columns 
+  WHERE table_schema = ? 
+  AND table_name = ? 
+  AND column_name IN ('updated_at', 'modified_at')
+`, { replacements: [databaseName, table_name] });
+
 
       const hasTimestampColumn = columns.length > 0;
 

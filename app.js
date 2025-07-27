@@ -14,6 +14,13 @@ const { initializeSocket } = require('./socket/socket');
 const app = express();
 const allowedOrigins = process.env.FRONTEND_ORIGIN_URL.split(",");
 
+// Increase timeout settings
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000);
+  next();
+});
+
 // Middleware
 app.use(helmet());
 app.use(bodyParser.json());
@@ -49,7 +56,7 @@ let server, io;
 // Scheduled backup
 cron.schedule("30 5 * * *", async () => {
   console.log("⏳ Running scheduled database backup...");
-  await createBackup();
+  await createBackup({ isManualBackup: false });
 });
 
 // Database and server initialization
@@ -73,10 +80,19 @@ sequelize.authenticate()
         origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
-      }
+      },
+      transports: ['websocket']
     });
     
-    initializeSocket(io); // Pass the io instance to your socket initialization
+    // Add connection logging
+    io.on('connection', (socket) => {
+      console.log(`Client connected: ${socket.id}`);
+      socket.on('disconnect', () => {
+        console.log(`Client disconnected: ${socket.id}`);
+      });
+    });
+    
+    initializeSocket(io);
   })
   .catch((err) => {
     console.error('Failed to connect to the database:', err.message);

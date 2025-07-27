@@ -168,7 +168,10 @@ async function processDatabase(databaseName, io, userId, fullRefresh) {
   }
 }
 
-async function createBackup({ isManualBackup = false, userId = null, fullRefresh = false }) {
+async function createBackup(req, res) {
+  const { isManualBackup = false, userId = null, fullRefresh = false } = req.body;
+  console.log('backup request received = ', req.body);
+
   const io = getIo();
   const today = new Date();
   const day = today.getUTCDate();
@@ -179,21 +182,19 @@ async function createBackup({ isManualBackup = false, userId = null, fullRefresh
       type: 'backup-skipped',
       data: { message, userId }
     });
-    return { skipped: true, message };
+    return res.json({ skipped: true, message });
   }
 
   try {
-    // Get list of all databases (excluding system databases)
     const [databases] = await sequelize.query(`
       SELECT schema_name as database_name 
       FROM information_schema.schemata 
       WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
     `);
 
-    // Notify backup start
     io.emit('backup-event', {
       type: 'backup-start',
-      data: { 
+      data: {
         isManualBackup,
         fullRefresh,
         totalDatabases: databases.length,
@@ -203,7 +204,7 @@ async function createBackup({ isManualBackup = false, userId = null, fullRefresh
     });
 
     let processedDatabases = 0;
-    const CHUNK_SIZE = 2; // Process 2 databases at a time
+    const CHUNK_SIZE = 2;
 
     for (let i = 0; i < databases.length; i += CHUNK_SIZE) {
       const chunk = databases.slice(i, i + CHUNK_SIZE);
@@ -214,10 +215,9 @@ async function createBackup({ isManualBackup = false, userId = null, fullRefresh
       }));
     }
 
-    // Notify backup completion
     io.emit('backup-event', {
       type: 'backup-complete',
-      data: { 
+      data: {
         processedDatabases,
         totalDatabases: databases.length,
         completionTime: new Date().toISOString(),
@@ -225,26 +225,26 @@ async function createBackup({ isManualBackup = false, userId = null, fullRefresh
       }
     });
 
-    // Persist backup timestamps to file
     const timestampsFile = path.join(__dirname, '..', 'data', 'backupTimestamps.json');
     fs.writeFileSync(timestampsFile, JSON.stringify(Object.fromEntries(lastBackupTimestamps)));
 
-    return { 
-      success: true, 
+    // ✅ Send response
+    return res.json({
+      success: true,
       processedDatabases,
       backupType: fullRefresh ? 'full' : 'delta'
-    };
+    });
   } catch (err) {
     console.error('Backup error:', err);
     io.emit('backup-event', {
       type: 'backup-error',
-      data: { 
+      data: {
         error: err.message,
         time: new Date().toISOString(),
         userId
       }
     });
-    throw err;
+    return res.status(500).json({ success: false, error: err.message });
   }
 }
 

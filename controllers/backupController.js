@@ -5,6 +5,7 @@ const { getIo } = require("../socket/socket");
 const { DATE_STR } = require("../config/backupConfig");
 const path = require("path");
 const fs = require("fs");
+const { sequelize } = require("../models");
 
 const s3 = new AWS.S3();
 

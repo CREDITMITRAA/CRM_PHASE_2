@@ -19,5 +19,7 @@ router.get('/get-all-leads-of-ex-emp', authenticate([ROLE_ADMIN]), leadControlle
 router.post('/upload-lead', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM], true), leadController.uploadLead)
 router.post('/add-new-lead', authenticate([ROLE_ADMIN]), leadController.addNewLead),
 router.get('/get-crif-report-by-customer-id-or-phone', authenticate([ROLE_ADMIN]), leadController.getCrifReportByCustomerIdOrPhone)
+router.get('/get-crif-summary-report', authenticate([ROLE_ADMIN]), leadController.getCrifSummaryReport)
+router.get('/get-customers', authenticate([ROLE_ADMIN]), leadController.getCustomers)
 
 module.exports = router

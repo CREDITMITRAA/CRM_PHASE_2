@@ -2547,6 +2547,106 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
   }
 }
 
+async function getCrifSummaryReport(req,res){
+  try {
+    const {startDate, endDate} = req.query
+    console.log('params received = ', req.query);
+
+    if(startDate && !endDate){
+      return ApiResponse(res, "ERROR", 400, "End Date is madatory for start date ")
+    }
+
+    if(endDate && !startDate){
+      return ApiResponse(res, "ERROR", 400, "Start Date is madatory for end date")
+    }
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
+      {
+        params: {
+          ...(startDate && {startDate}),
+          ...(endDate && {endDate})
+        },
+        validateStatus: () => true
+      }
+    )
+
+    // Handle response
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS") {
+        return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        response.data.data
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch summary report."
+      );
+    }
+
+  } catch (error) {
+    console.log('error in fetching crif summary report = ', error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch crif summary report !", null, error)
+  }
+}
+
+async function getCustomers(req,res){
+  try {
+    const {startDate, endDate, page, pageSize} = req.query
+    console.log('params received = ', req.query);
+
+    if(startDate && !endDate){
+      return ApiResponse(res, "ERROR", 400, "End Date is madatory for start date ")
+    }
+
+    if(endDate && !startDate){
+      return ApiResponse(res, "ERROR", 400, "Start Date is madatory for end date")
+    }
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,
+      {
+        params: {
+          ...(startDate && {startDate}),
+          ...(endDate && {endDate})
+        },
+        validateStatus: () => true
+      }
+    )
+
+    // Handle response
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS") {
+        return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        response.data.data.result,
+        null,
+        response.data.data.pagination
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch summary report."
+      );
+    }
+    
+  } catch (error) {
+    console.log('error in fetcing customers = ', error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch customers !", null, error)
+  }
+}
+
 
 module.exports = {
   createBulkLeads,
@@ -2563,5 +2663,7 @@ module.exports = {
   getAllLeadsOfExEmployees,
   uploadLead,
   addNewLead,
-  getCrifReportByCustomerIdOrPhone
+  getCrifReportByCustomerIdOrPhone,
+  getCrifSummaryReport,
+  getCustomers
 };

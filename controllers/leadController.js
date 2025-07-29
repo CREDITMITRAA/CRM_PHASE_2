@@ -2614,7 +2614,9 @@ async function getCustomers(req,res){
       {
         params: {
           ...(startDate && {startDate}),
-          ...(endDate && {endDate})
+          ...(endDate && {endDate}),
+          ...(page && {page}),
+          ...(pageSize && {pageSize})
         },
         validateStatus: () => true
       }

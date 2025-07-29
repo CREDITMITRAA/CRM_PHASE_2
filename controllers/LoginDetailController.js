@@ -9,7 +9,7 @@ const {
   ACTIVITY_LOGS,
 } = require("../utilities/ActivityLogConstants");
 const { createLogData } = require("../services/ActivityLogServices");
-const { START_LOGIN } = require("../utilities/constants");
+const { START_LOGIN, UNDER_PROCESS } = require("../utilities/constants");
 
 async function addLoginDetails(req, res) {
   const transaction = await sequelize.transaction();
@@ -85,6 +85,7 @@ async function addLoginDetails(req, res) {
     await Lead.update(
       {
         lead_status: newLeadStatus,
+        application_status: UNDER_PROCESS,
         updated_by: user_id,
       },
       {
@@ -125,6 +126,19 @@ async function addLoginDetails(req, res) {
         created_by: user_id,
         activity_type: ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
         activity_desc: `Lead status updated to "${newLeadStatus}"`,
+        lead_id,
+        lead_name,
+        status: "active",
+      },
+      { transaction }
+    );
+
+    // ✅ Log application status change
+    await ActivityLog.create(
+      {
+        created_by: user_id,
+        activity_type: ACTIVITY_TYPES.APPLICATION_STATUS_UPDATE,
+        activity_desc: `Application status updated to "${UNDER_PROCESS}"`,
         lead_id,
         lead_name,
         status: "active",

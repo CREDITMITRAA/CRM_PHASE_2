@@ -215,6 +215,8 @@ async function getAllLeadsWithPagination(req, res) {
       is_paid = false,
       table_type,
       lead_type,
+      utm_campaign,
+      utm_source
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -275,6 +277,13 @@ async function getAllLeadsWithPagination(req, res) {
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
     console.log("verification status = ", verification_status);
+    if(utm_campaign){
+      whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` }
+    }
+
+    if(utm_source) {
+      whereConditions.utm_source = { [Op.like]: `%${utm_source}%` }
+    }
 
     if (verification_status) {
       // Normalize to array if it isn't already
@@ -2649,6 +2658,31 @@ async function getCustomers(req,res){
   }
 }
 
+async function getAllDistinctUtmCampaignsAndSources(req, res) {
+  try {
+    const utmData = await Lead.findAll({
+      attributes: ['utm_campaign', 'utm_source'],
+      where: {
+        [Op.or]: [
+          { utm_campaign: { [Op.ne]: null } },
+          { utm_source: { [Op.ne]: null } },
+        ],
+      },
+      raw: true,
+    });
+
+    const uniqueCampaigns = [...new Set(utmData.map(e => e.utm_campaign).filter(Boolean))];
+    const uniqueSources = [...new Set(utmData.map(e => e.utm_source).filter(Boolean))];
+
+    return ApiResponse(res, "SUCCESS", 200, "Fetched distinct utm campaigns and sources", {
+      utm_campaigns: uniqueCampaigns,
+      utm_sources: uniqueSources,
+    });
+  } catch (error) {
+    console.log('error in fetching utm campaigns and sources = ', error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch campaigns and sources!", null, error);
+  }
+}
 
 module.exports = {
   createBulkLeads,
@@ -2667,5 +2701,6 @@ module.exports = {
   addNewLead,
   getCrifReportByCustomerIdOrPhone,
   getCrifSummaryReport,
-  getCustomers
+  getCustomers,
+  getAllDistinctUtmCampaignsAndSources  
 };

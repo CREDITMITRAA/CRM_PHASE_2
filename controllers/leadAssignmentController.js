@@ -376,6 +376,8 @@ async function getLeadsByAssignedUserId(req, res) {
       leadId,
       assigned_on,
       lead_status,
+      utm_campaign,
+      utm_source
     } = req.query;
 
     // Validate input
@@ -398,6 +400,13 @@ async function getLeadsByAssignedUserId(req, res) {
     if (email) leadFilters.email = { [Op.like]: `%${email}%` };
     if (phone) leadFilters.phone = { [Op.like]: `%${phone}%` };
     if (leadId) leadFilters.id = { [Op.like]: `%${leadId}%` };
+    if(utm_campaign){
+          leadFilters.utm_campaign = { [Op.like]: `%${utm_campaign}%` }
+        }
+    
+        if(utm_source) {
+          leadFilters.utm_source = { [Op.like]: `%${utm_source}%` }
+        }
     const leadSourceValue = leadSource || lead_source;
     if (leadSourceValue) {
       // leadFilters.lead_source = { [Op.like]: `%${leadSourceValue}%` };

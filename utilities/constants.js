@@ -75,7 +75,8 @@ const VERIFICATION_STATUSES = [
     "Rejected",
     "Normal Login",
     "Scheduled Call With Manager",
-    "Send To Login"
+    "Send To Login",
+    "Others"
 ]
 
 const TASK_STATUSES = [

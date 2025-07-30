@@ -58,6 +58,7 @@ async function createBulkLeads(req, res) {
   const validateEmail = false;
   const validateName = false;
   const validateSource = false;
+  const BATCH_SIZE = 1000; // Process in batches to avoid memory issues
 
   try {
     if (!Array.isArray(req.body) || req.body.length === 0) {
@@ -69,103 +70,194 @@ async function createBulkLeads(req, res) {
       );
     }
 
-    let validLeads = [];
-    let invalidLeads = [];
-
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let allInvalidLeads = [];
+    let allCreatedLeads = [];
+    let allUpdatedLeads = [];
 
-    // Rest of your existing workflow remains the same
-    req.body.forEach((lead) => {
-      let isValid = true;
-      let reason = "";
+    // Process in batches to avoid memory issues
+    for (let i = 0; i < req.body.length; i += BATCH_SIZE) {
+      const batch = req.body.slice(i, i + BATCH_SIZE);
+      let validLeads = [];
+      let invalidLeads = [];
 
-      const phoneRaw = lead.phone?.toString() || "";
-      const phoneReason = getPhoneValidationReason(phoneRaw);
+      // Validate leads in this batch
+      for (const lead of batch) {
+        let isValid = true;
+        let reason = "";
 
-      if (validateName && !lead.name) {
-        isValid = false;
-        reason = "Missing name";
-      } else if (
-        validateEmail &&
-        (!lead.email || !emailRegex.test(lead.email))
-      ) {
-        isValid = false;
-        reason = "Invalid email";
-      } else if (validateSource && !lead.lead_source) {
-        isValid = false;
-        reason = "Missing lead source";
-      } else if (validatePhone && phoneReason) {
-        isValid = false;
-        reason = phoneReason;
-      }
+        const phoneRaw = lead.phone?.toString() || "";
+        const phoneReason = getPhoneValidationReason(phoneRaw);
 
-      let extractedPhone = extractTenDigitMobile(phoneRaw);
-      const formattedLead = {
-        ...lead,
-        original_phone: phoneRaw,
-        phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
-        last_updated_status: "Not Contacted",
-      };
+        if (validateName && !lead.name) {
+          isValid = false;
+          reason = "Missing name";
+        } else if (
+          validateEmail &&
+          (!lead.email || !emailRegex.test(lead.email))
+        ) {
+          isValid = false;
+          reason = "Invalid email";
+        } else if (validateSource && !lead.lead_source) {
+          isValid = false;
+          reason = "Missing lead source";
+        } else if (validatePhone && phoneReason) {
+          isValid = false;
+          reason = phoneReason;
+        }
 
-      if(lead.bereau_score){
-        if(!lead.bereau_name){
-          formattedLead.bereau_name = "TransUnion Cibil"
-        }else{
-          formattedLead.bereau_name = lead.bereau_name
+        let extractedPhone = extractTenDigitMobile(phoneRaw);
+        const formattedLead = {
+          ...lead,
+          original_phone: phoneRaw,
+          phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
+          last_updated_status: "Not Contacted",
+        };
+
+        if (lead.bereau_score) {
+          formattedLead.bereau_name = lead.bereau_name || "TransUnion Cibil";
+        }
+
+        if (!isValid || !extractedPhone) {
+          invalidLeads.push({
+            ...formattedLead,
+            phone: phoneRaw,
+            reason: reason || "Unknown reason",
+          });
+        } else {
+          validLeads.push(formattedLead);
         }
       }
 
-      if (isValid && extractedPhone) {
-        validLeads.push(formattedLead);
-      } else {
-        invalidLeads.push({
-          ...formattedLead,
-          phone: phoneRaw,
-          reason: reason || "Unknown reason",
-        });
-      }
-    });
+      // Get all phone numbers from valid leads
+      const phoneNumbers = validLeads.map((l) => l.phone).filter(Boolean);
 
-    // Rest of your existing code for database operations...
-    let createdLeads = [];
-    if (validLeads.length > 0) {
-      try {
-        createdLeads = await Lead.bulkCreate(validLeads, { validate: true });
-      } catch (bulkError) {
-        console.error("Bulk insert error:", bulkError);
-        for (const lead of validLeads) {
-          try {
-            const created = await Lead.create(lead);
-            createdLeads.push(created);
-          } catch (err) {
-            const reason = getErrorReason(err) || "Insert failed";
-            invalidLeads.push({ ...lead, phone: lead.original_phone, reason });
-            console.error("Insert failed:", err);
+      // Find existing leads in a single query
+      const existingLeads =
+        phoneNumbers.length > 0
+          ? await Lead.findAll({
+              where: { phone: phoneNumbers },
+              attributes: ["id", "phone", "lead_status", "lead_source"], // Only get needed fields
+            })
+          : [];
+
+      const existingLeadsMap = new Map(existingLeads.map((l) => [l.phone, l]));
+
+      // Separate into creates and updates
+      const leadsToCreate = [];
+      const leadsToUpdate = [];
+
+      for (const lead of validLeads) {
+        const existingLead = existingLeadsMap.get(lead.phone);
+        if (existingLead) {
+          leadsToUpdate.push({
+            lead,
+            existingId: existingLead.id,
+            existingValues: {
+              // lead_source: existingLead.lead_source,
+              lead_status: existingLead.lead_status,
+            },
+          });
+        } else {
+          leadsToCreate.push(lead);
+        }
+      }
+
+      // Process creates and updates
+      let batchCreatedLeads = [];
+      let batchUpdatedLeads = [];
+
+      // Bulk create new leads
+      if (leadsToCreate.length > 0) {
+        try {
+          batchCreatedLeads = await Lead.bulkCreate(leadsToCreate, {
+            validate: true,
+          });
+        } catch (bulkError) {
+          console.error("Bulk create error:", bulkError);
+          // Fallback to individual creates
+          for (const lead of leadsToCreate) {
+            try {
+              const created = await Lead.create(lead);
+              batchCreatedLeads.push(created);
+            } catch (err) {
+              allInvalidLeads.push({
+                ...lead,
+                phone: lead.original_phone,
+                reason: getErrorReason(err) || "Insert failed",
+              });
+            }
           }
         }
       }
-    }
 
-    if (invalidLeads.length > 0) {
-      try {
-        await InvalidLead.bulkCreate(invalidLeads, { validate: false });
-      } catch (bulkInvalidErr) {
-        console.error("Invalid bulk insert failed:", bulkInvalidErr);
-        for (const lead of invalidLeads) {
-          try {
-            await InvalidLead.create(lead);
-          } catch (err) {
-            lead.reason = getErrorReason(err) || "Invalid lead insert failed";
-            console.error("Single invalid insert failed:", err);
+      // Bulk update existing leads
+      if (leadsToUpdate.length > 0) {
+        const updatePromises = leadsToUpdate.map(
+          async ({ lead, existingId }) => {
+            try {
+              const updateData = {
+                ...lead,
+                lead_status: "Re Engaged",
+                last_updated_status: "Re Engaged",
+                // lead_source: "Re Engaged", // Explicitly set for duplicates
+                updated_at: new Date(),
+              };
+
+              const [affectedCount] = await Lead.update(updateData, {
+                where: { id: existingId },
+              });
+
+              if (affectedCount > 0) {
+                batchUpdatedLeads.push({
+                  id: existingId,
+                  ...updateData,
+                });
+              }
+            } catch (err) {
+              console.error(`Error updating lead ${existingId}:`, err);
+              allInvalidLeads.push({
+                ...lead,
+                phone: lead.original_phone,
+                reason: getErrorReason(err) || "Update failed",
+              });
+            }
+          }
+        );
+
+        await Promise.all(updatePromises);
+      }
+
+      // Store invalid leads
+      if (invalidLeads.length > 0) {
+        try {
+          await InvalidLead.bulkCreate(invalidLeads, { validate: false });
+          allInvalidLeads.push(...invalidLeads);
+        } catch (bulkInvalidErr) {
+          console.error("Invalid bulk insert failed:", bulkInvalidErr);
+          // Fallback to individual inserts if needed
+          for (const lead of invalidLeads) {
+            try {
+              await InvalidLead.create(lead);
+              allInvalidLeads.push(lead);
+            } catch (err) {
+              console.error("Single invalid insert failed:", err);
+            }
           }
         }
       }
+
+      allCreatedLeads.push(...batchCreatedLeads);
+      allUpdatedLeads.push(...batchUpdatedLeads);
     }
 
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
-      totalValidLeads: createdLeads.length,
-      totalInvalidLeads: invalidLeads.length,
-      createdLeads: createdLeads.map((l) => ({
+      totalReceived: req.body.length,
+      totalValidLeads: allCreatedLeads.length + allUpdatedLeads.length,
+      totalCreated: allCreatedLeads.length,
+      totalUpdated: allUpdatedLeads.length,
+      totalInvalidLeads: allInvalidLeads.length,
+      createdLeads: allCreatedLeads.map((l) => ({
         id: l.id,
         name: l.name,
         email: l.email,
@@ -174,7 +266,17 @@ async function createBulkLeads(req, res) {
         ...(l.bereau_score && { bereau_score: l.bereau_score }),
         ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
       })),
-      invalidLeads,
+      updatedLeads: allUpdatedLeads.map((l) => ({
+        id: l.id,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        lead_status: l.lead_status,
+        lead_source: l.lead_source,
+        ...(l.bereau_score && { bereau_score: l.bereau_score }),
+        ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
+      })),
+      invalidLeads: allInvalidLeads,
     });
   } catch (err) {
     console.error("Unexpected error:", err);
@@ -216,7 +318,7 @@ async function getAllLeadsWithPagination(req, res) {
       table_type,
       lead_type,
       utm_campaign,
-      utm_source
+      utm_source,
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -277,12 +379,12 @@ async function getAllLeadsWithPagination(req, res) {
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
     console.log("verification status = ", verification_status);
-    if(utm_campaign){
-      whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` }
+    if (utm_campaign) {
+      whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` };
     }
 
-    if(utm_source) {
-      whereConditions.utm_source = { [Op.like]: `%${utm_source}%` }
+    if (utm_source) {
+      whereConditions.utm_source = { [Op.like]: `%${utm_source}%` };
     }
 
     if (verification_status) {
@@ -1719,13 +1821,12 @@ async function updateLeadStatus(req, res) {
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
-    if (![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM, ROLE_MANAGER].includes(role)) {
-      return ApiResponse(
-        res,
-        "error",
-        403,
-        "Access Denied !"
-      );
+    if (
+      ![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM, ROLE_MANAGER].includes(
+        role
+      )
+    ) {
+      return ApiResponse(res, "error", 403, "Access Denied !");
     }
 
     if (!LEAD_STATUSES.includes(lead_status)) {
@@ -2513,11 +2614,19 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
     );
 
     // Handle response
-    if (response.data.statusCode === 200 && response.data.status === "SUCCESS") {
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
       const fetchedCustomerId = response.data.data.customer_id;
 
       if (!fetchedCustomerId) {
-        return ApiResponse(res, "ERROR", 400, "Customer ID not found in response.");
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Customer ID not found in response."
+        );
       }
 
       await Lead.update(
@@ -2556,33 +2665,46 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
   }
 }
 
-async function getCrifSummaryReport(req,res){
+async function getCrifSummaryReport(req, res) {
   try {
-    const {startDate, endDate} = req.query
-    console.log('params received = ', req.query);
+    const { startDate, endDate } = req.query;
+    console.log("params received = ", req.query);
 
-    if(startDate && !endDate){
-      return ApiResponse(res, "ERROR", 400, "End Date is madatory for start date ")
+    if (startDate && !endDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "End Date is madatory for start date "
+      );
     }
 
-    if(endDate && !startDate){
-      return ApiResponse(res, "ERROR", 400, "Start Date is madatory for end date")
+    if (endDate && !startDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Start Date is madatory for end date"
+      );
     }
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
       {
         params: {
-          ...(startDate && {startDate}),
-          ...(endDate && {endDate})
+          ...(startDate && { startDate }),
+          ...(endDate && { endDate }),
         },
-        validateStatus: () => true
+        validateStatus: () => true,
       }
-    )
+    );
 
     // Handle response
-    if(response.data.statusCode === 200 && response.data.status === "SUCCESS") {
-        return ApiResponse(
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(
         res,
         "SUCCESS",
         200,
@@ -2598,42 +2720,61 @@ async function getCrifSummaryReport(req,res){
         response.data.message || "Failed to fetch summary report."
       );
     }
-
   } catch (error) {
-    console.log('error in fetching crif summary report = ', error);
-    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch crif summary report !", null, error)
+    console.log("error in fetching crif summary report = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch crif summary report !",
+      null,
+      error
+    );
   }
 }
 
-async function getCustomers(req,res){
+async function getCustomers(req, res) {
   try {
-    const {startDate, endDate, page, pageSize} = req.query
-    console.log('params received = ', req.query);
+    const { startDate, endDate, page, pageSize } = req.query;
+    console.log("params received = ", req.query);
 
-    if(startDate && !endDate){
-      return ApiResponse(res, "ERROR", 400, "End Date is madatory for start date ")
+    if (startDate && !endDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "End Date is madatory for start date "
+      );
     }
 
-    if(endDate && !startDate){
-      return ApiResponse(res, "ERROR", 400, "Start Date is madatory for end date")
+    if (endDate && !startDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Start Date is madatory for end date"
+      );
     }
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,
       {
         params: {
-          ...(startDate && {startDate}),
-          ...(endDate && {endDate}),
-          ...(page && {page}),
-          ...(pageSize && {pageSize})
+          ...(startDate && { startDate }),
+          ...(endDate && { endDate }),
+          ...(page && { page }),
+          ...(pageSize && { pageSize }),
         },
-        validateStatus: () => true
+        validateStatus: () => true,
       }
-    )
+    );
 
     // Handle response
-    if(response.data.statusCode === 200 && response.data.status === "SUCCESS") {
-        return ApiResponse(
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(
         res,
         "SUCCESS",
         200,
@@ -2651,17 +2792,23 @@ async function getCustomers(req,res){
         response.data.message || "Failed to fetch summary report."
       );
     }
-    
   } catch (error) {
-    console.log('error in fetcing customers = ', error);
-    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch customers !", null, error)
+    console.log("error in fetcing customers = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch customers !",
+      null,
+      error
+    );
   }
 }
 
 async function getAllDistinctUtmCampaignsAndSources(req, res) {
   try {
     const utmData = await Lead.findAll({
-      attributes: ['utm_campaign', 'utm_source'],
+      attributes: ["utm_campaign", "utm_source"],
       where: {
         [Op.or]: [
           { utm_campaign: { [Op.ne]: null } },
@@ -2671,16 +2818,217 @@ async function getAllDistinctUtmCampaignsAndSources(req, res) {
       raw: true,
     });
 
-    const uniqueCampaigns = [...new Set(utmData.map(e => e.utm_campaign).filter(Boolean))];
-    const uniqueSources = [...new Set(utmData.map(e => e.utm_source).filter(Boolean))];
+    const uniqueCampaigns = [
+      ...new Set(utmData.map((e) => e.utm_campaign).filter(Boolean)),
+    ];
+    const uniqueSources = [
+      ...new Set(utmData.map((e) => e.utm_source).filter(Boolean)),
+    ];
 
-    return ApiResponse(res, "SUCCESS", 200, "Fetched distinct utm campaigns and sources", {
-      utm_campaigns: uniqueCampaigns,
-      utm_sources: uniqueSources,
-    });
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Fetched distinct utm campaigns and sources",
+      {
+        utm_campaigns: uniqueCampaigns,
+        utm_sources: uniqueSources,
+      }
+    );
   } catch (error) {
-    console.log('error in fetching utm campaigns and sources = ', error);
-    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch campaigns and sources!", null, error);
+    console.log("error in fetching utm campaigns and sources = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch campaigns and sources!",
+      null,
+      error
+    );
+  }
+}
+
+async function getAllReEngagedLeads(req, res) {
+  try {
+    let { lead_status, page = 1, pageSize = 10, leadId, phone, name, lead_bucket, lead_source, utm_campaign, utm_source, assigned_to, importedOn, last_updated, assigned_on } = req.query;
+
+    page = parseInt(page);
+    pageSize = parseInt(pageSize);
+
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
+
+    let leadWhere = {};
+    let leadAssignmentWhere = {}
+
+    if (lead_status) {
+      leadWhere.lead_status = lead_status;
+    }
+
+    if(leadId) leadWhere.id = { [Op.like]: `%${leadId}%`}
+    if(phone) leadWhere.phone = { [Op.like]: `%${phone}%`}
+    if(name) leadWhere.name = { [Op.like]: `%${name}%`}
+    if(lead_bucket) leadWhere.lead_bucket = { [Op.like]: `%${lead_bucket}%`}
+    if(lead_source) leadWhere.lead_source = { [Op.like]: `%${lead_source}%`}
+    if(utm_campaign) leadWhere.utm_campaign = { [Op.like]: `%${utm_campaign}%`}
+    if(utm_source) leadWhere.utm_source = { [Op.like]: `%${utm_source}%`}
+    if(assigned_to) leadAssignmentWhere.assigned_to = assigned_to
+
+    if (importedOn) {
+      const [startRange, endRange] = importedOn.split(",");
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        whereConditions.createdAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        leadWhere.createdAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if (last_updated) {
+      const [startRange, endRange] = last_updated.split(",");
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        whereConditions.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        leadWhere.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if (assigned_on) {
+      const [startRange, endRange] = assigned_on.split(",");
+
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .startOf("minute")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .endOf("minute")
+          .utc()
+          .toDate();
+
+        console.log("Filtered Start UTC:", startOfRangeUTC);
+        console.log("Filtered End UTC:", endOfRangeUTC);
+
+        leadAssignmentWhere.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+
+        console.log("Filtered Single Day Start UTC:", startOfDayUTC);
+        console.log("Filtered Single Day End UTC:", endOfDayUTC);
+
+        leadAssignmentWhere.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    const { count, rows } = await Lead.findAndCountAll({
+      where: leadWhere, // ✅ apply filter here
+       order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          where: { status: "active", ...leadAssignmentWhere },
+          required: ['assigned_to', 'assigned_on', 'updatedAt'].some((key) => Object.keys(leadAssignmentWhere).includes(key)),
+          include: [
+            {
+              model: User,
+              as: "AssignedTo",
+              attributes: ["id", "name", "status"],
+            },
+          ],
+        },
+      ],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      distinct: true,
+    });
+
+    const totalPages = Math.ceil(count / pageSize);
+
+    let pagination = {
+      page: page,
+      totalPages: totalPages,
+      total: count,
+      pageSize: pageSize,
+    };
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Leads fetched successfully !",
+      rows,
+      null,
+      pagination
+    );
+  } catch (error) {
+    console.log("failed to fetch re engaged leads = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch re-engaged leads",
+      null,
+      error
+    );
   }
 }
 
@@ -2702,5 +3050,6 @@ module.exports = {
   getCrifReportByCustomerIdOrPhone,
   getCrifSummaryReport,
   getCustomers,
-  getAllDistinctUtmCampaignsAndSources  
+  getAllDistinctUtmCampaignsAndSources,
+  getAllReEngagedLeads,
 };

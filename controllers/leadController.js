@@ -2850,7 +2850,7 @@ async function getAllDistinctUtmCampaignsAndSources(req, res) {
 
 async function getAllReEngagedLeads(req, res) {
   try {
-    let { lead_status, page = 1, pageSize = 10, leadId, phone, name, lead_bucket, lead_source, utm_campaign, utm_source, assigned_to, importedOn, last_updated, assigned_on } = req.query;
+    let { lead_status, page = 1, pageSize = 10, leadId, phone, name, lead_bucket, lead_source, utm_campaign, utm_source, assigned_to, importedOn, last_updated, assigned_on, userId } = req.query;
 
     page = parseInt(page);
     pageSize = parseInt(pageSize);
@@ -2872,7 +2872,23 @@ async function getAllReEngagedLeads(req, res) {
     if(lead_source) leadWhere.lead_source = { [Op.like]: `%${lead_source}%`}
     if(utm_campaign) leadWhere.utm_campaign = { [Op.like]: `%${utm_campaign}%`}
     if(utm_source) leadWhere.utm_source = { [Op.like]: `%${utm_source}%`}
-    if(assigned_to) leadAssignmentWhere.assigned_to = assigned_to
+    if(assigned_to){
+      if(assigned_to === "re_assigned"){
+        leadWhere.is_reassigned = true
+      }else if(assigned_to === "not_assigned"){
+        leadWhere[Op.and] = Sequelize.literal(`
+        NOT EXISTS (
+          SELECT 1 
+          FROM LeadAssignments AS LA 
+          WHERE LA.lead_id = Lead.id
+        )
+      `);
+      }
+      else{
+        leadAssignmentWhere.assigned_to = assigned_to
+      }
+    }
+    if(userId) leadAssignmentWhere.assigned_to = userId
 
     if (importedOn) {
       const [startRange, endRange] = importedOn.split(",");

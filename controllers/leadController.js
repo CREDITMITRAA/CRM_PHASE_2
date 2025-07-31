@@ -58,7 +58,8 @@ async function createBulkLeads(req, res) {
   const validateEmail = false;
   const validateName = false;
   const validateSource = false;
-  const BATCH_SIZE = 1000; // Process in batches to avoid memory issues
+  const BATCH_SIZE = 1000;
+  const LOG_BATCH_SIZE = 500;
 
   try {
     if (!Array.isArray(req.body) || req.body.length === 0) {
@@ -70,12 +71,24 @@ async function createBulkLeads(req, res) {
       );
     }
 
+    const userId = req.query?.userId;
+    if (!userId) {
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "User ID is required for activity logging"
+      );
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let allInvalidLeads = [];
     let allCreatedLeads = [];
     let allUpdatedLeads = [];
+    let bulkActivityLogs = [];
+    let processedCount = 0;
 
-    // Process in batches to avoid memory issues
+    // Process leads in batches
     for (let i = 0; i < req.body.length; i += BATCH_SIZE) {
       const batch = req.body.slice(i, i + BATCH_SIZE);
       let validLeads = [];
@@ -132,18 +145,19 @@ async function createBulkLeads(req, res) {
       // Get all phone numbers from valid leads
       const phoneNumbers = validLeads.map((l) => l.phone).filter(Boolean);
 
-      // Find existing leads in a single query
-      const existingLeads =
-        phoneNumbers.length > 0
-          ? await Lead.findAll({
-              where: { phone: phoneNumbers },
-              attributes: ["id", "phone", "lead_status", "lead_source"], // Only get needed fields
-            })
-          : [];
+      // Find existing leads with all fields needed for comparison
+      const existingLeads = phoneNumbers.length > 0
+        ? await Lead.findAll({
+            where: { phone: phoneNumbers },
+            attributes: [
+              'id', 'phone', 'name', 'email', 'lead_source', 
+              'bereau_score', 'utm_campaign', 'utm_source', 
+              'lead_status'
+            ],
+          })
+        : [];
 
       const existingLeadsMap = new Map(existingLeads.map((l) => [l.phone, l]));
-
-      // Separate into creates and updates
       const leadsToCreate = [];
       const leadsToUpdate = [];
 
@@ -153,29 +167,23 @@ async function createBulkLeads(req, res) {
           leadsToUpdate.push({
             lead,
             existingId: existingLead.id,
-            existingValues: {
-              // lead_source: existingLead.lead_source,
-              lead_status: existingLead.lead_status,
-            },
+            existingValues: existingLead.get({ plain: true })
           });
         } else {
           leadsToCreate.push(lead);
         }
       }
 
-      // Process creates and updates
+      // Process creates
       let batchCreatedLeads = [];
-      let batchUpdatedLeads = [];
-
-      // Bulk create new leads
       if (leadsToCreate.length > 0) {
         try {
           batchCreatedLeads = await Lead.bulkCreate(leadsToCreate, {
             validate: true,
+            returning: true
           });
         } catch (bulkError) {
           console.error("Bulk create error:", bulkError);
-          // Fallback to individual creates
           for (const lead of leadsToCreate) {
             try {
               const created = await Lead.create(lead);
@@ -191,51 +199,92 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Bulk update existing leads
+      // Process updates with change tracking
+      let batchUpdatedLeads = [];
       if (leadsToUpdate.length > 0) {
-        const updatePromises = leadsToUpdate.map(
-          async ({ lead, existingId }) => {
-            try {
-              const updateData = {
-                ...lead,
-                lead_status: "Re Engaged",
-                last_updated_status: "Re Engaged",
-                // lead_source: "Re Engaged", // Explicitly set for duplicates
-                updated_at: new Date(),
-              };
+        const updatePromises = leadsToUpdate.map(async ({ lead, existingId, existingValues }) => {
+          try {
+            const updateData = {
+              name: lead.name,
+              email: lead.email,
+              lead_source: lead.lead_source,
+              bereau_score: lead.bereau_score,
+              utm_campaign: lead.utm_campaign,
+              utm_source: lead.utm_source,
+              lead_status: "Re Engaged",
+              last_updated_status: "Re Engaged",
+              updated_at: new Date(),
+            };
 
+            // Detect changed fields
+            const changedFields = {};
+            Object.keys(updateData).forEach(key => {
+              if (!isEqual(existingValues[key], updateData[key])) {
+                changedFields[key] = {
+                  previous: existingValues[key],
+                  current: updateData[key]
+                };
+              }
+            });
+
+            // Only update if there are changes
+            if (Object.keys(changedFields).length > 0) {
               const [affectedCount] = await Lead.update(updateData, {
-                where: { id: existingId },
+                where: { id: existingId }
               });
 
               if (affectedCount > 0) {
                 batchUpdatedLeads.push({
                   id: existingId,
-                  ...updateData,
+                  ...updateData
                 });
+
+                // Format changes for activity description
+                const changesText = Object.entries(changedFields)
+                  .map(([field, {previous, current}]) => 
+                    `${field}: ${formatValue(previous)} → ${formatValue(current)}`
+                  )
+                  .join('; ');
+
+                // Create activity log according to model requirements
+                bulkActivityLogs.push({
+                  created_by: userId,
+                  activity_type: 'LEAD_BULK_UPDATE',
+                  activity_desc: `Updated lead ${existingId} in bulk import: ${changesText}`,
+                  lead_id: existingId,
+                  lead_name: lead.name || existingValues.name,
+                  note: `Batch ${processedCount + 1}`,
+                  status: 'active',
+                  updated_at: new Date()
+                });
+
+                // Insert logs in batches if we reach the threshold
+                if (bulkActivityLogs.length >= LOG_BATCH_SIZE) {
+                  await insertActivityLogs(bulkActivityLogs);
+                  bulkActivityLogs = [];
+                }
               }
-            } catch (err) {
-              console.error(`Error updating lead ${existingId}:`, err);
-              allInvalidLeads.push({
-                ...lead,
-                phone: lead.original_phone,
-                reason: getErrorReason(err) || "Update failed",
-              });
             }
+          } catch (err) {
+            console.error(`Error updating lead ${existingId}:`, err);
+            allInvalidLeads.push({
+              ...lead,
+              phone: lead.original_phone,
+              reason: getErrorReason(err) || "Update failed",
+            });
           }
-        );
+        });
 
         await Promise.all(updatePromises);
       }
 
-      // Store invalid leads
+      // Process invalid leads
       if (invalidLeads.length > 0) {
         try {
           await InvalidLead.bulkCreate(invalidLeads, { validate: false });
           allInvalidLeads.push(...invalidLeads);
         } catch (bulkInvalidErr) {
           console.error("Invalid bulk insert failed:", bulkInvalidErr);
-          // Fallback to individual inserts if needed
           for (const lead of invalidLeads) {
             try {
               await InvalidLead.create(lead);
@@ -249,6 +298,12 @@ async function createBulkLeads(req, res) {
 
       allCreatedLeads.push(...batchCreatedLeads);
       allUpdatedLeads.push(...batchUpdatedLeads);
+      processedCount++;
+    }
+
+    // Insert any remaining logs
+    if (bulkActivityLogs.length > 0) {
+      await insertActivityLogs(bulkActivityLogs);
     }
 
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
@@ -257,33 +312,92 @@ async function createBulkLeads(req, res) {
       totalCreated: allCreatedLeads.length,
       totalUpdated: allUpdatedLeads.length,
       totalInvalidLeads: allInvalidLeads.length,
-      createdLeads: allCreatedLeads.map((l) => ({
-        id: l.id,
-        name: l.name,
-        email: l.email,
-        phone: l.phone,
-        lead_source: l.lead_source,
-        ...(l.bereau_score && { bereau_score: l.bereau_score }),
-        ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
-      })),
-      updatedLeads: allUpdatedLeads.map((l) => ({
-        id: l.id,
-        name: l.name,
-        email: l.email,
-        phone: l.phone,
-        lead_status: l.lead_status,
-        lead_source: l.lead_source,
-        ...(l.bereau_score && { bereau_score: l.bereau_score }),
-        ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
-      })),
+      totalLogsCreated: bulkActivityLogs.length,
+      createdLeads: allCreatedLeads.map(l => formatLeadResponse(l)),
+      updatedLeads: allUpdatedLeads.map(l => formatLeadResponse(l)),
       invalidLeads: allInvalidLeads,
     });
+
   } catch (err) {
     console.error("Unexpected error:", err);
     return ApiResponse(res, "error", 500, "Failed to process leads", {
       error: err.message,
     });
   }
+}
+
+// Helper function to insert activity logs with proper validation
+async function insertActivityLogs(logs) {
+  try {
+    const validLogs = logs.map(log => ({
+      created_by: log.created_by,
+      activity_type: log.activity_type,
+      activity_desc: log.activity_desc,
+      lead_id: log.lead_id,
+      lead_name: log.lead_name,
+      note: log.note,
+      status: log.status,
+      created_at: log.created_at,
+      updated_at: log.updated_at
+    }));
+
+    await ActivityLog.bulkCreate(validLogs);
+  } catch (err) {
+    console.error('Failed to bulk insert activity logs:', err);
+    
+    // Fallback to individual inserts with transaction
+    const transaction = await sequelize.transaction();
+    try {
+      for (const log of logs) {
+        await ActivityLog.create({
+          created_by: log.created_by,
+          activity_type: log.activity_type,
+          activity_desc: log.activity_desc,
+          lead_id: log.lead_id,
+          lead_name: log.lead_name,
+          note: log.note,
+          status: log.status
+        }, { transaction });
+      }
+      await transaction.commit();
+    } catch (e) {
+      await transaction.rollback();
+      console.error('Failed to insert activity logs:', e);
+    }
+  }
+}
+
+// Helper functions
+function isEqual(a, b) {
+  if (a === b) return true;
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  
+  return keys.every(k => isEqual(a[k], b[k]));
+}
+
+function formatValue(value) {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function formatLeadResponse(lead) {
+  return {
+    id: lead.id,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    lead_source: lead.lead_source,
+    ...(lead.bereau_score && { bereau_score: lead.bereau_score }),
+    ...(lead.utm_campaign && { utm_campaign: lead.utm_campaign }),
+    ...(lead.utm_source && { utm_source: lead.utm_source }),
+    ...(lead.lead_status && { lead_status: lead.lead_status }),
+  };
 }
 
 async function getAllLeadsWithPagination(req, res) {

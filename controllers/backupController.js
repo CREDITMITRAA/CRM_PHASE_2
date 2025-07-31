@@ -36,7 +36,7 @@ const BACKUP_CONFIG = {
             backupFolder: `backups/${process.env.NODE_ENV}/sajan`
         }
     },
-    versionHistory: 5 // Keep last 5 versions
+    versionHistory: 5 // Keep last 5 versionss
 };
 
 async function createSequelizeInstance(dbConfig) {

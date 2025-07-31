@@ -55,7 +55,7 @@ async function addLoginDetails(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-    if (application_status !== START_LOGIN) {
+    if (![START_LOGIN,UNDER_PROCESS].includes(application_status)) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
     }
@@ -299,7 +299,7 @@ async function editLoginDetails(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-    if (application_status !== START_LOGIN) {
+    if (![START_LOGIN,UNDER_PROCESS].includes(application_status)) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
     }

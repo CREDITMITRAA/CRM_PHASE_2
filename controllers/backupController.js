@@ -179,7 +179,7 @@ async function createBackup(req, res) {
         if (res) return ApiResponse(res, 'success', 200, "Backup successful");
     } catch (err) {
         console.error("❌ Backup failed:", err);
-        if (res) return ApiResponse(res, 'error', 500, "Backup failed", { error: err.message });
+        if (res) return ApiResponse(res, 'error', 500, err?.message || "Backup failed", { error: err.message });
     }
 }
 

@@ -18,7 +18,7 @@ async function getAllCompanyCategories(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch categories",
+      error?.message || "Failed to fetch categories",
       null,
       error,
       null
@@ -67,7 +67,7 @@ async function addCategory(req, res) {
       res,
       "error",
       500,
-      "Faile to add company category",
+      error?.message || "Faile to add company category",
       null,
       error
     );
@@ -108,7 +108,7 @@ async function deleteCategory(req, res) {
       res,
       "error",
       500,
-      "Failed to delete company category",
+      error?.message || "Failed to delete company category",
       null,
       error.message
     );
@@ -164,7 +164,7 @@ async function updateCategory(req, res) {
       res,
       "error",
       500,
-      "Failed to update company category",
+      error?.message || "Failed to update company category",
       null,
       error.message
     );

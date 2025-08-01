@@ -192,7 +192,7 @@ async function getActivityLogs(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch activity logs !",
+      error?.message || "Failed to fetch activity logs !",
       null,
       error,
       null
@@ -227,7 +227,7 @@ async function addActivityLogNote(req, res) {
       res,
       "error",
       500,
-      "Failed to add activity log note !",
+      error?.message || "Failed to add activity log note !",
       null,
       error,
       null

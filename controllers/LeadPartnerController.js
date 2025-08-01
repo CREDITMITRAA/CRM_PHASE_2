@@ -36,6 +36,7 @@ async function addLeadPartner(req, res) {
     }
 
     if (lead_partner_type === LEAD_AGGREGATOR && !name) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "ERROR",
@@ -95,7 +96,7 @@ async function addLeadPartner(req, res) {
       { transaction }
     );
 
-    transaction.commit();
+    await transaction.commit();
 
     return ApiResponse(
       res,
@@ -120,12 +121,12 @@ async function addLeadPartner(req, res) {
     );
   } catch (error) {
     console.log("error in adding lead partner = ", error);
-    transaction.rollback();
+    await transaction.rollback();
     return ApiResponse(
       res,
       "ERROR",
       500,
-      "Failed to add lead partner !",
+      error?.message || "Failed to add lead partner !",
       null,
       error
     );
@@ -299,7 +300,7 @@ async function uploadLeadsFromLeadPartner(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to process leads",
+      error?.message || "Failed to process leads",
       null,
       error.message
     );
@@ -457,7 +458,7 @@ async function generateHeaders(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to generate headers !",
+      error?.message || "Failed to generate headers !",
       null,
       error
     );
@@ -517,7 +518,7 @@ async function getAllLeadPartners(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to fetch all lead partners",
+      error?.message || "Failed to fetch all lead partners",
       null,
       error
     );
@@ -551,7 +552,7 @@ async function updateLeadPartnerDetails(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to update lead partner details !",
+      error?.message || "Failed to update lead partner details !",
       null,
       error
     );
@@ -565,6 +566,7 @@ async function deleteLeadPartnerById(req,res){
       // Check if the user exists
     const leadPartner = await LeadPartner.findByPk(leadPartnerId, { transaction });
     if (!leadPartner) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 404, "Lead partner not found");
     }
 
@@ -584,8 +586,9 @@ async function deleteLeadPartnerById(req,res){
       leadPartner.id
     );
   } catch (error) {
+    await transaction.rollback()
     console.log('error in deleting lead partner = ', error);
-    return ApiResponse(res, "ERROR", 500, "Failed to delete lead partner !", null, error)
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to delete lead partner !", null, error)
   }
 }
 

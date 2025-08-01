@@ -211,7 +211,7 @@ async function getExEmployeesLeads(req, res) {
         res,
         "ERROR",
         500,
-        "Failed to fetch ex-employees leads!",
+        error?.message || "Failed to fetch ex-employees leads!",
         null,
         error,
         null

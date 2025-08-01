@@ -51,7 +51,7 @@ async function createCallLog(req, res) {
 
         return ApiResponse(res, "success", 201, "Call log created successfully!", newCallLog);
     } catch (error) {
-        return ApiResponse(res, "error", 500, "Failed to create call log!", null, error);
+        return ApiResponse(res, "error", 500, error?.message || "Failed to create call log!", null, error);
     }
 }
 

@@ -58,7 +58,7 @@ async function getLoanReportsByLeadId(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch loan reports",
+      error?.message || "Failed to fetch loan reports",
       null,
       error,
       null
@@ -83,7 +83,7 @@ async function getAllLoanReports(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch loan reports",
+      error?.message || "Failed to fetch loan reports",
       null,
       error,
       null
@@ -137,7 +137,7 @@ async function updateLoanReport(req, res) {
       res,
       "error",
       500,
-      "Failed to update loan report !",
+      error?.message || "Failed to update loan report !",
       null,
       error,
       null
@@ -212,7 +212,7 @@ async function deleteLoanReport(req, res) {
       res,
       "error",
       500,
-      "Failed to soft delete loan report!",
+      error?.message || "Failed to soft delete loan report!",
       null,
       error,
       null
@@ -247,6 +247,7 @@ async function addLoanReport(req, res) {
       !lead_name ||
       !emi_date
     ) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -336,7 +337,7 @@ async function addLoanReport(req, res) {
       res,
       "error",
       500,
-      "Failed to add loan report!",
+      error?.message || "Failed to add loan report!",
       null,
       error,
       null
@@ -493,7 +494,7 @@ async function editLoanReport(req, res) {
   } catch (error) {
     console.log("error in edit loan report api = ", error);
     await transaction.rollback();
-    return ApiResponse(res, "ERROR", 500, "Something went wrong!", null, error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Something went wrong!", null, error);
   }
 }
 

@@ -41,7 +41,7 @@ async function getAllProfileImageUrls(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch profile image URLs",
+      error?.message || "Failed to fetch profile image URLs",
       null,
       error.message,
       null

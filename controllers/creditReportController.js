@@ -46,7 +46,7 @@ async function getCreditReportsByLeadId(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch credit reports",
+      error?.message || "Failed to fetch credit reports",
       null,
       error,
       null
@@ -72,7 +72,7 @@ async function getAllCreditReports(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch credit reports",
+      error?.message || "Failed to fetch credit reports",
       null,
       error,
       null
@@ -181,7 +181,7 @@ async function deleteCreditReport(req, res) {
       res,
       "error",
       500,
-      "Failed to Delete Credit Report !",
+      error?.message || "Failed to Delete Credit Report !",
       null,
       error,
       null
@@ -206,6 +206,7 @@ async function addCreditReport(req, res) {
       !created_by ||
       !lead_name
     ) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -273,11 +274,12 @@ async function addCreditReport(req, res) {
       null
     );
   } catch (error) {
+    await transaction.rollback()
     return ApiResponse(
       res,
       "error",
       500,
-      "Failed to add credit report",
+      error?.message || "Failed to add credit report",
       null,
       error,
       null
@@ -438,7 +440,7 @@ async function editCreditReport(req, res) {
   } catch (error) {
     console.error("Error in edit credit report API:", error);
     await transaction.rollback();
-    return ApiResponse(res, "ERROR", 500, "Something went wrong!", null, error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Something went wrong!", null, error);
   }
 }
 

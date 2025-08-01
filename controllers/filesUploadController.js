@@ -143,7 +143,7 @@ async function uploadFile(req, res) {
       res,
       "error",
       500,
-      "Failed to upload file!",
+      error?.message || "Failed to upload file!",
       null,
       error.message,
       null

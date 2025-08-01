@@ -13,7 +13,7 @@ async function getAllUsers(req, res) {
     });
     ApiResponse(res, "success", 200, "Users fetched successfully", users);
   } catch (err) {
-    ApiResponse(res, "error", 500, "Failed to fetch users", null, {
+    ApiResponse(res, "error", 500, err?.message || "Failed to fetch users", null, {
       message: err.message,
     });
   }
@@ -37,7 +37,7 @@ async function getUserById(req, res) {
 
     ApiResponse(res, "success", 200, "User fetched successfully", user);
   } catch (err) {
-    ApiResponse(res, "error", 500, "Failed to fetch user", null, {
+    ApiResponse(res, "error", 500, err?.message || "Failed to fetch user", null, {
       message: err.message,
     });
   }
@@ -117,7 +117,7 @@ async function createUser(req, res) {
       res,
       "error",
       500,
-      "Failed to create user!",
+      error?.message || "Failed to create user!",
       null,
       error,
       null
@@ -145,7 +145,7 @@ async function updateUser(req, res) {
 
     ApiResponse(res, "success", 200, "User updated successfully", updatedUser);
   } catch (err) {
-    ApiResponse(res, "error", 500, "Failed to update user", null, {
+    ApiResponse(res, "error", 500, err?.message || "Failed to update user", null, {
       message: err.message,
     });
   }
@@ -160,6 +160,7 @@ const deleteUserByUserId = async (req, res) => {
     // Check if the user exists
     const user = await User.findByPk(userId, { transaction: t });
     if (!user) {
+      await t.rollback()
       return ApiResponse(res, "error", 404, "User not found");
     }
 
@@ -196,7 +197,7 @@ const deleteUserByUserId = async (req, res) => {
       res,
       "error",
       500,
-      "Failed to mark user and associated records as inactive",
+      err?.message || "Failed to mark user and associated records as inactive",
       null,
       err,
       null
@@ -225,7 +226,7 @@ async function getUsersByName(req,res){
     return ApiResponse(res,'success', 200, "Users with matching name fetch successfully", users, null,null)
   } catch (error) {
       console.log(error);
-      return ApiResponse(res, 'error', 500, "Failed to fetch users with matching name !", null, error, null)
+      return ApiResponse(res, 'error', 500, error?.message || "Failed to fetch users with matching name !", null, error, null)
   }
 }
 
@@ -239,7 +240,7 @@ async function getUsersNameAndId(req, res) {
     });
     ApiResponse(res, "success", 200, "Users fetched successfully", users);
   } catch (err) {
-    ApiResponse(res, "error", 500, "Failed to fetch users", null, {
+    ApiResponse(res, "error", 500, err?.message || "Failed to fetch users", null, {
       message: err.message,
     });
   }
@@ -266,7 +267,7 @@ async function updateProfileImageUrl(req, res) {
 
     return ApiResponse(res, "success", 200, "Profile image URL updated successfully", profile_image_url, null, null);
   } catch (error) {
-    return ApiResponse(res, "error", 500, "Failed to update profile image URL", null, error.message, null);
+    return ApiResponse(res, "error", 500, error?.message || "Failed to update profile image URL", null, error.message, null);
   }
 }
 

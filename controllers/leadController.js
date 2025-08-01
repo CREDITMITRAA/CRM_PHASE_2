@@ -320,7 +320,7 @@ async function createBulkLeads(req, res) {
 
   } catch (err) {
     console.error("Unexpected error:", err);
-    return ApiResponse(res, "error", 500, "Failed to process leads", {
+    return ApiResponse(res, "error", 500, err?.message || "Failed to process leads", {
       error: err.message,
     });
   }
@@ -987,7 +987,7 @@ async function getAllLeadsWithPagination(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to fetch leads!",
+      error?.message || "Failed to fetch leads!",
       null,
       error,
       null
@@ -1081,7 +1081,7 @@ async function getLeadById(req, res) {
       res,
       "error",
       500,
-      "Internal server error",
+      error?.message || "Failed to fetch lead by id",
       null,
       error.message
     );
@@ -1457,7 +1457,7 @@ async function updateLeadReportsActivities(req, res) {
       res,
       "error",
       500,
-      "Failed to update details!",
+      error?.message || "Failed to update details!",
       null,
       error,
       null
@@ -1483,10 +1483,12 @@ async function updateVerificationStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !verification_status || !role) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
     if (role !== ROLE_ADMIN && role !== ROLE_MANAGER) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -1507,6 +1509,7 @@ async function updateVerificationStatus(req, res) {
       "Rejected",
     ];
     if (!VERIFICATION_STATUSES.includes(verification_status)) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Invalid verification status!");
     }
 
@@ -1516,6 +1519,7 @@ async function updateVerificationStatus(req, res) {
     };
     if (verification_status === "Rejected") {
       if (!rejection_reason || !rejected_by_id) {
+        await transaction.rollback()
         return ApiResponse(
           res,
           "error",
@@ -1596,7 +1600,7 @@ async function updateVerificationStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update verification status!",
+      error?.message || "Failed to update verification status!",
       null,
       error,
       null
@@ -1692,7 +1696,7 @@ async function getTotalLeadsCount(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch total leads count!",
+      error?.message || "Failed to fetch total leads count!",
       null,
       error,
       null
@@ -1721,6 +1725,7 @@ async function updateApplicationStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !application_status || !lead_status || !role) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -1729,6 +1734,7 @@ async function updateApplicationStatus(req, res) {
       role !== ROLE_MANAGER &&
       role !== ROLE_OPERATIONS_TEAM
     ) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 403, "Unauthorized Access !");
     }
 
@@ -1757,11 +1763,13 @@ async function updateApplicationStatus(req, res) {
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_bucket !== LOGINS && lead_status !== "12 documents collected") {
       if (lead_bucket !== "APPROVED_APPLICATIONS") {
+        await transaction.rollback()
         return ApiResponse(
           res,
           "error",
@@ -1778,6 +1786,7 @@ async function updateApplicationStatus(req, res) {
 
     if (application_status === "Rejected") {
       if (!rejection_reason) {
+        await transaction.rollback()
         return ApiResponse(res, "error", 400, "Rejection reason is required !");
       }
       updateData.is_rejected = true;
@@ -1787,6 +1796,7 @@ async function updateApplicationStatus(req, res) {
       updateData.updated_by = user_id;
     } else if (application_status === "Application Approved") {
       if (!closing_date || !lead_bucket) {
+        await transaction.rollback()
         return ApiResponse(res, "error", 400, "Missing required fields !");
       }
       updateData.closing_date = closing_date;
@@ -1909,7 +1919,7 @@ async function updateApplicationStatus(req, res) {
       res,
       "error",
       500,
-      error.message || "Failed to update application status !",
+      error?.message || "Failed to update application status !",
       null,
       error,
       null
@@ -1932,6 +1942,7 @@ async function updateLeadStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !lead_status || !role) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -1940,14 +1951,17 @@ async function updateLeadStatus(req, res) {
         role
       )
     ) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 403, "Access Denied !");
     }
 
     if (!LEAD_STATUSES.includes(lead_status)) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_status === "Others" && !others_note) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -2024,7 +2038,7 @@ async function updateLeadStatus(req, res) {
       res,
       "error",
       500,
-      error.message || "Failed to update lead status !",
+      error?.message || "Failed to update lead status !",
       null,
       error,
       null
@@ -2050,7 +2064,7 @@ async function getAllDistinctLeadSources(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch lead sources !",
+      error?.message || "Failed to fetch lead sources !",
       null,
       error,
       null
@@ -2089,7 +2103,7 @@ async function getLeadSourceByName(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch lead source by name !",
+      error?.message || "Failed to fetch lead source by name !",
       null,
       error,
       null
@@ -2105,10 +2119,12 @@ async function updateLeadDetails(req, res) {
     const { user_id, lead_name } = req.body;
 
     if (!id) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Lead ID is required!");
     }
 
     if (Object.keys(req.body).length === 0) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Update details are required!");
     }
 
@@ -2196,7 +2212,7 @@ async function updateLeadDetails(req, res) {
       res,
       "error",
       500,
-      "Failed to update lead details!",
+      error?.message || "Failed to update lead details!",
       null,
       error
     );
@@ -2256,7 +2272,7 @@ async function getAllLeadsOfExEmployees(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch ex-emp leads !",
+      error?.message || "Failed to fetch ex-emp leads !",
       null,
       error,
       null
@@ -2296,6 +2312,7 @@ async function uploadLead(req, res) {
     }
 
     if (income_type === "Salaried" && (!company || !salary)) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "ERROR",
@@ -2404,6 +2421,7 @@ async function uploadLead(req, res) {
       if (utm_campaign) {
         leadToBeSaved.utm_campaign = utm_campaign;
         if (!utm_source) {
+          await transaction.rollback()
           return ApiResponse(
             res,
             "ERROR",
@@ -2443,7 +2461,7 @@ async function uploadLead(req, res) {
       res,
       "error",
       500,
-      "Failed to upload lead!",
+      error?.message || "Failed to upload lead!",
       null,
       error
     );
@@ -2480,6 +2498,7 @@ async function addNewLead(req, res) {
     // }
 
     if (bereau_score && !bereau_name) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "ERROR",
@@ -2586,7 +2605,7 @@ async function addNewLead(req, res) {
       );
     }
 
-    return ApiResponse(res, "error", 500, "Failed to add lead!", null, error);
+    return ApiResponse(res, "error", 500, error?.message || "Failed to add lead!", null, error);
   }
 }
 
@@ -2772,7 +2791,7 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
       res,
       "ERROR",
       500,
-      error.message || "Something went wrong!",
+      error?.message || "Something went wrong!",
       null,
       error
     );

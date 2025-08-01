@@ -85,7 +85,7 @@ async function login(req, res) {
     });
   } catch (error) {
     console.error('Error during login:', error);
-    return ApiResponse(res, 'error', 500, 'Failed to login!', null, error, null);
+    return ApiResponse(res, 'error', 500, error?.message || 'Failed to login!', null, error, null);
   }
 }
 
@@ -124,7 +124,7 @@ async function updatePassword(req, res) {
     return ApiResponse(res, "success", 200, "Password updated successfully!", {password:hashedPassword});
 
   } catch (error) {
-    return ApiResponse(res, "error", 500, "Failed to update password!", null, error, null);
+    return ApiResponse(res, "error", 500, error?.message || "Failed to update password!", null, error, null);
   }
 }
 
@@ -155,7 +155,7 @@ async function logout(req, res) {
     return ApiResponse(res, 'success', 200, "Logged out successfully!");
   } catch (error) {
     console.error('Error during logout:', error);
-    return ApiResponse(res, 'error', 500, "Logout failed!", null, error);
+    return ApiResponse(res, 'error', 500, error?.message || "Logout failed!", null, error);
   }
 }
 

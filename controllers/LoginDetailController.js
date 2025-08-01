@@ -252,7 +252,7 @@ async function getLoginDetails(req, res) {
       res,
       "ERROR",
       500,
-      error.message || "Failed to fetch login details !",
+      error?.message || "Failed to fetch login details !",
       null,
       error
     );
@@ -364,7 +364,7 @@ async function editLoginDetails(req, res) {
       res,
       "ERROR",
       500,
-      error.message || "Failed to updated login details !",
+      error?.message || "Failed to updated login details !",
       null,
       error
     );

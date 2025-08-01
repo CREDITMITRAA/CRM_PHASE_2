@@ -32,6 +32,7 @@ async function assignLeadsToEmployee(req, res) {
       !assignedTo ||
       !assignedBy
     ) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 400, "Missing required fields!");
     }
 
@@ -42,9 +43,11 @@ async function assignLeadsToEmployee(req, res) {
     ]);
 
     if (!employee) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 404, "Assigned employee not found!");
     }
     if (!assigningUser) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 404, "Assigning user not found!");
     }
 
@@ -346,7 +349,7 @@ async function assignLeadsToEmployee(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to assign leads!",
+      error?.message || "Failed to assign leads!",
       null,
       error,
       null
@@ -661,7 +664,7 @@ async function getLeadsByAssignedUserId(req, res) {
       res,
       "error",
       500,
-      "Failed to retrieve leads",
+      error?.message || "Failed to retrieve leads",
       null,
       error,
       null

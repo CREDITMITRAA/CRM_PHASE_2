@@ -1,10 +1,12 @@
 const express = require('express')
 const router = express.Router()
 const LoginDetailController = require("../controllers/LoginDetailController")
+const { authenticate } = require('../middlewares/authenticationMiddleware')
+const { ROLE_ADMIN, ROLE_MANAGER, ROLE_OPERATIONS_TEAM, ROLE_VIEWER } = require('../utilities/constants')
 
-router.post('/add-login-details', LoginDetailController.addLoginDetails)
-router.get('/get-login-details', LoginDetailController.getLoginDetails)
-router.post('/edit-login-details', LoginDetailController.editLoginDetails)
-router.post('/delete-login-details', LoginDetailController.deleteLoginDetails)
+router.post('/add-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER]), LoginDetailController.addLoginDetails)
+router.get('/get-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_VIEWER]), LoginDetailController.getLoginDetails)
+router.post('/edit-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER]), LoginDetailController.editLoginDetails)
+router.post('/delete-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER]), LoginDetailController.deleteLoginDetails)
 
 module.exports = router

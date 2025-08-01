@@ -231,7 +231,7 @@ async function addActivity(req, res) {
     }
   } catch (error) {
     // 🔴 Prevent rollback on already committed transactions
-    if (transaction.finished !== "commit") {
+    if (transaction) {
       await transaction.rollback();
     }
     console.error("Error adding activity:", error);
@@ -239,7 +239,7 @@ async function addActivity(req, res) {
       res,
       "error",
       500,
-      "Failed to add activity!",
+      error?.message || "Failed to add activity!",
       null,
       error
     );
@@ -297,7 +297,7 @@ async function getActivitiesByLeadId(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch activities",
+      error?.message || "Failed to fetch activities",
       null,
       error,
       null
@@ -372,7 +372,7 @@ async function updateActivityByActivityId(req, res) {
       res,
       "error",
       500,
-      "Failed to update activity",
+      error?.message || "Failed to update activity",
       null,
       error.message
     );
@@ -500,7 +500,7 @@ async function getAllActivities(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to fetch activities!",
+      error?.message || "Failed to fetch activities!",
       null,
       error,
       null
@@ -668,7 +668,7 @@ async function getAllTasks(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to fetch tasks!",
+      error?.message || "Failed to fetch tasks!",
       null,
       error,
       null
@@ -743,7 +743,7 @@ async function updateTaskStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update Task Status!",
+      error?.message || "Failed to update Task Status!",
       null,
       error,
       null
@@ -792,11 +792,12 @@ async function updateDocsCollectedByActivityId(req, res) {
       "Docs Collected field updated successfully!"
     );
   } catch (error) {
+    await transaction.rollback()
     return ApiResponse(
       res,
       "error",
       500,
-      "Failed to update docs collected field !",
+      error?.message || "Failed to update docs collected field !",
       null,
       error,
       null
@@ -844,7 +845,7 @@ async function getRecentActivityNotesByLeadId(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch activity notes!",
+      error?.message || "Failed to fetch activity notes!",
       null,
       error,
       null
@@ -891,7 +892,7 @@ async function getRecentActivityByLeadId(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch activity notes!",
+      error?.message || "Failed to fetch activity notes!",
       null,
       error,
       null

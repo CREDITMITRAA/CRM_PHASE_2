@@ -516,9 +516,17 @@ async function getAllLeadsWithPagination(req, res) {
 
     if (lead_status) {
       if (lead_bucket === LOGINS) {
-        whereConditions.lead_status = lead_status;
+        if(lead_status === "Login Bank"){
+          whereConditions.lead_status = { [Op.like]: `%${lead_status}%` };
+        }else{
+          whereConditions.lead_status = lead_status;
+        }
       } else {
-        whereConditions.last_updated_status = lead_status;
+        if(lead_status === "Login Bank"){
+          whereConditions.last_updated_status = { [Op.like]: `%${lead_status}%` };
+        }else {
+          whereConditions.last_updated_status = lead_status;
+        }
       }
     }
 

@@ -49,6 +49,9 @@ module.exports = (sequelize) => {
     preferred_bank_name: { type: DataTypes.STRING },
     income_type: { type: DataTypes.STRING },
     customer_id: { type: DataTypes.INTEGER },
+    fb_leadgen_id: { type: DataTypes.STRING },
+    fb_form_id: { type: DataTypes.STRING },
+    fb_ad_id: { type: DataTypes.STRING },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

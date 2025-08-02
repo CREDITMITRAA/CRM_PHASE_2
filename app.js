@@ -11,6 +11,8 @@ const cron = require('node-cron');
 const { createBackup } = require('./controllers/backupController');
 const socketIo = require('socket.io');
 const { initializeSocket } = require('./socket/socket');
+const verifyFacebookSignature = require('./middlewares/verifyFacebookSignature');
+const facebookWebhookRoutes = require("./routes/facebookWebhookRoutes")
 
 const app = express();
 const allowedOrigins = process.env.FRONTEND_ORIGIN_URL.split(",")
@@ -33,6 +35,9 @@ app.use(cors({
   credentials: true,
 }));
 app.options('*', cors());  // Handle preflight OPTIONS requests
+
+app.use('/webhook', bodyParser.json({ verify: verifyFacebookSignature }));
+app.use('/webhook', facebookWebhookRoutes); // <== Directly here, not under /api
 
 // Test endpoint
 app.get('/', (req, res) => {

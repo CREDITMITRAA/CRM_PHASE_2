@@ -24,6 +24,7 @@ const ProfileImageUrlRoutes = require('./ProfileImageUrlRoutes')
 const ExEmployeeRoutes = require('./ExEmployeeRoutes')
 const LeadPartnerRoutes = require("./LeadPartnerRoutes")
 const LoginDetailRoutes = require("./LoginDetailRoutes")
+const FacebookWebhookRoutes = require("./facebookWebhookRoutes")
 // Add more routes as needed...
 
 // Set up routes
@@ -49,6 +50,7 @@ router.use('/profile-image-urls', ProfileImageUrlRoutes)
 router.use('/ex-employees', ExEmployeeRoutes)
 router.use('/lead-partner', LeadPartnerRoutes)
 router.use('/login-details', LoginDetailRoutes)
+router.use('/webhook', FacebookWebhookRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

@@ -12,7 +12,8 @@ const INITIAL_LEAD_STATUSES = [
     "Email",
     "Not Possible",
     "Scheduled Call With Manager",
-    "Others"
+    "Others",
+    "Re Engaged"
 ]
 
 const  LEAD_STATUSES = [

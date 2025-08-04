@@ -105,6 +105,7 @@ const START_LOGIN = "Start Login"
 const DISBURSED_FROM_BANKS = "Disbursed from Banks"
 const APPLICATION_IS_CLOSED = "Application Closed";
 const OTHERS = "Others"
+const PIPELINE_ENTRIES = "PIPELINE_ENTRIES"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -221,5 +222,6 @@ module.exports = {
     DISBURSED_FROM_BANKS,
     APPLICATION_IS_CLOSED,
     OTHERS,
-    LOGIN_SCHEME_OPTIONS
+    LOGIN_SCHEME_OPTIONS,
+    PIPELINE_ENTRIES
 }

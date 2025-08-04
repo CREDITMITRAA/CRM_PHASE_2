@@ -10,7 +10,7 @@ const {
   WalkIn,
 } = require("../models"); // Adjust paths as needed
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
+const { INITIAL_LEAD_STATUSES, PIPELINE_ENTRIES } = require("../utilities/constants");
 const ActivityLogServices = require("../services/ActivityLogServices");
 const {
   ACTIVITY_LOGS,
@@ -398,7 +398,9 @@ async function getLeadsByAssignedUserId(req, res) {
     const offset = (page - 1) * (pageSize ? pageSize : limit);
 
     // Build filters
-    const leadFilters = {};
+    const leadFilters = {
+      lead_bucket: PIPELINE_ENTRIES
+    };
     if (name) leadFilters.name = { [Op.like]: `%${name}%` };
     if (email) leadFilters.email = { [Op.like]: `%${email}%` };
     if (phone) leadFilters.phone = { [Op.like]: `%${phone}%` };

@@ -415,10 +415,13 @@ async function getLeadsByAssignedUserId(req, res) {
       // leadFilters.lead_source = { [Op.like]: `%${leadSourceValue}%` };
       leadFilters.lead_source = leadSourceValue;
     }
+    // Fixed filter logic
     if (leadStatus || lead_status) {
       leadFilters.lead_status = leadStatus || lead_status;
+      if (exclude_verification === "true") {
+        leadFilters.verification_status = "Under Review";
+      }
     } else if (exclude_verification === "true") {
-      // Exclude leads with status "Verification 1"
       leadFilters.lead_status = { [Op.in]: [...INITIAL_LEAD_STATUSES] };
       leadFilters.verification_status = "Under Review";
     }

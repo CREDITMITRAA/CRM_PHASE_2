@@ -955,8 +955,6 @@ async function getAllLeadsWithPagination(req, res) {
       offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
     });
-
-    console.log('approved lead ids = ', approvedLeadIds);
     
 
     const approvedLeadIds = rows

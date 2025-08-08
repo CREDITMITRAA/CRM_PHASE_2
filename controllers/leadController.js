@@ -956,6 +956,9 @@ async function getAllLeadsWithPagination(req, res) {
       distinct: true,
     });
 
+    console.log('approved lead ids = ', approvedLeadIds);
+    
+
     const approvedLeadIds = rows
       .filter(
         (lead) =>

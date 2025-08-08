@@ -92,6 +92,7 @@ const ROLE_MANAGER = "ROLE_MANAGER"
 const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
 const ROLE_VIEWER = "ROLE_VIEWER"
 const LOGINS = "LOGINS"
+const REJECTED = "Rejected"
 const NORMAL_LOGIN = "Normal Login"
 const PAID = "Paid"
 const LOGIN_BANK_1 = "Login Bank 1"
@@ -223,5 +224,6 @@ module.exports = {
     APPLICATION_IS_CLOSED,
     OTHERS,
     LOGIN_SCHEME_OPTIONS,
-    PIPELINE_ENTRIES
+    PIPELINE_ENTRIES,
+    REJECTED
 }

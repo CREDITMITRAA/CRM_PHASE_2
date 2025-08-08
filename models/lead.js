@@ -49,6 +49,8 @@ module.exports = (sequelize) => {
     preferred_bank_name: { type: DataTypes.STRING },
     income_type: { type: DataTypes.STRING },
     customer_id: { type: DataTypes.INTEGER },
+    required_loan_amount: { type: DataTypes.TEXT },
+    start_login_date: {type: DataTypes.DATE},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

@@ -1848,6 +1848,9 @@ async function updateApplicationStatus(req, res) {
       updateData.lead_bucket = LOGINS;
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      if(application_status === "Start Login"){
+        updateData.start_login_date = Date.now()
+      }
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
       updateData.rejection_reason = null;

@@ -8,5 +8,6 @@ router.post('/add-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPE
 router.get('/get-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_VIEWER]), LoginDetailController.getLoginDetails)
 router.post('/edit-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER]), LoginDetailController.editLoginDetails)
 router.post('/delete-login-details', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_MANAGER]), LoginDetailController.deleteLoginDetails)
-
+router.get('/get-logins-overall-summary', authenticate([ROLE_ADMIN,ROLE_VIEWER]), LoginDetailController.getLoginsOverallSummary)
+router.get('/get-leads-with-logins-summary', authenticate([ROLE_ADMIN, ROLE_VIEWER]), LoginDetailController.getLeadsWithLoginsSummary)
 module.exports = router

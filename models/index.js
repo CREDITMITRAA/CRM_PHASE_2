@@ -79,10 +79,24 @@ Lead.hasMany(LoginDetail, {
   as: 'loginDetails'
 })
 
+Lead.hasMany(LoginDetail, {
+  foreignKey: 'lead_id',
+  as: 'firstLogin', // specifically for the first login
+  scope: {
+    // You can add additional filters here if needed
+  }
+});
+
 LoginDetail.belongsTo(Lead, {
   foreignKey: 'lead_id',
   as: 'lead'
 })
+
+Notification.belongsTo(User, { 
+    foreignKey: 'employee_id', // Notification.employee_id
+    targetKey: 'id',           // User.id (primary key)
+    as: 'AssignedToUser'
+});
 
 module.exports = {
   sequelize,

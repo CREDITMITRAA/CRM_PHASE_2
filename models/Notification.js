@@ -8,6 +8,8 @@ module.exports = (sequelize) => {
     message: {type: DataTypes.TEXT, allowNull:false},
     is_read: {type: DataTypes.BOOLEAN, defaultValue:false},
     is_interactive: {type: DataTypes.BOOLEAN, defaultValue:false},
+    notification_from: {type: DataTypes.STRING},
+    notification_title: {type: DataTypes.STRING},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true});
 };

@@ -92,6 +92,7 @@ const ROLE_MANAGER = "ROLE_MANAGER"
 const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
 const ROLE_VIEWER = "ROLE_VIEWER"
 const LOGINS = "LOGINS"
+const REJECTED = "Rejected"
 const NORMAL_LOGIN = "Normal Login"
 const PAID = "Paid"
 const LOGIN_BANK_1 = "Login Bank 1"
@@ -106,6 +107,9 @@ const DISBURSED_FROM_BANKS = "Disbursed from Banks"
 const APPLICATION_IS_CLOSED = "Application Closed";
 const OTHERS = "Others"
 const PIPELINE_ENTRIES = "PIPELINE_ENTRIES"
+const ALL_DISPUTES_UPDATED = "All Disputes Updated";
+const ALL_CLEAR = "All Clear"
+const DISPUTE_UPDATED = "Dispute Updated"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -223,5 +227,9 @@ module.exports = {
     APPLICATION_IS_CLOSED,
     OTHERS,
     LOGIN_SCHEME_OPTIONS,
-    PIPELINE_ENTRIES
+    PIPELINE_ENTRIES,
+    REJECTED,
+    ALL_DISPUTES_UPDATED,
+    ALL_CLEAR,
+    DISPUTE_UPDATED
 }

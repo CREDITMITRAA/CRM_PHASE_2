@@ -317,6 +317,8 @@ async function assignLeadsToEmployee(req, res) {
     const notification = await saveNotification(
       {
         employee_id: assignedTo,
+        notification_from: assigningUser?.name,
+        notification_title: 'New Lead Assignment',
         message: `${leadIds.length} leads have been assigned to you.`,
       },
       transaction
@@ -331,6 +333,7 @@ async function assignLeadsToEmployee(req, res) {
 
     const io = getIo();
     io.to(`user_${assignedTo}`).emit("leadAssignment", {
+      notification_title: 'New Lead Assignment',
       message: `${leadIds.length} leads have been assigned to you.`,
       assignedBy: userName,
       leadCount: leadIds.length,

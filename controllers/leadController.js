@@ -9,6 +9,8 @@ const {
   Activity,
   ActivityLog,
   WalkIn,
+  CreditReport,
+  LoanReport,
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const LeadServices = require("../services/leadServices");
@@ -50,8 +52,10 @@ const {
 } = require("../services/ActivityLogServices");
 const { getIo } = require("../socket/socket");
 const { default: axios } = require("axios");
+const { saveNotification } = require("../services/NotificationServices");
 
 async function createBulkLeads(req, res) {
+  const transaction = await sequelize.transaction();
   console.log(req.body, "Received leads data");
 
   const validatePhone = true;
@@ -72,6 +76,7 @@ async function createBulkLeads(req, res) {
     }
 
     const userId = req.query?.userId;
+    const userName = req.query?.userName;
     if (!userId) {
       return ApiResponse(
         res,
@@ -88,13 +93,13 @@ async function createBulkLeads(req, res) {
     let bulkActivityLogs = [];
     let processedCount = 0;
 
-    // Process leads in batches
+    // Process in batches
     for (let i = 0; i < req.body.length; i += BATCH_SIZE) {
       const batch = req.body.slice(i, i + BATCH_SIZE);
       let validLeads = [];
       let invalidLeads = [];
 
-      // Validate leads in this batch
+      // Validate each lead
       for (const lead of batch) {
         let isValid = true;
         let reason = "";
@@ -142,20 +147,34 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Get all phone numbers from valid leads
+      // Existing leads lookup
       const phoneNumbers = validLeads.map((l) => l.phone).filter(Boolean);
-
-      // Find existing leads with all fields needed for comparison
-      const existingLeads = phoneNumbers.length > 0
-        ? await Lead.findAll({
-            where: { phone: phoneNumbers },
-            attributes: [
-              'id', 'phone', 'name', 'email', 'lead_source', 
-              'bereau_score', 'utm_campaign', 'utm_source', 
-              'lead_status'
-            ],
-          })
-        : [];
+      const existingLeads =
+        phoneNumbers.length > 0
+          ? await Lead.findAll({
+              where: { phone: phoneNumbers },
+              attributes: [
+                "id",
+                "phone",
+                "name",
+                "email",
+                "lead_source",
+                "bereau_score",
+                "utm_campaign",
+                "utm_source",
+                "lead_status",
+              ],
+              include: [
+                {
+                  model: LeadAssignment,
+                  as: "LeadAssignments",
+                  attributes: ["id", "assigned_to"],
+                  required: false,
+                },
+              ],
+              transaction,
+            })
+          : [];
 
       const existingLeadsMap = new Map(existingLeads.map((l) => [l.phone, l]));
       const leadsToCreate = [];
@@ -167,20 +186,20 @@ async function createBulkLeads(req, res) {
           leadsToUpdate.push({
             lead,
             existingId: existingLead.id,
-            existingValues: existingLead.get({ plain: true })
+            existingValues: existingLead.get({ plain: true }),
           });
         } else {
           leadsToCreate.push(lead);
         }
       }
 
-      // Process creates
+      // Create new leads
       let batchCreatedLeads = [];
       if (leadsToCreate.length > 0) {
         try {
           batchCreatedLeads = await Lead.bulkCreate(leadsToCreate, {
             validate: true,
-            returning: true
+            returning: true,
           });
         } catch (bulkError) {
           console.error("Bulk create error:", bulkError);
@@ -199,86 +218,141 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Process updates with change tracking
+      // Update existing leads
       let batchUpdatedLeads = [];
       if (leadsToUpdate.length > 0) {
-        const updatePromises = leadsToUpdate.map(async ({ lead, existingId, existingValues }) => {
-          try {
-            const updateData = {
-              name: lead.name,
-              email: lead.email,
-              lead_source: lead.lead_source,
-              bereau_score: lead.bereau_score,
-              utm_campaign: lead.utm_campaign,
-              utm_source: lead.utm_source,
-              lead_status: "Re Engaged",
-              last_updated_status: "Re Engaged",
-              updated_at: new Date(),
-            };
+        const assignedLeadsMap = new Map();
+        const updatePromises = leadsToUpdate.map(
+          async ({ lead, existingId, existingValues }) => {
+            try {
+              const updateData = {
+                name: lead.name,
+                email: lead.email,
+                lead_source: lead.lead_source,
+                bereau_score: lead.bereau_score,
+                utm_campaign: lead.utm_campaign,
+                utm_source: lead.utm_source,
+                lead_status: "Re Engaged",
+                last_updated_status: "Re Engaged",
+                updated_at: new Date(),
+              };
 
-            // Detect changed fields
-            const changedFields = {};
-            Object.keys(updateData).forEach(key => {
-              if (!isEqual(existingValues[key], updateData[key])) {
-                changedFields[key] = {
-                  previous: existingValues[key],
-                  current: updateData[key]
-                };
-              }
-            });
-
-            // Only update if there are changes
-            if (Object.keys(changedFields).length > 0) {
-              const [affectedCount] = await Lead.update(updateData, {
-                where: { id: existingId }
+              // Detect changes
+              const changedFields = {};
+              Object.keys(updateData).forEach((key) => {
+                if (!isEqual(existingValues[key], updateData[key])) {
+                  changedFields[key] = {
+                    previous: existingValues[key],
+                    current: updateData[key],
+                  };
+                }
               });
 
-              if (affectedCount > 0) {
-                batchUpdatedLeads.push({
-                  id: existingId,
-                  ...updateData
+              if (Object.keys(changedFields).length > 0) {
+                const [affectedCount] = await Lead.update(updateData, {
+                  where: { id: existingId },
                 });
 
-                // Format changes for activity description
-                const changesText = Object.entries(changedFields)
-                  .map(([field, {previous, current}]) => 
-                    `${field}: ${formatValue(previous)} → ${formatValue(current)}`
-                  )
-                  .join('; ');
+                if (affectedCount > 0) {
+                  batchUpdatedLeads.push({ id: existingId, ...updateData });
 
-                // Create activity log according to model requirements
-                bulkActivityLogs.push({
-                  created_by: userId,
-                  activity_type: 'LEAD_BULK_UPDATE',
-                  activity_desc: `Updated lead ${existingId} in bulk import: ${changesText}`,
-                  lead_id: existingId,
-                  lead_name: lead.name || existingValues.name,
-                  note: `Batch ${processedCount + 1}`,
-                  status: 'active',
-                  updated_at: new Date()
-                });
+                  // 🟢 Notification Flow
+                  // const assignedTo = existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  // if (assignedTo) {
+                  //   const notification = await saveNotification(
+                  //     {
+                  //       employee_id: assignedTo,
+                  //       notification_from: userName,
+                  //       notification_title: 'New Lead Re-Engagement',
+                  //       message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     },
+                  //     transaction
+                  //   );
 
-                // Insert logs in batches if we reach the threshold
-                if (bulkActivityLogs.length >= LOG_BATCH_SIZE) {
-                  await insertActivityLogs(bulkActivityLogs);
-                  bulkActivityLogs = [];
+                  //   const io = getIo();
+                  //   io.to(`user_${assignedTo}`).emit("leadAssignment", {
+                  //     message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     assignedBy: userName,
+                  //     leadCount: 1,
+                  //     notificationId: notification.id,
+                  //     notification_title: 'New Lead Re-Engagement'
+                  //   });
+                  // }
+
+                  // 🔹 Add to user → lead list map
+                  const assignedTo =
+                    existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  if (assignedTo) {
+                    if (!assignedLeadsMap.has(assignedTo)) {
+                      assignedLeadsMap.set(assignedTo, []);
+                    }
+                    assignedLeadsMap.get(assignedTo).push(existingId);
+                  }
+
+                  // Activity log
+                  const changesText = Object.entries(changedFields)
+                    .map(
+                      ([field, { previous, current }]) =>
+                        `${field}: ${formatValue(previous)} → ${formatValue(
+                          current
+                        )}`
+                    )
+                    .join("; ");
+
+                  bulkActivityLogs.push({
+                    created_by: userId,
+                    activity_type: "LEAD_BULK_UPDATE",
+                    activity_desc: `Updated lead ${existingId} in bulk import: ${changesText}`,
+                    lead_id: existingId,
+                    lead_name: lead.name || existingValues.name,
+                    note: `Batch ${processedCount + 1}`,
+                    status: "active",
+                    updated_at: new Date(),
+                  });
+
+                  if (bulkActivityLogs.length >= LOG_BATCH_SIZE) {
+                    await insertActivityLogs(bulkActivityLogs);
+                    bulkActivityLogs = [];
+                  }
                 }
               }
+            } catch (err) {
+              console.error(`Error updating lead ${existingId}:`, err);
+              allInvalidLeads.push({
+                ...lead,
+                phone: lead.original_phone,
+                reason: getErrorReason(err) || "Update failed",
+              });
             }
-          } catch (err) {
-            console.error(`Error updating lead ${existingId}:`, err);
-            allInvalidLeads.push({
-              ...lead,
-              phone: lead.original_phone,
-              reason: getErrorReason(err) || "Update failed",
-            });
           }
-        });
+        );
 
         await Promise.all(updatePromises);
+
+        // 🔹 Step 2: Send one notification per user after processing updates
+        const io = getIo();
+        for (const [assignedTo, leadIds] of assignedLeadsMap) {
+          const notification = await saveNotification(
+            {
+              employee_id: assignedTo,
+              notification_from: userName,
+              notification_title: "Leads Re-Engaged",
+              message: `${leadIds.length} leads have been re-engaged.`,
+            },
+            transaction
+          );
+
+          io.to(`user_${assignedTo}`).emit("leadAssignment", {
+            notification_title: "Leads Re-Engaged",
+            message: `${leadIds.length} leads have been re-engaged.`,
+            assignedBy: userName,
+            leadCount: leadIds.length,
+            notificationId: notification.id,
+          });
+        }
       }
 
-      // Process invalid leads
+      // Insert invalid leads
       if (invalidLeads.length > 0) {
         try {
           await InvalidLead.bulkCreate(invalidLeads, { validate: false });
@@ -301,10 +375,12 @@ async function createBulkLeads(req, res) {
       processedCount++;
     }
 
-    // Insert any remaining logs
+    // Flush remaining logs
     if (bulkActivityLogs.length > 0) {
       await insertActivityLogs(bulkActivityLogs);
     }
+
+    await transaction.commit();
 
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
       totalReceived: req.body.length,
@@ -313,23 +389,29 @@ async function createBulkLeads(req, res) {
       totalUpdated: allUpdatedLeads.length,
       totalInvalidLeads: allInvalidLeads.length,
       totalLogsCreated: bulkActivityLogs.length,
-      createdLeads: allCreatedLeads.map(l => formatLeadResponse(l)),
-      updatedLeads: allUpdatedLeads.map(l => formatLeadResponse(l)),
+      createdLeads: allCreatedLeads.map((l) => formatLeadResponse(l)),
+      updatedLeads: allUpdatedLeads.map((l) => formatLeadResponse(l)),
       invalidLeads: allInvalidLeads,
     });
-
   } catch (err) {
+    await transaction.rollback();
     console.error("Unexpected error:", err);
-    return ApiResponse(res, "error", 500, err?.message || "Failed to process leads", {
-      error: err.message,
-    });
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      err?.message || "Failed to process leads",
+      {
+        error: err.message,
+      }
+    );
   }
 }
 
 // Helper function to insert activity logs with proper validation
 async function insertActivityLogs(logs) {
   try {
-    const validLogs = logs.map(log => ({
+    const validLogs = logs.map((log) => ({
       created_by: log.created_by,
       activity_type: log.activity_type,
       activity_desc: log.activity_desc,
@@ -338,31 +420,34 @@ async function insertActivityLogs(logs) {
       note: log.note,
       status: log.status,
       created_at: log.created_at,
-      updated_at: log.updated_at
+      updated_at: log.updated_at,
     }));
 
     await ActivityLog.bulkCreate(validLogs);
   } catch (err) {
-    console.error('Failed to bulk insert activity logs:', err);
-    
+    console.error("Failed to bulk insert activity logs:", err);
+
     // Fallback to individual inserts with transaction
     const transaction = await sequelize.transaction();
     try {
       for (const log of logs) {
-        await ActivityLog.create({
-          created_by: log.created_by,
-          activity_type: log.activity_type,
-          activity_desc: log.activity_desc,
-          lead_id: log.lead_id,
-          lead_name: log.lead_name,
-          note: log.note,
-          status: log.status
-        }, { transaction });
+        await ActivityLog.create(
+          {
+            created_by: log.created_by,
+            activity_type: log.activity_type,
+            activity_desc: log.activity_desc,
+            lead_id: log.lead_id,
+            lead_name: log.lead_name,
+            note: log.note,
+            status: log.status,
+          },
+          { transaction }
+        );
       }
       await transaction.commit();
     } catch (e) {
       await transaction.rollback();
-      console.error('Failed to insert activity logs:', e);
+      console.error("Failed to insert activity logs:", e);
     }
   }
 }
@@ -370,19 +455,26 @@ async function insertActivityLogs(logs) {
 // Helper functions
 function isEqual(a, b) {
   if (a === b) return true;
-  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-  
+  if (a instanceof Date && b instanceof Date)
+    return a.getTime() === b.getTime();
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  )
+    return false;
+
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
-  
-  return keys.every(k => isEqual(a[k], b[k]));
+
+  return keys.every((k) => isEqual(a[k], b[k]));
 }
 
 function formatValue(value) {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
@@ -516,15 +608,17 @@ async function getAllLeadsWithPagination(req, res) {
 
     if (lead_status) {
       if (lead_bucket === LOGINS) {
-        if(lead_status === "Login Bank"){
+        if (lead_status === "Login Bank") {
           whereConditions.lead_status = { [Op.like]: `%${lead_status}%` };
-        }else{
+        } else {
           whereConditions.lead_status = lead_status;
         }
       } else {
-        if(lead_status === "Login Bank"){
-          whereConditions.last_updated_status = { [Op.like]: `%${lead_status}%` };
-        }else {
+        if (lead_status === "Login Bank") {
+          whereConditions.last_updated_status = {
+            [Op.like]: `%${lead_status}%`,
+          };
+        } else {
           whereConditions.last_updated_status = lead_status;
         }
       }
@@ -923,6 +1017,71 @@ async function getAllLeadsWithPagination(req, res) {
       limit: isPaginationEnabled ? pageSize : null,
       offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
+    });
+
+    const approvedLeadIds = rows
+      .filter(
+        (lead) =>
+          lead.lead_bucket === "APPROVED_APPLICATIONS" && lead.is_paid === true
+      )
+      .map((lead) => lead.id);
+
+    let disputeCheckMap = {};
+
+    if (approvedLeadIds.length > 0) {
+      // 1️⃣ Fetch closed loans
+      const loanReports = await LoanReport.findAll({
+        where: {
+          lead_id: { [Op.in]: approvedLeadIds },
+          // loan_status: "Closed",
+        },
+        attributes: ["lead_id", "dispute_status"],
+      });
+
+      // 2️⃣ Fetch closed credit reports
+      const creditReports = await CreditReport.findAll({
+        where: {
+          lead_id: { [Op.in]: approvedLeadIds },
+          // loan_status: "Closed",
+        },
+        attributes: ["lead_id", "dispute_status"],
+      });
+
+      // Combine results into a single grouping
+      const reportsByLead = {};
+
+      [...loanReports, ...creditReports].forEach((report) => {
+        if (!reportsByLead[report.lead_id]) reportsByLead[report.lead_id] = [];
+        reportsByLead[report.lead_id].push(report.dispute_status);
+      });
+
+      // Check the "all dispute updated" condition
+      for (const leadId in reportsByLead) {
+        const reports = reportsByLead[leadId];
+
+        // Only set to true if:
+        // 1. There are reports (array not empty)
+        // 2. Every report has "Dispute Updated" status
+        disputeCheckMap[leadId] =
+          reports.length > 0 &&
+          reports.every((status) => status === "Dispute Updated");
+      }
+    }
+
+    // 3️⃣ Add the flag to each lead
+    rows.forEach((lead) => {
+      if (
+        lead.lead_bucket === "APPROVED_APPLICATIONS" &&
+        lead.is_paid === true
+      ) {
+        // Only set to true if:
+        // 1. The lead exists in disputeCheckMap (has reports)
+        // 2. All reports have "Dispute Updated" status
+        lead.dataValues.isUserAllowedToUpdateAllDisputes =
+          lead.id in disputeCheckMap && disputeCheckMap[lead.id];
+      } else {
+        lead.dataValues.isUserAllowedToUpdateAllDisputes = false;
+      }
     });
 
     let callsStartDate = null;
@@ -1491,12 +1650,12 @@ async function updateVerificationStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !verification_status || !role) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
     if (role !== ROLE_ADMIN && role !== ROLE_MANAGER) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -1517,7 +1676,7 @@ async function updateVerificationStatus(req, res) {
       "Rejected",
     ];
     if (!VERIFICATION_STATUSES.includes(verification_status)) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid verification status!");
     }
 
@@ -1527,7 +1686,7 @@ async function updateVerificationStatus(req, res) {
     };
     if (verification_status === "Rejected") {
       if (!rejection_reason || !rejected_by_id) {
-        await transaction.rollback()
+        await transaction.rollback();
         return ApiResponse(
           res,
           "error",
@@ -1730,10 +1889,11 @@ async function updateApplicationStatus(req, res) {
       closing_date,
       login_date,
       lead_bucket,
+      table_type,
     } = req.body;
 
     if (!lead_id || !application_status || !lead_status || !role) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -1742,7 +1902,7 @@ async function updateApplicationStatus(req, res) {
       role !== ROLE_MANAGER &&
       role !== ROLE_OPERATIONS_TEAM
     ) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 403, "Unauthorized Access !");
     }
 
@@ -1771,13 +1931,13 @@ async function updateApplicationStatus(req, res) {
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_bucket !== LOGINS && lead_status !== "12 documents collected") {
       if (lead_bucket !== "APPROVED_APPLICATIONS") {
-        await transaction.rollback()
+        await transaction.rollback();
         return ApiResponse(
           res,
           "error",
@@ -1794,7 +1954,7 @@ async function updateApplicationStatus(req, res) {
 
     if (application_status === "Rejected") {
       if (!rejection_reason) {
-        await transaction.rollback()
+        await transaction.rollback();
         return ApiResponse(res, "error", 400, "Rejection reason is required !");
       }
       updateData.is_rejected = true;
@@ -1804,7 +1964,7 @@ async function updateApplicationStatus(req, res) {
       updateData.updated_by = user_id;
     } else if (application_status === "Application Approved") {
       if (!closing_date || !lead_bucket) {
-        await transaction.rollback()
+        await transaction.rollback();
         return ApiResponse(res, "error", 400, "Missing required fields !");
       }
       updateData.closing_date = closing_date;
@@ -1839,6 +1999,15 @@ async function updateApplicationStatus(req, res) {
       updateData.updated_by = user_id;
       updateData.lead_status = "Closed";
     } else if (application_status === "Send To Login") {
+      if (table_type === "Paid" && lead_status !== "All Disputes Updated") {
+        await transaction.rollback();
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Lead status should be All Disputes Udpated"
+        );
+      }
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
       updateData.rejection_reason = null;
@@ -1848,6 +2017,9 @@ async function updateApplicationStatus(req, res) {
       updateData.lead_bucket = LOGINS;
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      if (application_status === "Start Login") {
+        updateData.start_login_date = Date.now();
+      }
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
       updateData.rejection_reason = null;
@@ -1950,7 +2122,7 @@ async function updateLeadStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !lead_status || !role) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -1959,17 +2131,17 @@ async function updateLeadStatus(req, res) {
         role
       )
     ) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 403, "Access Denied !");
     }
 
     if (!LEAD_STATUSES.includes(lead_status)) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_status === "Others" && !others_note) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -2127,12 +2299,12 @@ async function updateLeadDetails(req, res) {
     const { user_id, lead_name } = req.body;
 
     if (!id) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Lead ID is required!");
     }
 
     if (Object.keys(req.body).length === 0) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Update details are required!");
     }
 
@@ -2320,7 +2492,7 @@ async function uploadLead(req, res) {
     }
 
     if (income_type === "Salaried" && (!company || !salary)) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(
         res,
         "ERROR",
@@ -2429,7 +2601,7 @@ async function uploadLead(req, res) {
       if (utm_campaign) {
         leadToBeSaved.utm_campaign = utm_campaign;
         if (!utm_source) {
-          await transaction.rollback()
+          await transaction.rollback();
           return ApiResponse(
             res,
             "ERROR",
@@ -2506,7 +2678,7 @@ async function addNewLead(req, res) {
     // }
 
     if (bereau_score && !bereau_name) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(
         res,
         "ERROR",
@@ -2613,7 +2785,14 @@ async function addNewLead(req, res) {
       );
     }
 
-    return ApiResponse(res, "error", 500, error?.message || "Failed to add lead!", null, error);
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      error?.message || "Failed to add lead!",
+      null,
+      error
+    );
   }
 }
 
@@ -2991,7 +3170,23 @@ async function getAllDistinctUtmCampaignsAndSources(req, res) {
 
 async function getAllReEngagedLeads(req, res) {
   try {
-    let { lead_status, page = 1, pageSize = 10, leadId, phone, name, lead_bucket, lead_source, utm_campaign, utm_source, assigned_to, importedOn, last_updated, assigned_on, userId } = req.query;
+    let {
+      lead_status,
+      page = 1,
+      pageSize = 10,
+      leadId,
+      phone,
+      name,
+      lead_bucket,
+      lead_source,
+      utm_campaign,
+      utm_source,
+      assigned_to,
+      importedOn,
+      last_updated,
+      assigned_on,
+      userId,
+    } = req.query;
 
     page = parseInt(page);
     pageSize = parseInt(pageSize);
@@ -3000,23 +3195,24 @@ async function getAllReEngagedLeads(req, res) {
     if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
 
     let leadWhere = {};
-    let leadAssignmentWhere = {}
+    let leadAssignmentWhere = {};
 
     if (lead_status) {
       leadWhere.lead_status = lead_status;
     }
 
-    if(leadId) leadWhere.id = { [Op.like]: `%${leadId}%`}
-    if(phone) leadWhere.phone = { [Op.like]: `%${phone}%`}
-    if(name) leadWhere.name = { [Op.like]: `%${name}%`}
-    if(lead_bucket) leadWhere.lead_bucket = { [Op.like]: `%${lead_bucket}%`}
-    if(lead_source) leadWhere.lead_source = { [Op.like]: `%${lead_source}%`}
-    if(utm_campaign) leadWhere.utm_campaign = { [Op.like]: `%${utm_campaign}%`}
-    if(utm_source) leadWhere.utm_source = { [Op.like]: `%${utm_source}%`}
-    if(assigned_to){
-      if(assigned_to === "re_assigned"){
-        leadWhere.is_reassigned = true
-      }else if(assigned_to === "not_assigned"){
+    if (leadId) leadWhere.id = { [Op.like]: `%${leadId}%` };
+    if (phone) leadWhere.phone = { [Op.like]: `%${phone}%` };
+    if (name) leadWhere.name = { [Op.like]: `%${name}%` };
+    if (lead_bucket) leadWhere.lead_bucket = { [Op.like]: `%${lead_bucket}%` };
+    if (lead_source) leadWhere.lead_source = { [Op.like]: `%${lead_source}%` };
+    if (utm_campaign)
+      leadWhere.utm_campaign = { [Op.like]: `%${utm_campaign}%` };
+    if (utm_source) leadWhere.utm_source = { [Op.like]: `%${utm_source}%` };
+    if (assigned_to) {
+      if (assigned_to === "re_assigned") {
+        leadWhere.is_reassigned = true;
+      } else if (assigned_to === "not_assigned") {
         leadWhere[Op.and] = Sequelize.literal(`
         NOT EXISTS (
           SELECT 1 
@@ -3024,12 +3220,11 @@ async function getAllReEngagedLeads(req, res) {
           WHERE LA.lead_id = Lead.id
         )
       `);
-      }
-      else{
-        leadAssignmentWhere.assigned_to = assigned_to
+      } else {
+        leadAssignmentWhere.assigned_to = assigned_to;
       }
     }
-    if(userId) leadAssignmentWhere.assigned_to = userId
+    if (userId) leadAssignmentWhere.assigned_to = userId;
 
     if (importedOn) {
       const [startRange, endRange] = importedOn.split(",");
@@ -3137,13 +3332,15 @@ async function getAllReEngagedLeads(req, res) {
 
     const { count, rows } = await Lead.findAndCountAll({
       where: leadWhere, // ✅ apply filter here
-       order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: LeadAssignment,
           as: "LeadAssignments",
           where: { status: "active", ...leadAssignmentWhere },
-          required: ['assigned_to', 'assigned_on', 'updatedAt'].some((key) => Object.keys(leadAssignmentWhere).includes(key)),
+          required: ["assigned_to", "assigned_on", "updatedAt"].some((key) =>
+            Object.keys(leadAssignmentWhere).includes(key)
+          ),
           include: [
             {
               model: User,

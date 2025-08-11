@@ -9,7 +9,13 @@ const {
   ACTIVITY_LOGS,
 } = require("../utilities/ActivityLogConstants");
 const { createLogData } = require("../services/ActivityLogServices");
-const { START_LOGIN, UNDER_PROCESS } = require("../utilities/constants");
+const {
+  START_LOGIN,
+  UNDER_PROCESS,
+  LOGINS,
+  DISBURSED_FROM_BANKS,
+} = require("../utilities/constants");
+const { Op } = require("sequelize");
 
 async function addLoginDetails(req, res) {
   const transaction = await sequelize.transaction();
@@ -55,7 +61,7 @@ async function addLoginDetails(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-    if (![START_LOGIN,UNDER_PROCESS].includes(application_status)) {
+    if (![START_LOGIN, UNDER_PROCESS].includes(application_status)) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
     }
@@ -299,7 +305,7 @@ async function editLoginDetails(req, res) {
       return ApiResponse(res, "ERROR", 400, "Missing required fields !");
     }
 
-    if (![START_LOGIN,UNDER_PROCESS].includes(application_status)) {
+    if (![START_LOGIN, UNDER_PROCESS].includes(application_status)) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Invalid Application Status");
     }
@@ -500,9 +506,207 @@ async function deleteLoginDetails(req, res) {
   }
 }
 
+async function getLoginsOverallSummary(req, res) {
+  try {
+    const { startDate, endDate } = req.query;
+
+    // Date handling
+    let start = startDate ? new Date(startDate) : null;
+    let end = endDate ? new Date(new Date(endDate).setUTCHours(23, 59, 59, 999)) : null;
+
+    if (start && !end) {
+      end = new Date(start);
+      end.setUTCHours(23, 59, 59, 999);
+    }
+
+    if (start && end && start > end) {
+      return ApiResponse(res, "ERROR", 400, "Start date must be before end date");
+    }
+
+    // Base where clause for Lead model
+    const leadWhereClause = {
+      lead_bucket: LOGINS,
+      status: "active"
+    };
+
+    // Add date filter if provided
+    if (start && end) {
+      leadWhereClause.start_login_date = {
+        [Op.between]: [start.toISOString(), end.toISOString()]
+      };
+    }
+
+    // Parallel count queries
+    const [
+      totalApplicationsUnderProcess,
+      totalLogins,
+      totalDisbursedAccounts
+    ] = await Promise.all([
+      Lead.count({
+        where: {
+          ...leadWhereClause,
+          application_status: UNDER_PROCESS
+        }
+      }),
+      Lead.count({
+        where: {
+          ...leadWhereClause,
+          lead_status: { [Op.like]: "%Login%" }
+        }
+      }),
+      Lead.count({
+        where: {
+          ...leadWhereClause,
+          application_status: DISBURSED_FROM_BANKS
+        }
+      })
+    ]);
+
+    // Amounts calculation using raw SQL for reliability
+    const [amountResult] = await sequelize.query(`
+      SELECT 
+        COALESCE(SUM(ld.sanction_amount), 0) AS totalSanctionedAmount,
+        COALESCE(SUM(ld.disbursal_amount), 0) AS totalDisbursedAmount
+      FROM LoginDetails ld
+      INNER JOIN Leads l ON ld.lead_id = l.id
+      WHERE 
+        ld.status = 'active'
+        AND l.lead_bucket = :LOGINS
+        AND l.status = 'active'
+        ${start && end ? "AND l.start_login_date BETWEEN :start AND :end" : ""}
+    `, {
+      replacements: {
+        LOGINS,
+        start: start?.toISOString(),
+        end: end?.toISOString()
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Prepare response
+    const responseData = {
+      totalApplicationsUnderProcess,
+      totalLogins,
+      totalSanctionedAmount: amountResult?.totalSanctionedAmount || 0,
+      totalDisbursedAmount: amountResult?.totalDisbursedAmount || 0,
+      totalDisbursedAccounts,
+    };
+
+    return ApiResponse(res, "SUCCESS", 200, "Query Successful", responseData);
+  } catch (error) {
+    console.error("Error in getLoginsOverallSummary:", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch overall summary!",
+      null,
+      error
+    );
+  }
+}
+
+async function getLeadsWithLoginsSummary(req, res) {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 10;
+
+    const { startDate, endDate } = req.query;
+
+    let start = startDate ? new Date(startDate) : null;
+    let end = endDate
+      ? new Date(new Date(endDate).setUTCHours(23, 59, 59, 999))
+      : null;
+
+    // If only startDate is given, set end as end of startDate day
+    if (start && !end) {
+      end = new Date(start);
+      end.setUTCHours(23, 59, 59, 999);
+    }
+
+    // Build where clause
+    const whereClause = {
+      lead_bucket: LOGINS,
+      status: 'active',
+    };
+
+    if (start && end) {
+      whereClause.start_login_date = {
+        [Op.between]: [start.toISOString(), end.toISOString()]
+      };
+    }
+
+    const result = await Lead.findAndCountAll({
+      attributes: {
+        include: [
+          [sequelize.literal(`
+            (SELECT MAX(ld.createdAt) 
+             FROM LoginDetails AS ld 
+             WHERE ld.lead_id = Lead.id AND ld.status = 'active')
+          `), 'latest_login_date']
+        ]
+      },
+      include: [{
+        model: LoginDetail,
+        as: 'loginDetails',
+        required: true,
+        where: { status: 'active' },
+        attributes: ['id', 'bank_name', 'dsa_name', 'application_number', 'scheme', 'login_amount', 'sanction_date', 'disbursal_date', 'note', 'login_date', 'login_status', 
+                     'sanction_amount', 'disbursal_amount', 'createdAt'],
+        order: [['createdAt', 'DESC']]
+      }],
+      where: whereClause,
+      order: [
+        [sequelize.literal('latest_login_date'), 'DESC']
+      ],
+      distinct: true,
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    const formattedResults = result.rows.map(lead => ({
+      lead: {
+        ...lead.get({ plain: true }),
+        loginDetails: undefined
+      },
+      logins: lead.loginDetails.map(login => login.get({ plain: true })),
+      latest_login_date: lead.dataValues.latest_login_date
+    }));
+
+    const pagination = {
+      page,
+      pageSize,
+      totalPages: Math.ceil(result.count / pageSize),
+      total: result.count,
+    };
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Query Successful",
+      formattedResults,
+      null,
+      pagination
+    );
+  } catch (error) {
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch leads with logins summary!",
+      null,
+      error
+    );
+  }
+}
+
+
 module.exports = {
   addLoginDetails,
   getLoginDetails,
   editLoginDetails,
   deleteLoginDetails,
+  getLoginsOverallSummary,
+  getLeadsWithLoginsSummary,
 };

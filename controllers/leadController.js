@@ -993,14 +993,15 @@ async function getAllLeadsWithPagination(req, res) {
       });
 
       // Check the "all dispute updated" condition
-      // Check the "all dispute updated" condition
       for (const leadId in reportsByLead) {
-        // Only consider leads that have at least one report
-        const hasReports = reportsByLead[leadId].length > 0;
-        const allUpdated =
-          hasReports &&
-          reportsByLead[leadId].every((status) => status === "Dispute Updated");
-        disputeCheckMap[leadId] = allUpdated;
+        const reports = reportsByLead[leadId];
+
+        // Only set to true if:
+        // 1. There are reports (array not empty)
+        // 2. Every report has "Dispute Updated" status
+        disputeCheckMap[leadId] =
+          reports.length > 0 &&
+          reports.every((status) => status === "Dispute Updated");
       }
     }
 
@@ -1010,8 +1011,11 @@ async function getAllLeadsWithPagination(req, res) {
         lead.lead_bucket === "APPROVED_APPLICATIONS" &&
         lead.is_paid === true
       ) {
+        // Only set to true if:
+        // 1. The lead exists in disputeCheckMap (has reports)
+        // 2. All reports have "Dispute Updated" status
         lead.dataValues.isUserAllowedToUpdateAllDisputes =
-          disputeCheckMap[lead.id] || false;
+          lead.id in disputeCheckMap && disputeCheckMap[lead.id];
       } else {
         lead.dataValues.isUserAllowedToUpdateAllDisputes = false;
       }

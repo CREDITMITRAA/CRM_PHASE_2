@@ -955,7 +955,6 @@ async function getAllLeadsWithPagination(req, res) {
       offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
     });
-    
 
     const approvedLeadIds = rows
       .filter(
@@ -994,10 +993,13 @@ async function getAllLeadsWithPagination(req, res) {
       });
 
       // Check the "all dispute updated" condition
+      // Check the "all dispute updated" condition
       for (const leadId in reportsByLead) {
-        const allUpdated = reportsByLead[leadId].every(
-          (status) => status === "Dispute Updated"
-        );
+        // Only consider leads that have at least one report
+        const hasReports = reportsByLead[leadId].length > 0;
+        const allUpdated =
+          hasReports &&
+          reportsByLead[leadId].every((status) => status === "Dispute Updated");
         disputeCheckMap[leadId] = allUpdated;
       }
     }

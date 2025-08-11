@@ -52,8 +52,10 @@ const {
 } = require("../services/ActivityLogServices");
 const { getIo } = require("../socket/socket");
 const { default: axios } = require("axios");
+const { saveNotification } = require("../services/NotificationServices");
 
 async function createBulkLeads(req, res) {
+  const transaction = await sequelize.transaction();
   console.log(req.body, "Received leads data");
 
   const validatePhone = true;
@@ -74,6 +76,7 @@ async function createBulkLeads(req, res) {
     }
 
     const userId = req.query?.userId;
+    const userName = req.query?.userName;
     if (!userId) {
       return ApiResponse(
         res,
@@ -90,13 +93,13 @@ async function createBulkLeads(req, res) {
     let bulkActivityLogs = [];
     let processedCount = 0;
 
-    // Process leads in batches
+    // Process in batches
     for (let i = 0; i < req.body.length; i += BATCH_SIZE) {
       const batch = req.body.slice(i, i + BATCH_SIZE);
       let validLeads = [];
       let invalidLeads = [];
 
-      // Validate leads in this batch
+      // Validate each lead
       for (const lead of batch) {
         let isValid = true;
         let reason = "";
@@ -144,10 +147,8 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Get all phone numbers from valid leads
+      // Existing leads lookup
       const phoneNumbers = validLeads.map((l) => l.phone).filter(Boolean);
-
-      // Find existing leads with all fields needed for comparison
       const existingLeads =
         phoneNumbers.length > 0
           ? await Lead.findAll({
@@ -163,6 +164,15 @@ async function createBulkLeads(req, res) {
                 "utm_source",
                 "lead_status",
               ],
+              include: [
+                {
+                  model: LeadAssignment,
+                  as: "LeadAssignments",
+                  attributes: ["id", "assigned_to"],
+                  required: false,
+                },
+              ],
+              transaction,
             })
           : [];
 
@@ -183,7 +193,7 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Process creates
+      // Create new leads
       let batchCreatedLeads = [];
       if (leadsToCreate.length > 0) {
         try {
@@ -208,9 +218,10 @@ async function createBulkLeads(req, res) {
         }
       }
 
-      // Process updates with change tracking
+      // Update existing leads
       let batchUpdatedLeads = [];
       if (leadsToUpdate.length > 0) {
+        const assignedLeadsMap = new Map();
         const updatePromises = leadsToUpdate.map(
           async ({ lead, existingId, existingValues }) => {
             try {
@@ -226,7 +237,7 @@ async function createBulkLeads(req, res) {
                 updated_at: new Date(),
               };
 
-              // Detect changed fields
+              // Detect changes
               const changedFields = {};
               Object.keys(updateData).forEach((key) => {
                 if (!isEqual(existingValues[key], updateData[key])) {
@@ -237,19 +248,48 @@ async function createBulkLeads(req, res) {
                 }
               });
 
-              // Only update if there are changes
               if (Object.keys(changedFields).length > 0) {
                 const [affectedCount] = await Lead.update(updateData, {
                   where: { id: existingId },
                 });
 
                 if (affectedCount > 0) {
-                  batchUpdatedLeads.push({
-                    id: existingId,
-                    ...updateData,
-                  });
+                  batchUpdatedLeads.push({ id: existingId, ...updateData });
 
-                  // Format changes for activity description
+                  // 🟢 Notification Flow
+                  // const assignedTo = existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  // if (assignedTo) {
+                  //   const notification = await saveNotification(
+                  //     {
+                  //       employee_id: assignedTo,
+                  //       notification_from: userName,
+                  //       notification_title: 'New Lead Re-Engagement',
+                  //       message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     },
+                  //     transaction
+                  //   );
+
+                  //   const io = getIo();
+                  //   io.to(`user_${assignedTo}`).emit("leadAssignment", {
+                  //     message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     assignedBy: userName,
+                  //     leadCount: 1,
+                  //     notificationId: notification.id,
+                  //     notification_title: 'New Lead Re-Engagement'
+                  //   });
+                  // }
+
+                  // 🔹 Add to user → lead list map
+                  const assignedTo =
+                    existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  if (assignedTo) {
+                    if (!assignedLeadsMap.has(assignedTo)) {
+                      assignedLeadsMap.set(assignedTo, []);
+                    }
+                    assignedLeadsMap.get(assignedTo).push(existingId);
+                  }
+
+                  // Activity log
                   const changesText = Object.entries(changedFields)
                     .map(
                       ([field, { previous, current }]) =>
@@ -259,7 +299,6 @@ async function createBulkLeads(req, res) {
                     )
                     .join("; ");
 
-                  // Create activity log according to model requirements
                   bulkActivityLogs.push({
                     created_by: userId,
                     activity_type: "LEAD_BULK_UPDATE",
@@ -271,7 +310,6 @@ async function createBulkLeads(req, res) {
                     updated_at: new Date(),
                   });
 
-                  // Insert logs in batches if we reach the threshold
                   if (bulkActivityLogs.length >= LOG_BATCH_SIZE) {
                     await insertActivityLogs(bulkActivityLogs);
                     bulkActivityLogs = [];
@@ -290,9 +328,31 @@ async function createBulkLeads(req, res) {
         );
 
         await Promise.all(updatePromises);
+
+        // 🔹 Step 2: Send one notification per user after processing updates
+        const io = getIo();
+        for (const [assignedTo, leadIds] of assignedLeadsMap) {
+          const notification = await saveNotification(
+            {
+              employee_id: assignedTo,
+              notification_from: userName,
+              notification_title: "Leads Re-Engaged",
+              message: `${leadIds.length} leads have been re-engaged.`,
+            },
+            transaction
+          );
+
+          io.to(`user_${assignedTo}`).emit("leadAssignment", {
+            notification_title: "Leads Re-Engaged",
+            message: `${leadIds.length} leads have been re-engaged.`,
+            assignedBy: userName,
+            leadCount: leadIds.length,
+            notificationId: notification.id,
+          });
+        }
       }
 
-      // Process invalid leads
+      // Insert invalid leads
       if (invalidLeads.length > 0) {
         try {
           await InvalidLead.bulkCreate(invalidLeads, { validate: false });
@@ -315,10 +375,12 @@ async function createBulkLeads(req, res) {
       processedCount++;
     }
 
-    // Insert any remaining logs
+    // Flush remaining logs
     if (bulkActivityLogs.length > 0) {
       await insertActivityLogs(bulkActivityLogs);
     }
+
+    await transaction.commit();
 
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
       totalReceived: req.body.length,
@@ -332,6 +394,7 @@ async function createBulkLeads(req, res) {
       invalidLeads: allInvalidLeads,
     });
   } catch (err) {
+    await transaction.rollback();
     console.error("Unexpected error:", err);
     return ApiResponse(
       res,

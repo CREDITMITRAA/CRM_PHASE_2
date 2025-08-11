@@ -92,6 +92,12 @@ LoginDetail.belongsTo(Lead, {
   as: 'lead'
 })
 
+Notification.belongsTo(User, { 
+    foreignKey: 'employee_id', // Notification.employee_id
+    targetKey: 'id',           // User.id (primary key)
+    as: 'AssignedToUser'
+});
+
 module.exports = {
   sequelize,
   User,

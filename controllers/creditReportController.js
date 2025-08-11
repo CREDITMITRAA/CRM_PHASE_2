@@ -6,7 +6,7 @@ const {
   Activity,
   LoanReport,
 } = require("../models");
-const { createLogData } = require("../services/ActivityLogServices");
+const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const {
   ACTIVITY_LOGS,
   ACTIVITY_TYPES,

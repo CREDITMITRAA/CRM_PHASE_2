@@ -1,11 +1,22 @@
-const { CreditReport, Lead, sequelize, ActivityLog, Activity, LoanReport } = require("../models");
+const {
+  CreditReport,
+  Lead,
+  sequelize,
+  ActivityLog,
+  Activity,
+  LoanReport,
+} = require("../models");
 const { createLogData } = require("../services/ActivityLogServices");
 const {
   ACTIVITY_LOGS,
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { generateLoanOrCreditReportChangeLog } = require("../utilities/helper-functions");
+const { ALL_DISPUTES_UPDATED, ALL_CLEAR, DISPUTE_UPDATED } = require("../utilities/constants");
+const {
+  generateLoanOrCreditReportChangeLog,
+} = require("../utilities/helper-functions");
+const LeadServices = require("../services/leadServices");
 
 async function getCreditReportsByLeadId(req, res) {
   try {
@@ -198,15 +209,17 @@ async function addCreditReport(req, res) {
       total_outstanding,
       created_by,
       lead_name,
+      lead_status,
     } = req.body;
     if (
       !lead_id ||
       !credit_card_name ||
       !total_outstanding ||
       !created_by ||
-      !lead_name
+      !lead_name ||
+      !lead_status
     ) {
-      await transaction.rollback()
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -234,10 +247,10 @@ async function addCreditReport(req, res) {
           lead_id,
           created_by,
           lead_name,
-          activity_status: 'Not Contacted',
+          activity_status: "Not Contacted",
           docs_collected: true,
           // task_status: TASK_STATUSES[0], // Set default task status
-          status: 'active'
+          status: "active",
         },
         { transaction }
       );
@@ -247,6 +260,23 @@ async function addCreditReport(req, res) {
       { lead_id, created_by, credit_card_name, total_outstanding },
       { transaction }
     );
+
+    if (lead_status === ALL_DISPUTES_UPDATED) {
+      await LeadServices.updateLead(
+        lead_id,
+        { lead_status: ALL_CLEAR, last_updated_status: ALL_CLEAR },
+        transaction
+      );
+      let logData = createLogData(
+        ACTIVITY_LOGS.LEAD_STATUS_UPDATE(lead_status, ALL_CLEAR, null),
+        ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+        created_by,
+        lead_id,
+        null,
+        lead_name
+      );
+      await createActivityLog(logData, transaction);
+    }
 
     await ActivityLog.create(
       {
@@ -274,7 +304,7 @@ async function addCreditReport(req, res) {
       null
     );
   } catch (error) {
-    await transaction.rollback()
+    await transaction.rollback();
     return ApiResponse(
       res,
       "error",
@@ -299,10 +329,11 @@ async function editCreditReport(req, res) {
       updated_by,
       lead_name,
       loan_status,
-        closing_date,
-        dispute_status,
-        dispute_date,
-        closing_document_url
+      closing_date,
+      dispute_status,
+      dispute_date,
+      closing_document_url,
+      lead_status
     } = req.body;
 
     // Validate required fields
@@ -312,7 +343,8 @@ async function editCreditReport(req, res) {
       !credit_card_name ||
       !total_outstanding ||
       !updated_by ||
-      !lead_name
+      !lead_name ||
+      !lead_status
     ) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Missing required fields!");
@@ -332,7 +364,9 @@ async function editCreditReport(req, res) {
     // Convert all dates to Date objects for proper comparison
     const dbClosingDate = new Date(creditReportFromDB.closing_date);
     const inputClosingDate = closing_date ? new Date(closing_date) : null;
-    const dbDisputeDate = creditReportFromDB.dispute_date ? new Date(creditReportFromDB.dispute_date) : null;
+    const dbDisputeDate = creditReportFromDB.dispute_date
+      ? new Date(creditReportFromDB.dispute_date)
+      : null;
     const inputDisputeDate = dispute_date ? new Date(dispute_date) : null;
 
     // Treat "Others" status the same as "Not Closing"
@@ -340,11 +374,14 @@ async function editCreditReport(req, res) {
     const isLoanNotClosed = !isLoanClosed || loan_status === "Others";
 
     // 1. Reset dispute fields if loan status changed to/from Closed or closing date changed
-    if (creditReportFromDB.loan_status !== loan_status || 
-        (inputClosingDate && dbClosingDate.toISOString() !== inputClosingDate.toISOString())) {
+    if (
+      creditReportFromDB.loan_status !== loan_status ||
+      (inputClosingDate &&
+        dbClosingDate.toISOString() !== inputClosingDate.toISOString())
+    ) {
       dispute_date = null;
       dispute_status = null;
-      
+
       // If we're resetting dispute fields, update them in the DB
       if (dispute_date === null || dispute_status === null) {
         await LoanReport.update(
@@ -357,7 +394,12 @@ async function editCreditReport(req, res) {
     // 2. All dispute operations require loan to be closed (not "Others" or "Not Closing")
     if (isLoanNotClosed && (dispute_status || dispute_date)) {
       await transaction.rollback();
-      return ApiResponse(res, "ERROR", 400, "Loan must be closed to modify disputes!");
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Loan must be closed to modify disputes!"
+      );
     }
 
     // 3. Dispute Raised validations (only if loan is closed)
@@ -368,7 +410,12 @@ async function editCreditReport(req, res) {
       }
       if (inputDisputeDate <= dbClosingDate) {
         await transaction.rollback();
-        return ApiResponse(res, "ERROR", 400, "Dispute date must be after closing date!");
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Dispute date must be after closing date!"
+        );
       }
     }
 
@@ -376,16 +423,42 @@ async function editCreditReport(req, res) {
     else if (isLoanClosed && dispute_status === "Dispute Updated") {
       if (creditReportFromDB.dispute_status !== "Dispute Raised") {
         await transaction.rollback();
-        return ApiResponse(res, "ERROR", 400, "Must raise dispute before updating!");
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Must raise dispute before updating!"
+        );
       }
       if (!inputDisputeDate) {
         await transaction.rollback();
-        return ApiResponse(res, "ERROR", 400, "Updated dispute date is required!");
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Updated dispute date is required!"
+        );
       }
       if (inputDisputeDate <= dbDisputeDate) {
         await transaction.rollback();
-        return ApiResponse(res, "ERROR", 400, "Updated dispute date must be after previous dispute date!");
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Updated dispute date must be after previous dispute date!"
+        );
       }
+    }
+
+    // update lead status code
+    let shouldUpdateLeadStatus = false
+    if(
+      lead_status === ALL_DISPUTES_UPDATED &&
+      dispute_status &&
+      dispute_status !== DISPUTE_UPDATED &&
+      creditReportFromDB.dispute_status === DISPUTE_UPDATED
+    ){
+      shouldUpdateLeadStatus = true
     }
 
     // Only update changed fields
@@ -397,13 +470,30 @@ async function editCreditReport(req, res) {
       closing_date,
       dispute_status,
       dispute_date,
-      closing_document_url
+      closing_document_url,
     };
 
     const [updatedCount] = await CreditReport.update(updateData, {
       where: { id, lead_id },
       transaction,
     });
+
+    if(shouldUpdateLeadStatus){
+      await LeadServices.updateLead(
+        lead_id,
+        {lead_status: ALL_CLEAR, last_updated_status: ALL_CLEAR},
+        transaction
+      )
+      let logData = createLogData(
+        ACTIVITY_LOGS.LEAD_STATUS_UPDATE(lead_status, ALL_CLEAR, null),
+        ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+        updated_by,
+        lead_id,
+        null,
+        lead_name
+      );
+      await createActivityLog(logData, transaction)
+    }
 
     // Log activity - only if something changed
     if (updatedCount > 0) {
@@ -440,35 +530,42 @@ async function editCreditReport(req, res) {
   } catch (error) {
     console.error("Error in edit credit report API:", error);
     await transaction.rollback();
-    return ApiResponse(res, "ERROR", 500, error?.message || "Something went wrong!", null, error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Something went wrong!",
+      null,
+      error
+    );
   }
 }
 
-async function deleteCreditReportClosingDocument(req,res){
-  const transaction = await sequelize.transaction()
+async function deleteCreditReportClosingDocument(req, res) {
+  const transaction = await sequelize.transaction();
   try {
-    const {id,lead_id, lead_name, deleted_by} = req.body
-    if(!id || !lead_id || !lead_name || !deleted_by){
-      await transaction.rollback()
-      return ApiResponse(res, "ERROR", 400, "Missing required fields")
+    const { id, lead_id, lead_name, deleted_by } = req.body;
+    if (!id || !lead_id || !lead_name || !deleted_by) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Missing required fields");
     }
 
     const creditReportFromDB = await CreditReport.findOne({
-      where: {id, lead_id, status: "active"},
-      transaction
-    })
+      where: { id, lead_id, status: "active" },
+      transaction,
+    });
 
-    if(!creditReportFromDB){
-      await transaction.rollback()
-      return ApiResponse(res, "ERROR", 400, "Credit Report Not Found !")
+    if (!creditReportFromDB) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "Credit Report Not Found !");
     }
 
-    if(!creditReportFromDB.closing_document_url){
-      await transaction.rollback()
-      return ApiResponse(res, "ERROR", 400, "No closing document exists")
+    if (!creditReportFromDB.closing_document_url) {
+      await transaction.rollback();
+      return ApiResponse(res, "ERROR", 400, "No closing document exists");
     }
 
-    const documentUrl = creditReportFromDB.closing_document_url
+    const documentUrl = creditReportFromDB.closing_document_url;
 
     const [updatedCount] = await CreditReport.update(
       {
@@ -477,22 +574,27 @@ async function deleteCreditReportClosingDocument(req,res){
         loan_status: "Not Closing",
         dispute_status: null,
         closing_date: null,
-        dispute_date: null
+        dispute_date: null,
       },
       {
-        where: {id, lead_id, status: "active"},
-        transaction
+        where: { id, lead_id, status: "active" },
+        transaction,
       }
-    )
+    );
 
-    if(updatedCount === 0){
-      await transaction.rollback()
-      return ApiResponse(res, "ERROR", 500, "Failed to remove closing document")
+    if (updatedCount === 0) {
+      await transaction.rollback();
+      return ApiResponse(
+        res,
+        "ERROR",
+        500,
+        "Failed to remove closing document"
+      );
     }
 
     // Log activity - only if something changed
     if (updatedCount > 0) {
-      let oldData = creditReportFromDB.get({plain:true})
+      let oldData = creditReportFromDB.get({ plain: true });
       let updateData = {
         ...oldData,
         closing_document_url: null,
@@ -500,8 +602,8 @@ async function deleteCreditReportClosingDocument(req,res){
         loan_status: "Not Closing",
         dispute_status: null,
         closing_date: null,
-        dispute_date: null
-      }
+        dispute_date: null,
+      };
 
       const changeLog = generateLoanOrCreditReportChangeLog(
         creditReportFromDB,
@@ -532,14 +634,25 @@ async function deleteCreditReportClosingDocument(req,res){
     // )
 
     // await ActivityLog.create({...logData}, {transaction})
-    await transaction.commit()
+    await transaction.commit();
 
-    return ApiResponse(res, "SUCCESS", 200, "Closing document deleted successfully")
-
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Closing document deleted successfully"
+    );
   } catch (error) {
-    console.log('error in deleting closing document = ', error);
-    await transaction.rollback()
-    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to delete closing document", null, error)
+    console.log("error in deleting closing document = ", error);
+    await transaction.rollback();
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to delete closing document",
+      null,
+      error
+    );
   }
 }
 
@@ -550,5 +663,5 @@ module.exports = {
   deleteCreditReport,
   addCreditReport,
   editCreditReport,
-  deleteCreditReportClosingDocument
+  deleteCreditReportClosingDocument,
 };

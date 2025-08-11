@@ -970,7 +970,7 @@ async function getAllLeadsWithPagination(req, res) {
       const loanReports = await LoanReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
-          loan_status: "Closed",
+          // loan_status: "Closed",
         },
         attributes: ["lead_id", "dispute_status"],
       });
@@ -979,7 +979,7 @@ async function getAllLeadsWithPagination(req, res) {
       const creditReports = await CreditReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
-          loan_status: "Closed",
+          // loan_status: "Closed",
         },
         attributes: ["lead_id", "dispute_status"],
       });

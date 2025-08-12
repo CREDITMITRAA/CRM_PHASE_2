@@ -619,7 +619,7 @@ async function getAllLeadsWithPagination(req, res) {
             [Op.like]: `%${lead_status}%`,
           };
         } else {
-          whereConditions.last_updated_status = lead_status;
+          whereConditions.lead_status = lead_status;
         }
       }
     }

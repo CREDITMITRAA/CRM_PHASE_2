@@ -509,11 +509,13 @@ async function deleteLoginDetails(req, res) {
 
 async function getLoginsOverallSummary(req, res) {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, application_status } = req.query;
 
     // Date handling
     let start = startDate ? new Date(startDate) : null;
-    let end = endDate ? new Date(new Date(endDate).setUTCHours(23, 59, 59, 999)) : null;
+    let end = endDate
+      ? new Date(new Date(endDate).setUTCHours(23, 59, 59, 999))
+      : null;
 
     if (start && !end) {
       end = new Date(start);
@@ -521,50 +523,53 @@ async function getLoginsOverallSummary(req, res) {
     }
 
     if (start && end && start > end) {
-      return ApiResponse(res, "ERROR", 400, "Start date must be before end date");
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Start date must be before end date"
+      );
     }
 
-    // Base where clause for Lead model
+    // Base where clause for Lead model - matches getLeadsWithLoginsSummary
     const leadWhereClause = {
       lead_bucket: LOGINS,
-      status: "active"
+      status: "active",
+      ...(application_status
+        ? { application_status }
+        : { application_status: { [Op.ne]: APPLICATION_IS_CLOSED } }),
     };
 
     // Add date filter if provided
     if (start && end) {
       leadWhereClause.start_login_date = {
-        [Op.between]: [start.toISOString(), end.toISOString()]
+        [Op.between]: [start.toISOString(), end.toISOString()],
       };
     }
 
-    // Parallel count queries
-    const [
-      totalApplicationsUnderProcess,
-      totalLogins,
-      totalDisbursedAccounts
-    ] = await Promise.all([
-      Lead.count({
-        where: {
-          ...leadWhereClause,
-          application_status: UNDER_PROCESS
-        }
-      }),
-      Lead.count({
-        where: {
-          ...leadWhereClause,
-          lead_status: { [Op.like]: "%Login%" }
-        }
-      }),
-      Lead.count({
-        where: {
-          ...leadWhereClause,
-          application_status: DISBURSED_FROM_BANKS
-        }
-      })
-    ]);
+    // Parallel count queries - removed lead_status filter to match other API
+    const [totalApplicationsUnderProcess, totalLogins, totalDisbursedAccounts] =
+      await Promise.all([
+        Lead.count({
+          where: {
+            ...leadWhereClause,
+            application_status: UNDER_PROCESS,
+          },
+        }),
+        Lead.count({
+          where: leadWhereClause, // Removed lead_status filter to match other API
+        }),
+        Lead.count({
+          where: {
+            ...leadWhereClause,
+            application_status: DISBURSED_FROM_BANKS,
+          },
+        }),
+      ]);
 
-    // Amounts calculation using raw SQL for reliability
-    const [amountResult] = await sequelize.query(`
+    // Amounts calculation using raw SQL - updated to match application_status filter
+    const [amountResult] = await sequelize.query(
+      `
       SELECT 
         COALESCE(SUM(ld.sanction_amount), 0) AS totalSanctionedAmount,
         COALESCE(SUM(ld.disbursal_amount), 0) AS totalDisbursedAmount
@@ -574,15 +579,24 @@ async function getLoginsOverallSummary(req, res) {
         ld.status = 'active'
         AND l.lead_bucket = :LOGINS
         AND l.status = 'active'
+        ${
+          application_status
+            ? "AND l.application_status = :application_status"
+            : "AND l.application_status != :APPLICATION_IS_CLOSED"
+        }
         ${start && end ? "AND l.start_login_date BETWEEN :start AND :end" : ""}
-    `, {
-      replacements: {
-        LOGINS,
-        start: start?.toISOString(),
-        end: end?.toISOString()
-      },
-      type: sequelize.QueryTypes.SELECT
-    });
+    `,
+      {
+        replacements: {
+          LOGINS,
+          APPLICATION_IS_CLOSED,
+          ...(application_status && { application_status }),
+          start: start?.toISOString(),
+          end: end?.toISOString(),
+        },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
     // Prepare response
     const responseData = {
@@ -628,58 +642,75 @@ async function getLeadsWithLoginsSummary(req, res) {
     // Build where clause
     const whereClause = {
       lead_bucket: LOGINS,
-      status: 'active',
+      status: "active",
     };
 
     if (start && end) {
       whereClause.start_login_date = {
-        [Op.between]: [start.toISOString(), end.toISOString()]
+        [Op.between]: [start.toISOString(), end.toISOString()],
       };
     }
 
-    if(application_status){
-      whereClause.application_status = application_status
+    if (application_status) {
+      whereClause.application_status = application_status;
     } else {
       whereClause.application_status = {
-        [Op.ne] : APPLICATION_IS_CLOSED
-      }
+        [Op.ne]: APPLICATION_IS_CLOSED,
+      };
     }
 
     const result = await Lead.findAndCountAll({
       attributes: {
         include: [
-          [sequelize.literal(`
+          [
+            sequelize.literal(`
             (SELECT MAX(ld.createdAt) 
              FROM LoginDetails AS ld 
              WHERE ld.lead_id = Lead.id AND ld.status = 'active')
-          `), 'latest_login_date']
-        ]
+          `),
+            "latest_login_date",
+          ],
+        ],
       },
-      include: [{
-        model: LoginDetail,
-        as: 'loginDetails',
-        required: true,
-        where: { status: 'active' },
-        attributes: ['id', 'bank_name', 'dsa_name', 'application_number', 'scheme', 'login_amount', 'sanction_date', 'disbursal_date', 'note', 'login_date', 'login_status', 
-                     'sanction_amount', 'disbursal_amount', 'createdAt'],
-        order: [['createdAt', 'DESC']]
-      }],
-      where: whereClause,
-      order: [
-        [sequelize.literal('latest_login_date'), 'DESC']
+      include: [
+        {
+          model: LoginDetail,
+          as: "loginDetails",
+          required: true,
+          where: { status: "active" },
+          attributes: [
+            "id",
+            "bank_name",
+            "dsa_name",
+            "application_number",
+            "scheme",
+            "login_amount",
+            "sanction_date",
+            "disbursal_date",
+            "note",
+            "login_date",
+            "login_status",
+            "sanction_amount",
+            "disbursal_amount",
+            "createdAt",
+          ],
+          order: [["createdAt", "DESC"]],
+        },
       ],
+      where: whereClause,
+      order: [[sequelize.literal("latest_login_date"), "DESC"]],
       distinct: true,
       limit: pageSize,
-      offset: (page - 1) * pageSize
+      offset: (page - 1) * pageSize,
     });
 
-    const formattedResults = result.rows.map(lead => ({
+    const formattedResults = result.rows.map((lead) => ({
       lead: {
         ...lead.get({ plain: true }),
-        loginDetails: undefined
+        loginDetails: undefined,
       },
-      logins: lead.loginDetails.map(login => login.get({ plain: true })),
-      latest_login_date: lead.dataValues.latest_login_date
+      logins: lead.loginDetails.map((login) => login.get({ plain: true })),
+      latest_login_date: lead.dataValues.latest_login_date,
     }));
 
     const pagination = {
@@ -709,7 +740,6 @@ async function getLeadsWithLoginsSummary(req, res) {
     );
   }
 }
-
 
 module.exports = {
   addLoginDetails,

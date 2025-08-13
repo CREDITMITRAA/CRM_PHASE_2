@@ -639,8 +639,10 @@ async function getLeadsWithLoginsSummary(req, res) {
 
     if(application_status){
       whereClause.application_status = application_status
-    }else {
-      whereClause.application_status !== APPLICATION_IS_CLOSED
+    } else {
+      whereClause.application_status = {
+        [Op.ne] : APPLICATION_IS_CLOSED
+      }
     }
 
     const result = await Lead.findAndCountAll({

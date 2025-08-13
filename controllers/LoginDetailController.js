@@ -14,6 +14,7 @@ const {
   UNDER_PROCESS,
   LOGINS,
   DISBURSED_FROM_BANKS,
+  APPLICATION_IS_CLOSED,
 } = require("../utilities/constants");
 const { Op } = require("sequelize");
 
@@ -611,7 +612,7 @@ async function getLeadsWithLoginsSummary(req, res) {
     const page = parseInt(req.query.page) || 1;
     const pageSize = parseInt(req.query.pageSize) || 10;
 
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, application_status } = req.query;
 
     let start = startDate ? new Date(startDate) : null;
     let end = endDate
@@ -634,6 +635,12 @@ async function getLeadsWithLoginsSummary(req, res) {
       whereClause.start_login_date = {
         [Op.between]: [start.toISOString(), end.toISOString()]
       };
+    }
+
+    if(application_status){
+      whereClause.application_status = application_status
+    }else {
+      whereClause.application_status !== APPLICATION_IS_CLOSED
     }
 
     const result = await Lead.findAndCountAll({

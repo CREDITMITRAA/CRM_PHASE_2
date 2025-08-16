@@ -2503,9 +2503,23 @@ async function uploadLead(req, res) {
 
     if (loan_amount) {
       loan_amount = Number(loan_amount).toFixed(0);
+      required_loan_amount = Number(loan_amount).toFixed(0);
     }
 
-    const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
+    const leadFromDB = await Lead.findOne({
+       where: { phone }, 
+       include: [
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          attributes: ["id", "assigned_to"],
+          required: false
+        }
+       ],
+       transaction 
+      });
+    console.log('lead from db = ', leadFromDB.toJSON());
+    
 
     if (leadFromDB) {
       const prev_lead_data = leadFromDB.toJSON();
@@ -2519,6 +2533,8 @@ async function uploadLead(req, res) {
 
       leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;
       leadFromDB.product = loan_type;
+      leadFromDB.lead_status = "Re Engaged";
+      leadFromDB.last_updated_status = "Re Engaged";
 
       // update utm campaign and source array to track marketing performance
       if (utm_campaign && utm_source) {
@@ -2578,6 +2594,12 @@ async function uploadLead(req, res) {
         }
       }
 
+      if (prev_lead_data.lead_status !== updatedLead.lead_status) {
+          logMessages.push(
+          `lead_status changed from '${prev_lead_data.lead_status}' to '${updatedLead.lead_status}'`
+      );
+}
+
       if (logMessages.length > 0) {
         let logData = createLogData(
           `Lead details updated: ${logMessages.join(", ")}`,
@@ -2588,6 +2610,27 @@ async function uploadLead(req, res) {
           leadFromDB.name
         );
         await createActivityLog(logData, transaction);
+      }
+
+      if(leadFromDB?.LeadAssignments.length > 0){
+        let assigned_to = leadFromDB.LeadAssignments[0].assigned_to
+        const io = getIo();
+           const notification = await saveNotification(
+            {
+              employee_id: assigned_to,
+              notification_from: "Website",
+              notification_title: "Lead Re-Engaged",
+              message:`1 lead has been re-engaged.`,
+            },
+            transaction
+          );
+          io.to(`user_${assigned_to}`).emit("leadAssignment", {
+            notification_title: "Leads Re-Engaged",
+            message: `1 lead has been re-engaged.`,
+            assignedBy: "Website",
+            leadCount: 1,
+            notificationId: notification.id,
+          });
       }
 
       await transaction.commit();

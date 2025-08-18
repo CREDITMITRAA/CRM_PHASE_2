@@ -68,17 +68,6 @@ async function createBackup(req, res) {
   const today = new Date();
   const day = today.getUTCDate();
   const io = getIo();
-  let currentProgress = 0;
-  let backupFailed = false; // Track if backup failed
-
-  // Emit backup start event
-  io.to(`user_2`).emit("backup-progress", {
-    type: "start",
-    message: "🚀 Starting backup process...",
-    progress: 0,
-  });
-
-  // Function to emit logs to frontend
   const emitLog = (message, isError = false) => {
     console.log(message); // still log to backend console
     try {
@@ -89,24 +78,23 @@ async function createBackup(req, res) {
       });
     } catch (emitError) {
       console.error("Failed to emit log:", emitError);
+      io.to(`user_2`).emit("backup-log", {
+        emitError,
+        isError,
+        timestamp: new Date().toISOString(),
+      });
     }
   };
 
   // Skip on odd days for automatic backups
   if (!isManualBackup && day % 2 !== 0) {
-    const message = "Skipping backup, as today is an odd day";
-    emitLog("⏭️ " + message);
-    io.to(`user_2`).emit("backup-progress", {
-      type: "error",
-      message,
-      progress: 0,
-    });
-    if (res) return ApiResponse(res, "error", 400, message);
+    emitLog("⏭️ Skipping backup, as today is an odd day.");
+    if (res) return ApiResponse(res, "error", 400, "Skipped Backup Today!");
     return;
   }
 
   try {
-    // emitLog("🚀 Starting backup process...");
+    emitLog("🚀 Starting backup process...");
 
     // Determine which databases to backup
     const databasesToBackup = specificDatabases
@@ -114,74 +102,42 @@ async function createBackup(req, res) {
       : Object.keys(BACKUP_CONFIG.databases);
 
     if (databasesToBackup.length === 0) {
-      const message = "No valid databases specified for backup";
-      emitLog("⚠️ " + message);
-      io.to(`user_2`).emit("backup-progress", {
-        type: "error",
-        message,
-        progress: 0,
-      });
-      if (res) return ApiResponse(res, "error", 400, message);
+      emitLog("⚠️ No valid databases specified for backup");
+      if (res)
+        return ApiResponse(res, "error", 400, "No valid databases specified");
       return;
     }
 
-    const totalDatabases = databasesToBackup.length;
-
     // Process each database
-    for (let dbIdx = 0; dbIdx < databasesToBackup.length; dbIdx++) {
-      const dbName = databasesToBackup[dbIdx];
+    for (const dbName of databasesToBackup) {
       const dbConfig = BACKUP_CONFIG.databases[dbName];
-
-      // Update progress for database start
-      currentProgress = Math.floor((dbIdx / totalDatabases) * 100);
-      io.to(`user_2`).emit("backup-progress", {
-        type: "progress",
-        progress: currentProgress,
-        message: `Processing database: ${dbName}`,
-        database: dbName,
-      });
-
       emitLog(`\n💾 Processing database: ${dbName}`);
 
       // Create database connection
       const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
 
       try {
+        // Verify connection
         await sequelize.authenticate();
         emitLog(`🔗 Database connection established for ${dbName}`);
 
-        // Get all tables
+        // Create timestamp for versioning
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const backupVersion = `v${timestamp}`;
+        const backupFolder = `${dbConfig.backupFolder}/${backupVersion}`;
+
+        // Get all tables in this database
         const [tables] = await sequelize.query("SHOW TABLES");
         const tableNames = tables.map((row) => Object.values(row)[0]);
+
+        // Filter tables if specific ones requested
         const tablesToBackup = specificTables
           ? specificTables.split(",").filter((t) => tableNames.includes(t))
           : tableNames;
 
-        const totalTables = tablesToBackup.length || 1; // Prevent division by zero
-        const dbProgressShare = 100 / totalDatabases;
-        const tableProgressIncrement = dbProgressShare / totalTables;
-
         // Backup each table
-        for (let tableIdx = 0; tableIdx < tablesToBackup.length; tableIdx++) {
-          const tableName = tablesToBackup[tableIdx];
+        for (const tableName of tablesToBackup) {
           emitLog(`\n📊 Processing table: ${tableName}`);
-
-          // Update progress for table processing
-          currentProgress = Math.min(
-            100,
-            Math.floor(
-              (dbIdx / totalDatabases) * 100 +
-                (tableIdx / totalTables) * dbProgressShare
-            )
-          );
-
-          io.to(`user_2`).emit("backup-progress", {
-            type: "progress",
-            progress: currentProgress,
-            message: `Backing up table: ${tableName}`,
-            database: dbName,
-            table: tableName,
-          });
 
           // Check if table has updatedAt column
           const [columns] = await sequelize.query(
@@ -203,6 +159,7 @@ async function createBackup(req, res) {
           }
 
           emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
+
           const [rows] = await sequelize.query(query);
           emitLog(`📝 Found ${rows.length} records to backup`);
 
@@ -213,9 +170,7 @@ async function createBackup(req, res) {
 
           // Convert to CSV
           const csvData = parse(rows);
-          const s3Key = `${dbConfig.backupFolder}/v${new Date()
-            .toISOString()
-            .replace(/[:.]/g, "-")}/${tableName}.csv`;
+          const s3Key = `${backupFolder}/${tableName}.csv`;
 
           emitLog(`📤 Uploading to S3: ${s3Key}`);
           await s3
@@ -241,48 +196,18 @@ async function createBackup(req, res) {
 
         // Clean up old versions for this database
         await cleanupOldVersions(dbName, dbConfig.backupFolder);
-      } catch (err) {
-        backupFailed = true;
-        const errorMessage = `❌ Backup failed: ${err.message}`;
-
-        // Send error event once
-        io.to(`user_2`).emit("backup-progress", {
-          type: "error",
-          message: errorMessage,
-          progress: currentProgress,
-          failed: true,
-        });
-
-        emitLog(errorMessage, true);
-
-        if (res) return ApiResponse(res, "error", 500, err.message);
-        return;
       } finally {
+        // Close the connection when done
         await sequelize.close();
         emitLog(`🔌 Closed database connection for ${dbName}`);
       }
-    }
-
-    // Only emit completion if no error occurred
-    if (!backupFailed) {
-      io.to(`user_2`).emit("backup-progress", {
-        type: "complete",
-        message: "Backup completed successfully",
-        progress: 100,
-      });
-      emitLog("\n🎉 Backup process completed successfully!");
-      if (res) return ApiResponse(res, "success", 200, "Backup successful");
     }
 
     emitLog("\n🎉 Backup process completed successfully!");
     if (res) return ApiResponse(res, "success", 200, "Backup successful");
   } catch (err) {
     console.error("❌ Backup failed:", err);
-    io.to(`user_2`).emit("backup-progress", {
-      type: "error",
-      message: err.message,
-      progress: currentProgress || 0,
-    });
+    emitLog("❌ Backup failed:" + err);
     if (res)
       return ApiResponse(res, "error", 500, err?.message || "Backup failed", {
         error: err.message,

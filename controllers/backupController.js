@@ -68,23 +68,6 @@ async function createBackup(req, res) {
   const today = new Date();
   const day = today.getUTCDate();
   const io = getIo();
-  const emitLog = (message, isError = false) => {
-    console.log(message); // still log to backend console
-    try {
-      io.to(`user_2`).emit("backup-log", {
-        message,
-        isError,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (emitError) {
-      console.error("Failed to emit log:", emitError);
-      io.to(`user_2`).emit("backup-log", {
-        emitError,
-        isError,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  };
 
   // Skip on odd days for automatic backups
   if (!isManualBackup && day % 2 !== 0) {
@@ -311,6 +294,24 @@ async function cleanupOldVersions(dbName, backupFolder) {
     console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);
   }
 }
+
+ function emitLog(message, isError = false){
+    console.log(message); // still log to backend console
+    try {
+      io.to(`user_2`).emit("backup-log", {
+        message,
+        isError,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (emitError) {
+      console.error("Failed to emit log:", emitError);
+      io.to(`user_2`).emit("backup-log", {
+        emitError,
+        isError,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  };
 
 module.exports = {
   createBackup,

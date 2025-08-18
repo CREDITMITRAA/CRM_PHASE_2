@@ -4,6 +4,7 @@ const AWS = require("aws-sdk");
 const { parse } = require("json2csv");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { getIo } = require("../socket/socket");
+const io = getIo();
 
 // Configure AWS S3
 const s3 = new AWS.S3();
@@ -67,7 +68,6 @@ async function createBackup(req, res) {
   } = req.query;
   const today = new Date();
   const day = today.getUTCDate();
-  const io = getIo();
 
   // Skip on odd days for automatic backups
   if (!isManualBackup && day % 2 !== 0) {

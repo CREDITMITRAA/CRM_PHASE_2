@@ -294,24 +294,32 @@ async function cleanupOldVersions(dbName, backupFolder) {
   }
 }
 
- function emitLog(message, isError = false){
-    console.log(message); // still log to backend console
-    const io = getIo();
-    try {
-      io.to(`user_2`).emit("backup-log", {
-        message,
-        isError,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (emitError) {
-      console.error("Failed to emit log:", emitError);
-      io.to(`user_2`).emit("backup-log", {
-        emitError,
-        isError,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  };
+function emitLog(message, isError = false) {
+  console.log(message); // still log to backend console
+  const io = getIo();
+  try {
+    process.env.ADMIN_USER_IDS
+      ? process.env.ADMIN_USER_IDS.split(",").map((id) => id.trim())
+      : [].forEach(() => {
+          io.to(`user_${userId}`).emit("backup-log", {
+            message,
+            isError,
+            timestamp: new Date().toISOString(),
+          });
+        });
+  } catch (emitError) {
+    console.error("Failed to emit log:", emitError);
+    process.env.ADMIN_USER_IDS
+      ? process.env.ADMIN_USER_IDS.split(",").map((id) => id.trim())
+      : [].forEach(() => {
+          io.to(`user_${userId}`).emit("backup-log", {
+            message,
+            isError,
+            timestamp: new Date().toISOString(),
+          });
+        });
+  }
+}
 
 module.exports = {
   createBackup,

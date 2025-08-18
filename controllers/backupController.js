@@ -3,7 +3,7 @@ const path = require("path");
 const AWS = require("aws-sdk");
 const { parse } = require("json2csv");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const {getIo} = require("../socket/socket")
+const { getIo } = require("../socket/socket");
 
 // Configure AWS S3
 const s3 = new AWS.S3();
@@ -11,338 +11,382 @@ const BACKUP_BUCKET = process.env.AWS_S3_BACKUP_BUCKET_NAME;
 
 // Database connection configurations
 const DB_CONFIG = {
-    crm: {
-        database: process.env.CRM_DB_NAME,
-        username: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        host: process.env.DB_HOST,
-        dialect: 'mysql'
-    },
-    sajan: {
-        database: process.env.SAJAN_DB_NAME,
-        username: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        host: process.env.DB_HOST,
-        dialect: 'mysql'
-    }
+  crm: {
+    database: process.env.CRM_DB_NAME,
+    username: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    dialect: "mysql",
+  },
+  sajan: {
+    database: process.env.SAJAN_DB_NAME,
+    username: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    dialect: "mysql",
+  },
 };
 
 // Backup configuration
 const BACKUP_CONFIG = {
-    databases: {
-        crm: { 
-            backupFolder: `backups/${process.env.NODE_ENV}/crm` 
-        },
-        sajan: {
-            backupFolder: `backups/${process.env.NODE_ENV}/sajan`
-        }
+  databases: {
+    crm: {
+      backupFolder: `backups/${process.env.NODE_ENV}/crm`,
     },
-    versionHistory: 5 // Keep last 5 versionss
+    sajan: {
+      backupFolder: `backups/${process.env.NODE_ENV}/sajan`,
+    },
+  },
+  versionHistory: 5, // Keep last 5 versionss
 };
 
 async function createSequelizeInstance(dbConfig) {
-    return new Sequelize(
-        dbConfig.database,
-        dbConfig.username,
-        dbConfig.password,
-        {
-            host: dbConfig.host,
-            dialect: dbConfig.dialect,
-            logging: false,
-            pool: {
-                max: 1, // Use single connection for backup operation
-                min: 0,
-                acquire: 30000,
-                idle: 10000
-            }
-        }
-    );
+  return new Sequelize(
+    dbConfig.database,
+    dbConfig.username,
+    dbConfig.password,
+    {
+      host: dbConfig.host,
+      dialect: dbConfig.dialect,
+      logging: false,
+      pool: {
+        max: 1, // Use single connection for backup operation
+        min: 0,
+        acquire: 30000,
+        idle: 10000,
+      },
+    }
+  );
 }
 
 async function createBackup(req, res) {
-    const { isManualBackup = false, specificDatabases = null, specificTables = null } = req.query;
-    const today = new Date();
-    const day = today.getUTCDate();
-    const io = getIo();
-    let currentProgress = 0;
+  const {
+    isManualBackup = false,
+    specificDatabases = null,
+    specificTables = null,
+  } = req.query;
+  const today = new Date();
+  const day = today.getUTCDate();
+  const io = getIo();
+  let currentProgress = 0;
+  let backupFailed = false; // Track if backup failed
 
-    // Function to emit logs to frontend
-    const emitLog = (message, isProgressUpdate = false) => {
-        console.log(message);
-        
-        // Send detailed logs to frontend
-        io.to(`user_2`).emit("backup-log", {
-            message: message,
-            timestamp: new Date().toISOString(),
-            isProgressUpdate: isProgressUpdate
-        });
+  // Emit backup start event
+  io.to(`user_2`).emit("backup-progress", {
+    type: "start",
+    message: "🚀 Starting backup process...",
+    progress: 0,
+  });
 
-        // For progress updates, also emit the progress event
-        if (isProgressUpdate) {
-            io.to(`user_2`).emit("backup-progress", {
-                type: 'progress',
-                message: message,
-                progress: currentProgress
-            });
-        }
-    };
-
-    // Emit backup start event
-    io.to(`user_2`).emit("backup-progress", {
-        type: 'start',
-        message: 'Starting backup process',
-        progress: 0
-    });
-
-    // Skip on odd days for automatic backups
-    if (!isManualBackup && day % 2 !== 0) {
-        const message = "Skipping backup, as today is an odd day";
-        emitLog("⏭️ " + message);
-        io.to(`user_2`).emit("backup-progress", {
-            type: 'error',
-            message,
-            progress: 0
-        });
-        if (res) return ApiResponse(res, 'error', 400, message);
-        return;
-    }
-
+  // Function to emit logs to frontend
+  const emitLog = (message, isError = false) => {
+    console.log(message); // still log to backend console
     try {
-        emitLog("🚀 Starting backup process...");
-        
-        // Determine which databases to backup
-        const databasesToBackup = specificDatabases 
-            ? specificDatabases.split(',').filter(db => BACKUP_CONFIG.databases[db])
-            : Object.keys(BACKUP_CONFIG.databases);
-
-        if (databasesToBackup.length === 0) {
-            const message = "No valid databases specified for backup";
-            emitLog("⚠️ " + message);
-            io.to(`user_2`).emit("backup-progress", {
-                type: 'error',
-                message,
-                progress: 0
-            });
-            if (res) return ApiResponse(res, 'error', 400, message);
-            return;
-        }
-
-        const totalDatabases = databasesToBackup.length;
-
-        // Process each database
-        for (let dbIdx = 0; dbIdx < databasesToBackup.length; dbIdx++) {
-            const dbName = databasesToBackup[dbIdx];
-            const dbConfig = BACKUP_CONFIG.databases[dbName];
-            
-            // Update progress for database start
-            currentProgress = Math.floor((dbIdx / totalDatabases) * 100);
-            io.to(`user_2`).emit("backup-progress", {
-                type: 'progress',
-                progress: currentProgress,
-                message: `Processing database: ${dbName}`,
-                database: dbName
-            });
-
-            emitLog(`\n💾 Processing database: ${dbName}`);
-
-            // Create database connection
-            const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
-            
-            try {
-                await sequelize.authenticate();
-                emitLog(`🔗 Database connection established for ${dbName}`);
-
-                // Get all tables
-                const [tables] = await sequelize.query("SHOW TABLES");
-                const tableNames = tables.map(row => Object.values(row)[0]);
-                const tablesToBackup = specificTables 
-                    ? specificTables.split(',').filter(t => tableNames.includes(t))
-                    : tableNames;
-
-                const totalTables = tablesToBackup.length || 1; // Prevent division by zero
-                const dbProgressShare = 100 / totalDatabases;
-                const tableProgressIncrement = dbProgressShare / totalTables;
-
-                // Backup each table
-                for (let tableIdx = 0; tableIdx < tablesToBackup.length; tableIdx++) {
-                    const tableName = tablesToBackup[tableIdx];
-                    emitLog(`\n📊 Processing table: ${tableName}`);
-
-                    // Update progress for table processing
-                    currentProgress = Math.min(
-                        100,
-                        Math.floor(
-                            (dbIdx / totalDatabases) * 100 + 
-                            ((tableIdx / totalTables) * dbProgressShare)
-                        )
-                    );
-                    
-                    io.to(`user_2`).emit("backup-progress", {
-                        type: 'progress',
-                        progress: currentProgress,
-                        message: `Backing up table: ${tableName}`,
-                        database: dbName,
-                        table: tableName
-                    });
-
-                    // Check if table has updatedAt column
-                    const [columns] = await sequelize.query(
-                        `SHOW COLUMNS FROM ${tableName} LIKE 'updatedAt'`
-                    );
-                    const hasUpdatedAt = columns.length > 0;
-                    const incrementalField = hasUpdatedAt ? 'updatedAt' : null;
-                    
-                    let query = `SELECT * FROM ${tableName}`;
-                    let backupType = 'FULL';
-
-                    // For incremental backups, get last backup time
-                    if (incrementalField) {
-                        const lastBackupTime = await getLastBackupTime(dbName, tableName);
-                        if (lastBackupTime) {
-                            query += ` WHERE ${incrementalField} > '${lastBackupTime}'`;
-                            backupType = 'INCREMENTAL';
-                        }
-                    }
-
-                    emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
-                    const [rows] = await sequelize.query(query);
-                    emitLog(`📝 Found ${rows.length} records to backup`);
-
-                    if (rows.length === 0) {
-                        emitLog("⏩ No new data to backup, skipping");
-                        continue;
-                    }
-
-                    // Convert to CSV
-                    const csvData = parse(rows);
-                    const s3Key = `${dbConfig.backupFolder}/v${new Date().toISOString().replace(/[:.]/g, '-')}/${tableName}.csv`;
-
-                    emitLog(`📤 Uploading to S3: ${s3Key}`);
-                    await s3.putObject({
-                        Bucket: BACKUP_BUCKET,
-                        Key: s3Key,
-                        Body: csvData,
-                        ContentType: "text/csv",
-                    }).promise();
-
-                    emitLog(`✅ Successfully backed up ${tableName} (${backupType})`);
-
-                    // Update the last backup time marker if incremental
-                    if (incrementalField && rows.length > 0) {
-                        const latestRecordTime = getLatestTimestamp(rows, incrementalField);
-                        await setLastBackupTime(dbName, tableName, latestRecordTime);
-                        emitLog(`🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`);
-                    }
-                }
-
-                // Clean up old versions for this database
-                await cleanupOldVersions(dbName, dbConfig.backupFolder);
-            } finally {
-                await sequelize.close();
-                emitLog(`🔌 Closed database connection for ${dbName}`);
-            }
-        }
-
-        io.to(`user_2`).emit("backup-progress", {
-            type: 'complete',
-            message: 'Backup completed successfully',
-            progress: 100
-        });
-
-        emitLog("\n🎉 Backup process completed successfully!");
-        if (res) return ApiResponse(res, 'success', 200, "Backup successful");
-    } catch (err) {
-        console.error("❌ Backup failed:", err);
-        io.to(`user_2`).emit("backup-progress", {
-            type: 'error',
-            message: err.message,
-            progress: currentProgress || 0
-        });
-        if (res) return ApiResponse(res, 'error', 500, err?.message || "Backup failed", { error: err.message });
+      io.to(`user_2`).emit("backup-log", {
+        message,
+        isError,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (emitError) {
+      console.error("Failed to emit log:", emitError);
     }
+  };
+
+  // Skip on odd days for automatic backups
+  if (!isManualBackup && day % 2 !== 0) {
+    const message = "Skipping backup, as today is an odd day";
+    emitLog("⏭️ " + message);
+    io.to(`user_2`).emit("backup-progress", {
+      type: "error",
+      message,
+      progress: 0,
+    });
+    if (res) return ApiResponse(res, "error", 400, message);
+    return;
+  }
+
+  try {
+    // emitLog("🚀 Starting backup process...");
+
+    // Determine which databases to backup
+    const databasesToBackup = specificDatabases
+      ? specificDatabases.split(",").filter((db) => BACKUP_CONFIG.databases[db])
+      : Object.keys(BACKUP_CONFIG.databases);
+
+    if (databasesToBackup.length === 0) {
+      const message = "No valid databases specified for backup";
+      emitLog("⚠️ " + message);
+      io.to(`user_2`).emit("backup-progress", {
+        type: "error",
+        message,
+        progress: 0,
+      });
+      if (res) return ApiResponse(res, "error", 400, message);
+      return;
+    }
+
+    const totalDatabases = databasesToBackup.length;
+
+    // Process each database
+    for (let dbIdx = 0; dbIdx < databasesToBackup.length; dbIdx++) {
+      const dbName = databasesToBackup[dbIdx];
+      const dbConfig = BACKUP_CONFIG.databases[dbName];
+
+      // Update progress for database start
+      currentProgress = Math.floor((dbIdx / totalDatabases) * 100);
+      io.to(`user_2`).emit("backup-progress", {
+        type: "progress",
+        progress: currentProgress,
+        message: `Processing database: ${dbName}`,
+        database: dbName,
+      });
+
+      emitLog(`\n💾 Processing database: ${dbName}`);
+
+      // Create database connection
+      const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
+
+      try {
+        await sequelize.authenticate();
+        emitLog(`🔗 Database connection established for ${dbName}`);
+
+        // Get all tables
+        const [tables] = await sequelize.query("SHOW TABLES");
+        const tableNames = tables.map((row) => Object.values(row)[0]);
+        const tablesToBackup = specificTables
+          ? specificTables.split(",").filter((t) => tableNames.includes(t))
+          : tableNames;
+
+        const totalTables = tablesToBackup.length || 1; // Prevent division by zero
+        const dbProgressShare = 100 / totalDatabases;
+        const tableProgressIncrement = dbProgressShare / totalTables;
+
+        // Backup each table
+        for (let tableIdx = 0; tableIdx < tablesToBackup.length; tableIdx++) {
+          const tableName = tablesToBackup[tableIdx];
+          emitLog(`\n📊 Processing table: ${tableName}`);
+
+          // Update progress for table processing
+          currentProgress = Math.min(
+            100,
+            Math.floor(
+              (dbIdx / totalDatabases) * 100 +
+                (tableIdx / totalTables) * dbProgressShare
+            )
+          );
+
+          io.to(`user_2`).emit("backup-progress", {
+            type: "progress",
+            progress: currentProgress,
+            message: `Backing up table: ${tableName}`,
+            database: dbName,
+            table: tableName,
+          });
+
+          // Check if table has updatedAt column
+          const [columns] = await sequelize.query(
+            `SHOW COLUMNS FROM ${tableName} LIKE 'updatedAt'`
+          );
+          const hasUpdatedAt = columns.length > 0;
+          const incrementalField = hasUpdatedAt ? "updatedAt" : null;
+
+          let query = `SELECT * FROM ${tableName}`;
+          let backupType = "FULL";
+
+          // For incremental backups, get last backup time
+          if (incrementalField) {
+            const lastBackupTime = await getLastBackupTime(dbName, tableName);
+            if (lastBackupTime) {
+              query += ` WHERE ${incrementalField} > '${lastBackupTime}'`;
+              backupType = "INCREMENTAL";
+            }
+          }
+
+          emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
+          const [rows] = await sequelize.query(query);
+          emitLog(`📝 Found ${rows.length} records to backup`);
+
+          if (rows.length === 0) {
+            emitLog("⏩ No new data to backup, skipping");
+            continue;
+          }
+
+          // Convert to CSV
+          const csvData = parse(rows);
+          const s3Key = `${dbConfig.backupFolder}/v${new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-")}/${tableName}.csv`;
+
+          emitLog(`📤 Uploading to S3: ${s3Key}`);
+          await s3
+            .putObject({
+              Bucket: BACKUP_BUCKET,
+              Key: s3Key,
+              Body: csvData,
+              ContentType: "text/csv",
+            })
+            .promise();
+
+          emitLog(`✅ Successfully backed up ${tableName} (${backupType})`);
+
+          // Update the last backup time marker if incremental
+          if (incrementalField && rows.length > 0) {
+            const latestRecordTime = getLatestTimestamp(rows, incrementalField);
+            await setLastBackupTime(dbName, tableName, latestRecordTime);
+            emitLog(
+              `🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`
+            );
+          }
+        }
+
+        // Clean up old versions for this database
+        await cleanupOldVersions(dbName, dbConfig.backupFolder);
+      } catch (err) {
+        backupFailed = true;
+        const errorMessage = `❌ Backup failed: ${err.message}`;
+
+        // Send error event once
+        io.to(`user_2`).emit("backup-progress", {
+          type: "error",
+          message: errorMessage,
+          progress: currentProgress,
+          failed: true,
+        });
+
+        emitLog(errorMessage, true);
+
+        if (res) return ApiResponse(res, "error", 500, err.message);
+        return;
+      } finally {
+        await sequelize.close();
+        emitLog(`🔌 Closed database connection for ${dbName}`);
+      }
+    }
+
+    // Only emit completion if no error occurred
+    if (!backupFailed) {
+      io.to(`user_2`).emit("backup-progress", {
+        type: "complete",
+        message: "Backup completed successfully",
+        progress: 100,
+      });
+      emitLog("\n🎉 Backup process completed successfully!");
+      if (res) return ApiResponse(res, "success", 200, "Backup successful");
+    }
+
+    emitLog("\n🎉 Backup process completed successfully!");
+    if (res) return ApiResponse(res, "success", 200, "Backup successful");
+  } catch (err) {
+    console.error("❌ Backup failed:", err);
+    io.to(`user_2`).emit("backup-progress", {
+      type: "error",
+      message: err.message,
+      progress: currentProgress || 0,
+    });
+    if (res)
+      return ApiResponse(res, "error", 500, err?.message || "Backup failed", {
+        error: err.message,
+      });
+  }
 }
 
 // Helper function to get the last backup time for a table
 async function getLastBackupTime(dbName, tableName) {
-    try {
-        const markerKey = `backup_markers/${dbName}/${tableName}_last_backup.txt`;
-        const data = await s3.getObject({
-            Bucket: BACKUP_BUCKET,
-            Key: markerKey
-        }).promise();
-        
-        return data.Body.toString('utf-8');
-    } catch (err) {
-        if (err.code === 'NoSuchKey') {
-            emitLog(`🆕 No previous backup marker found for ${dbName}.${tableName}, doing full backup`);
-            return null;
-        }
-        throw err;
+  try {
+    const markerKey = `backup_markers/${dbName}/${tableName}_last_backup.txt`;
+    const data = await s3
+      .getObject({
+        Bucket: BACKUP_BUCKET,
+        Key: markerKey,
+      })
+      .promise();
+
+    return data.Body.toString("utf-8");
+  } catch (err) {
+    if (err.code === "NoSuchKey") {
+      emitLog(
+        `🆕 No previous backup marker found for ${dbName}.${tableName}, doing full backup`
+      );
+      return null;
     }
+    throw err;
+  }
 }
 
 // Helper function to set the last backup time for a table
 async function setLastBackupTime(dbName, tableName, timestamp) {
-    const markerKey = `backup_markers/${dbName}/${tableName}_last_backup.txt`;
-    await s3.putObject({
-        Bucket: BACKUP_BUCKET,
-        Key: markerKey,
-        Body: timestamp,
-        ContentType: "text/plain",
-    }).promise();
+  const markerKey = `backup_markers/${dbName}/${tableName}_last_backup.txt`;
+  await s3
+    .putObject({
+      Bucket: BACKUP_BUCKET,
+      Key: markerKey,
+      Body: timestamp,
+      ContentType: "text/plain",
+    })
+    .promise();
 }
 
 // Helper to get latest timestamp from results
 function getLatestTimestamp(rows, field) {
-    return rows.reduce((latest, row) => {
-        const current = new Date(row[field]);
-        return current > latest ? current : latest;
-    }, new Date(0)).toISOString();
+  return rows
+    .reduce((latest, row) => {
+      const current = new Date(row[field]);
+      return current > latest ? current : latest;
+    }, new Date(0))
+    .toISOString();
 }
 
 // Clean up old backup versions
 async function cleanupOldVersions(dbName, backupFolder) {
-    try {
-        emitLog(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
-        
-        const list = await s3.listObjectsV2({
+  try {
+    emitLog(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
+
+    const list = await s3
+      .listObjectsV2({
+        Bucket: BACKUP_BUCKET,
+        Prefix: backupFolder + "/",
+        Delimiter: "/",
+      })
+      .promise();
+
+    const versions = list.CommonPrefixes?.map((p) => p.Prefix) || [];
+    versions.sort().reverse(); // Sort newest first
+
+    if (versions.length > BACKUP_CONFIG.versionHistory) {
+      const toDelete = versions.slice(BACKUP_CONFIG.versionHistory);
+      emitLog(
+        `🗑️ Found ${toDelete.length} old versions to delete in ${dbName}`
+      );
+
+      for (const version of toDelete) {
+        // List all files in this version
+        const files = await s3
+          .listObjectsV2({
             Bucket: BACKUP_BUCKET,
-            Prefix: backupFolder + '/',
-            Delimiter: '/'
-        }).promise();
+            Prefix: version,
+          })
+          .promise();
 
-        const versions = list.CommonPrefixes?.map(p => p.Prefix) || [];
-        versions.sort().reverse(); // Sort newest first
-
-        if (versions.length > BACKUP_CONFIG.versionHistory) {
-            const toDelete = versions.slice(BACKUP_CONFIG.versionHistory);
-            emitLog(`🗑️ Found ${toDelete.length} old versions to delete in ${dbName}`);
-
-            for (const version of toDelete) {
-                // List all files in this version
-                const files = await s3.listObjectsV2({
-                    Bucket: BACKUP_BUCKET,
-                    Prefix: version
-                }).promise();
-
-                if (files.Contents?.length > 0) {
-                    await s3.deleteObjects({
-                        Bucket: BACKUP_BUCKET,
-                        Delete: {
-                            Objects: files.Contents.map(f => ({ Key: f.Key }))
-                        }
-                    }).promise();
-                    emitLog(`♻️ Deleted version: ${version}`);
-                }
-            }
-        } else {
-            emitLog(`👍 No old versions need cleanup in ${dbName}`);
+        if (files.Contents?.length > 0) {
+          await s3
+            .deleteObjects({
+              Bucket: BACKUP_BUCKET,
+              Delete: {
+                Objects: files.Contents.map((f) => ({ Key: f.Key })),
+              },
+            })
+            .promise();
+          emitLog(`♻️ Deleted version: ${version}`);
         }
-    } catch (err) {
-        console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);
+      }
+    } else {
+      emitLog(`👍 No old versions need cleanup in ${dbName}`);
     }
+  } catch (err) {
+    console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);
+  }
 }
 
 module.exports = {
-    createBackup
+  createBackup,
 };

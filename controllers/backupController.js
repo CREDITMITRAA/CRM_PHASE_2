@@ -3,6 +3,7 @@ const path = require("path");
 const AWS = require("aws-sdk");
 const { parse } = require("json2csv");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
+const {getIo} = require("../socket/socket")
 
 // Configure AWS S3
 const s3 = new AWS.S3();
@@ -62,11 +63,25 @@ async function createBackup(req, res) {
     const { isManualBackup = false, specificDatabases = null, specificTables = null } = req.query;
     const today = new Date();
     const day = today.getUTCDate();
+    const io = getIo();
+    let currentProgress = 0;
+    // Emit backup start event
+    io.to(`user_2`).emit("backup-progress", {
+        type: 'start',
+        message: 'Starting backup process',
+        progress: 0
+    });
 
     // Skip on odd days for automatic backups
     if (!isManualBackup && day % 2 !== 0) {
-        console.log("⏭️ Skipping backup, as today is an odd day.");
-        if (res) return ApiResponse(res, 'error', 400, "Skipped Backup Today!");
+        const message = "Skipping backup, as today is an odd day";
+        console.log("⏭️ " + message);
+        io.to(`user_2`).emit("backup-progress", {
+            type: 'error',
+            message,
+            progress: 0
+        });
+        if (res) return ApiResponse(res, 'error', 400, message);
         return;
     }
 
@@ -79,42 +94,75 @@ async function createBackup(req, res) {
             : Object.keys(BACKUP_CONFIG.databases);
 
         if (databasesToBackup.length === 0) {
-            console.log("⚠️ No valid databases specified for backup");
-            if (res) return ApiResponse(res, 'error', 400, "No valid databases specified");
+            const message = "No valid databases specified for backup";
+            console.log("⚠️ " + message);
+            io.to(`user_2`).emit("backup-progress", {
+                type: 'error',
+                message,
+                progress: 0
+            });
+            if (res) return ApiResponse(res, 'error', 400, message);
             return;
         }
 
+        const totalDatabases = databasesToBackup.length;
+
         // Process each database
-        for (const dbName of databasesToBackup) {
+        for (let dbIdx = 0; dbIdx < databasesToBackup.length; dbIdx++) {
+            const dbName = databasesToBackup[dbIdx];
             const dbConfig = BACKUP_CONFIG.databases[dbName];
+            
+            // Update progress for database start
+            currentProgress = Math.floor((dbIdx / totalDatabases) * 100);
+            io.to(`user_2`).emit("backup-progress", {
+                type: 'progress',
+                progress: currentProgress,
+                message: `Processing database: ${dbName}`,
+                database: dbName
+            });
+
             console.log(`\n💾 Processing database: ${dbName}`);
 
             // Create database connection
             const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
             
             try {
-                // Verify connection
                 await sequelize.authenticate();
                 console.log(`🔗 Database connection established for ${dbName}`);
 
-                // Create timestamp for versioning
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const backupVersion = `v${timestamp}`;
-                const backupFolder = `${dbConfig.backupFolder}/${backupVersion}`;
-
-                // Get all tables in this database
+                // Get all tables
                 const [tables] = await sequelize.query("SHOW TABLES");
                 const tableNames = tables.map(row => Object.values(row)[0]);
-
-                // Filter tables if specific ones requested
                 const tablesToBackup = specificTables 
                     ? specificTables.split(',').filter(t => tableNames.includes(t))
                     : tableNames;
 
+                const totalTables = tablesToBackup.length || 1; // Prevent division by zero
+                const dbProgressShare = 100 / totalDatabases;
+                const tableProgressIncrement = dbProgressShare / totalTables;
+
                 // Backup each table
-                for (const tableName of tablesToBackup) {
+                for (let tableIdx = 0; tableIdx < tablesToBackup.length; tableIdx++) {
+                    const tableName = tablesToBackup[tableIdx];
                     console.log(`\n📊 Processing table: ${tableName}`);
+
+                    // Update progress for table processing
+                    currentProgress = Math.min(
+                        100,
+                        Math.floor(
+                            (dbIdx / totalDatabases) * 100 + 
+                            ((tableIdx / totalTables) * dbProgressShare)
+                        )
+                    );
                     
+                    io.to(`user_2`).emit("backup-progress", {
+                        type: 'progress',
+                        progress: currentProgress,
+                        message: `Backing up table: ${tableName}`,
+                        database: dbName,
+                        table: tableName
+                    });
+
                     // Check if table has updatedAt column
                     const [columns] = await sequelize.query(
                         `SHOW COLUMNS FROM ${tableName} LIKE 'updatedAt'`
@@ -135,7 +183,6 @@ async function createBackup(req, res) {
                     }
 
                     console.log(`🔍 Executing ${backupType} backup query: ${query}`);
-
                     const [rows] = await sequelize.query(query);
                     console.log(`📝 Found ${rows.length} records to backup`);
 
@@ -146,7 +193,7 @@ async function createBackup(req, res) {
 
                     // Convert to CSV
                     const csvData = parse(rows);
-                    const s3Key = `${backupFolder}/${tableName}.csv`;
+                    const s3Key = `${dbConfig.backupFolder}/v${new Date().toISOString().replace(/[:.]/g, '-')}/${tableName}.csv`;
 
                     console.log(`📤 Uploading to S3: ${s3Key}`);
                     await s3.putObject({
@@ -169,16 +216,26 @@ async function createBackup(req, res) {
                 // Clean up old versions for this database
                 await cleanupOldVersions(dbName, dbConfig.backupFolder);
             } finally {
-                // Close the connection when done
                 await sequelize.close();
                 console.log(`🔌 Closed database connection for ${dbName}`);
             }
         }
 
+        io.to(`user_2`).emit("backup-progress", {
+            type: 'complete',
+            message: 'Backup completed successfully',
+            progress: 100
+        });
+
         console.log("\n🎉 Backup process completed successfully!");
         if (res) return ApiResponse(res, 'success', 200, "Backup successful");
     } catch (err) {
         console.error("❌ Backup failed:", err);
+        io.to(`user_2`).emit("backup-progress", {
+            type: 'error',
+            message: err.message,
+            progress: currentProgress || 0
+        });
         if (res) return ApiResponse(res, 'error', 500, err?.message || "Backup failed", { error: err.message });
     }
 }

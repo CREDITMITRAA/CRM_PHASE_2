@@ -4,7 +4,6 @@ const AWS = require("aws-sdk");
 const { parse } = require("json2csv");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const { getIo } = require("../socket/socket");
-const io = getIo();
 
 // Configure AWS S3
 const s3 = new AWS.S3();
@@ -297,6 +296,7 @@ async function cleanupOldVersions(dbName, backupFolder) {
 
  function emitLog(message, isError = false){
     console.log(message); // still log to backend console
+    const io = getIo();
     try {
       io.to(`user_2`).emit("backup-log", {
         message,

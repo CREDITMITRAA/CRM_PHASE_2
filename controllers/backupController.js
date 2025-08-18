@@ -65,6 +65,28 @@ async function createBackup(req, res) {
     const day = today.getUTCDate();
     const io = getIo();
     let currentProgress = 0;
+
+    // Function to emit logs to frontend
+    const emitLog = (message, isProgressUpdate = false) => {
+        console.log(message);
+        
+        // Send detailed logs to frontend
+        io.to(`user_2`).emit("backup-log", {
+            message: message,
+            timestamp: new Date().toISOString(),
+            isProgressUpdate: isProgressUpdate
+        });
+
+        // For progress updates, also emit the progress event
+        if (isProgressUpdate) {
+            io.to(`user_2`).emit("backup-progress", {
+                type: 'progress',
+                message: message,
+                progress: currentProgress
+            });
+        }
+    };
+
     // Emit backup start event
     io.to(`user_2`).emit("backup-progress", {
         type: 'start',
@@ -75,7 +97,7 @@ async function createBackup(req, res) {
     // Skip on odd days for automatic backups
     if (!isManualBackup && day % 2 !== 0) {
         const message = "Skipping backup, as today is an odd day";
-        console.log("⏭️ " + message);
+        emitLog("⏭️ " + message);
         io.to(`user_2`).emit("backup-progress", {
             type: 'error',
             message,
@@ -86,7 +108,7 @@ async function createBackup(req, res) {
     }
 
     try {
-        console.log("🚀 Starting backup process...");
+        emitLog("🚀 Starting backup process...");
         
         // Determine which databases to backup
         const databasesToBackup = specificDatabases 
@@ -95,7 +117,7 @@ async function createBackup(req, res) {
 
         if (databasesToBackup.length === 0) {
             const message = "No valid databases specified for backup";
-            console.log("⚠️ " + message);
+            emitLog("⚠️ " + message);
             io.to(`user_2`).emit("backup-progress", {
                 type: 'error',
                 message,
@@ -121,14 +143,14 @@ async function createBackup(req, res) {
                 database: dbName
             });
 
-            console.log(`\n💾 Processing database: ${dbName}`);
+            emitLog(`\n💾 Processing database: ${dbName}`);
 
             // Create database connection
             const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
             
             try {
                 await sequelize.authenticate();
-                console.log(`🔗 Database connection established for ${dbName}`);
+                emitLog(`🔗 Database connection established for ${dbName}`);
 
                 // Get all tables
                 const [tables] = await sequelize.query("SHOW TABLES");
@@ -144,7 +166,7 @@ async function createBackup(req, res) {
                 // Backup each table
                 for (let tableIdx = 0; tableIdx < tablesToBackup.length; tableIdx++) {
                     const tableName = tablesToBackup[tableIdx];
-                    console.log(`\n📊 Processing table: ${tableName}`);
+                    emitLog(`\n📊 Processing table: ${tableName}`);
 
                     // Update progress for table processing
                     currentProgress = Math.min(
@@ -182,12 +204,12 @@ async function createBackup(req, res) {
                         }
                     }
 
-                    console.log(`🔍 Executing ${backupType} backup query: ${query}`);
+                    emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
                     const [rows] = await sequelize.query(query);
-                    console.log(`📝 Found ${rows.length} records to backup`);
+                    emitLog(`📝 Found ${rows.length} records to backup`);
 
                     if (rows.length === 0) {
-                        console.log("⏩ No new data to backup, skipping");
+                        emitLog("⏩ No new data to backup, skipping");
                         continue;
                     }
 
@@ -195,7 +217,7 @@ async function createBackup(req, res) {
                     const csvData = parse(rows);
                     const s3Key = `${dbConfig.backupFolder}/v${new Date().toISOString().replace(/[:.]/g, '-')}/${tableName}.csv`;
 
-                    console.log(`📤 Uploading to S3: ${s3Key}`);
+                    emitLog(`📤 Uploading to S3: ${s3Key}`);
                     await s3.putObject({
                         Bucket: BACKUP_BUCKET,
                         Key: s3Key,
@@ -203,13 +225,13 @@ async function createBackup(req, res) {
                         ContentType: "text/csv",
                     }).promise();
 
-                    console.log(`✅ Successfully backed up ${tableName} (${backupType})`);
+                    emitLog(`✅ Successfully backed up ${tableName} (${backupType})`);
 
                     // Update the last backup time marker if incremental
                     if (incrementalField && rows.length > 0) {
                         const latestRecordTime = getLatestTimestamp(rows, incrementalField);
                         await setLastBackupTime(dbName, tableName, latestRecordTime);
-                        console.log(`🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`);
+                        emitLog(`🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`);
                     }
                 }
 
@@ -217,7 +239,7 @@ async function createBackup(req, res) {
                 await cleanupOldVersions(dbName, dbConfig.backupFolder);
             } finally {
                 await sequelize.close();
-                console.log(`🔌 Closed database connection for ${dbName}`);
+                emitLog(`🔌 Closed database connection for ${dbName}`);
             }
         }
 
@@ -227,7 +249,7 @@ async function createBackup(req, res) {
             progress: 100
         });
 
-        console.log("\n🎉 Backup process completed successfully!");
+        emitLog("\n🎉 Backup process completed successfully!");
         if (res) return ApiResponse(res, 'success', 200, "Backup successful");
     } catch (err) {
         console.error("❌ Backup failed:", err);
@@ -252,7 +274,7 @@ async function getLastBackupTime(dbName, tableName) {
         return data.Body.toString('utf-8');
     } catch (err) {
         if (err.code === 'NoSuchKey') {
-            console.log(`🆕 No previous backup marker found for ${dbName}.${tableName}, doing full backup`);
+            emitLog(`🆕 No previous backup marker found for ${dbName}.${tableName}, doing full backup`);
             return null;
         }
         throw err;
@@ -281,7 +303,7 @@ function getLatestTimestamp(rows, field) {
 // Clean up old backup versions
 async function cleanupOldVersions(dbName, backupFolder) {
     try {
-        console.log(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
+        emitLog(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
         
         const list = await s3.listObjectsV2({
             Bucket: BACKUP_BUCKET,
@@ -294,7 +316,7 @@ async function cleanupOldVersions(dbName, backupFolder) {
 
         if (versions.length > BACKUP_CONFIG.versionHistory) {
             const toDelete = versions.slice(BACKUP_CONFIG.versionHistory);
-            console.log(`🗑️ Found ${toDelete.length} old versions to delete in ${dbName}`);
+            emitLog(`🗑️ Found ${toDelete.length} old versions to delete in ${dbName}`);
 
             for (const version of toDelete) {
                 // List all files in this version
@@ -310,11 +332,11 @@ async function cleanupOldVersions(dbName, backupFolder) {
                             Objects: files.Contents.map(f => ({ Key: f.Key }))
                         }
                     }).promise();
-                    console.log(`♻️ Deleted version: ${version}`);
+                    emitLog(`♻️ Deleted version: ${version}`);
                 }
             }
         } else {
-            console.log(`👍 No old versions need cleanup in ${dbName}`);
+            emitLog(`👍 No old versions need cleanup in ${dbName}`);
         }
     } catch (err) {
         console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);

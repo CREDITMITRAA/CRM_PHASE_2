@@ -2965,7 +2965,9 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
+      CLIENT_SECRET_KEY : "SQ"
+    })).data.data
 
 
     const response = await axios.get(
@@ -3057,7 +3059,9 @@ async function getCrifSummaryReport(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
+      CLIENT_SECRET_KEY : "SQ"
+    })).data.data
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
@@ -3130,7 +3134,9 @@ async function getCustomers(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
+      CLIENT_SECRET_KEY : "SQ"
+    })).data.data
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,

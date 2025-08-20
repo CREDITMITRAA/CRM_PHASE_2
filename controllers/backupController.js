@@ -50,6 +50,25 @@ const BACKUP_CONFIG = {
 // Track backup strategy per table
 const tableBackupStrategies = new Map();
 
+async function createSequelizeInstance(dbConfig) {
+  return new Sequelize(
+    dbConfig.database,
+    dbConfig.username,
+    dbConfig.password,
+    {
+      host: dbConfig.host,
+      dialect: dbConfig.dialect,
+      logging: false,
+      pool: {
+        max: 1, // Use single connection for backup operation
+        min: 0,
+        acquire: 30000,
+        idle: 10000,
+      },
+    }
+  );
+}
+
 async function createBackup(req, res) {
   const {
     isManualBackup = false,

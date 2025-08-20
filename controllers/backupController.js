@@ -27,43 +27,35 @@ const DB_CONFIG = {
   },
 };
 
-// Backup configuration
+// Enhanced Backup configuration
 const BACKUP_CONFIG = {
   databases: {
     crm: {
       backupFolder: `backups/${process.env.NODE_ENV}/crm`,
+      fullBackupInterval: 7, // Days between full backups
+      tableSizeThreshold: 100000, // Switch to incremental for tables larger than this
     },
     sajan: {
       backupFolder: `backups/${process.env.NODE_ENV}/sajan`,
+      fullBackupInterval: 7,
+      tableSizeThreshold: 100000,
     },
   },
-  versionHistory: 5, // Keep last 5 versionss
+  versionHistory: {
+    full: 4, // Keep last 4 full backups
+    incremental: 30, // Keep last 30 days of incremental backups
+  },
 };
 
-async function createSequelizeInstance(dbConfig) {
-  return new Sequelize(
-    dbConfig.database,
-    dbConfig.username,
-    dbConfig.password,
-    {
-      host: dbConfig.host,
-      dialect: dbConfig.dialect,
-      logging: false,
-      pool: {
-        max: 1, // Use single connection for backup operation
-        min: 0,
-        acquire: 30000,
-        idle: 10000,
-      },
-    }
-  );
-}
+// Track backup strategy per table
+const tableBackupStrategies = new Map();
 
 async function createBackup(req, res) {
   const {
     isManualBackup = false,
     specificDatabases = null,
     specificTables = null,
+    forceFullBackup = false,
   } = req.query;
   const today = new Date();
   const day = today.getUTCDate();
@@ -117,67 +109,29 @@ async function createBackup(req, res) {
           ? specificTables.split(",").filter((t) => tableNames.includes(t))
           : tableNames;
 
+        // Check if we should do a full backup for this database
+        const shouldDoFullBackup = await shouldPerformFullBackup(dbName, forceFullBackup === 'true');
+
+        if (shouldDoFullBackup) {
+          emitLog(`🎯 Performing FULL backup for ${dbName} (scheduled interval)`);
+          await setLastFullBackupTime(dbName, new Date().toISOString());
+        }
+
         // Backup each table
         for (const tableName of tablesToBackup) {
-          emitLog(`\n📊 Processing table: ${tableName}`);
-
-          // Check if table has updatedAt column
-          const [columns] = await sequelize.query(
-            `SHOW COLUMNS FROM ${tableName} LIKE 'updatedAt'`
+          await backupTable(
+            sequelize,
+            dbName,
+            tableName,
+            backupFolder,
+            shouldDoFullBackup,
+            dbConfig.tableSizeThreshold
           );
-          const hasUpdatedAt = columns.length > 0;
-          const incrementalField = hasUpdatedAt ? "updatedAt" : null;
-
-          let query = `SELECT * FROM ${tableName}`;
-          let backupType = "FULL";
-
-          // For incremental backups, get last backup time
-          if (incrementalField) {
-            const lastBackupTime = await getLastBackupTime(dbName, tableName);
-            if (lastBackupTime) {
-              query += ` WHERE ${incrementalField} > '${lastBackupTime}'`;
-              backupType = "INCREMENTAL";
-            }
-          }
-
-          emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
-
-          const [rows] = await sequelize.query(query);
-          emitLog(`📝 Found ${rows.length} records to backup`);
-
-          if (rows.length === 0) {
-            emitLog("⏩ No new data to backup, skipping");
-            continue;
-          }
-
-          // Convert to CSV
-          const csvData = parse(rows);
-          const s3Key = `${backupFolder}/${tableName}.csv`;
-
-          emitLog(`📤 Uploading to S3: ${s3Key}`);
-          await s3
-            .putObject({
-              Bucket: BACKUP_BUCKET,
-              Key: s3Key,
-              Body: csvData,
-              ContentType: "text/csv",
-            })
-            .promise();
-
-          emitLog(`✅ Successfully backed up ${tableName} (${backupType})`);
-
-          // Update the last backup time marker if incremental
-          if (incrementalField && rows.length > 0) {
-            const latestRecordTime = getLatestTimestamp(rows, incrementalField);
-            await setLastBackupTime(dbName, tableName, latestRecordTime);
-            emitLog(
-              `🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`
-            );
-          }
         }
 
         // Clean up old versions for this database
-        await cleanupOldVersions(dbName, dbConfig.backupFolder);
+        await cleanupOldVersions(dbName, dbConfig.backupFolder, shouldDoFullBackup);
+        
       } finally {
         // Close the connection when done
         await sequelize.close();
@@ -194,6 +148,190 @@ async function createBackup(req, res) {
       return ApiResponse(res, "error", 500, err?.message || "Backup failed", {
         error: err.message,
       });
+  }
+}
+
+async function backupTable(sequelize, dbName, tableName, backupFolder, forceFull, sizeThreshold) {
+  emitLog(`\n📊 Processing table: ${tableName}`);
+
+  try {
+    // Check table size to determine strategy
+    const tableSize = await getTableSize(sequelize, tableName);
+    const isLargeTable = tableSize > sizeThreshold;
+    
+    // Determine backup strategy
+    let backupStrategy;
+    if (forceFull) {
+      backupStrategy = 'full';
+    } else if (isLargeTable) {
+      backupStrategy = await determineLargeTableStrategy(dbName, tableName);
+    } else {
+      backupStrategy = 'full'; // Small tables always get full backups
+    }
+
+    let query, backupType;
+
+    if (backupStrategy === 'full') {
+      query = `SELECT * FROM ${tableName}`;
+      backupType = "FULL";
+    } else {
+      // Incremental backup
+      const lastBackupTime = await getLastBackupTime(dbName, tableName);
+      const hasUpdatedAt = await hasUpdatedAtColumn(sequelize, tableName);
+      
+      if (!hasUpdatedAt) {
+        emitLog(`⚠️ Table ${tableName} has no updatedAt column, falling back to full backup`);
+        query = `SELECT * FROM ${tableName}`;
+        backupType = "FULL";
+      } else if (!lastBackupTime) {
+        emitLog(`🆕 First backup for large table ${tableName}, doing full backup`);
+        query = `SELECT * FROM ${tableName}`;
+        backupType = "FULL";
+      } else {
+        query = `SELECT * FROM ${tableName} WHERE updatedAt > '${lastBackupTime}'`;
+        backupType = "INCREMENTAL";
+      }
+    }
+
+    emitLog(`🔍 Executing ${backupType} backup query: ${query}`);
+    const [rows] = await sequelize.query(query);
+    emitLog(`📝 Found ${rows.length} records to backup`);
+
+    if (rows.length === 0) {
+      emitLog("⏩ No data to backup, skipping");
+      return;
+    }
+
+    // Convert to CSV
+    const csvData = parse(rows);
+    const s3Key = `${backupFolder}/${tableName}.csv`;
+
+    emitLog(`📤 Uploading to S3: ${s3Key}`);
+    await s3.putObject({
+      Bucket: BACKUP_BUCKET,
+      Key: s3Key,
+      Body: csvData,
+      ContentType: "text/csv",
+    }).promise();
+
+    emitLog(`✅ Successfully backed up ${tableName} (${backupType})`);
+
+    // Update backup time markers
+    if (backupType === "INCREMENTAL" && rows.length > 0) {
+      const latestRecordTime = getLatestTimestamp(rows, "updatedAt");
+      await setLastBackupTime(dbName, tableName, latestRecordTime);
+      emitLog(`🕒 Updated last backup time for ${tableName} to ${latestRecordTime}`);
+    }
+
+    // Store the strategy used for this table
+    tableBackupStrategies.set(`${dbName}_${tableName}`, backupStrategy);
+
+  } catch (error) {
+    emitLog(`❌ Failed to backup table ${tableName}: ${error.message}`, true);
+    throw error;
+  }
+}
+
+async function getTableSize(sequelize, tableName) {
+  try {
+    const [result] = await sequelize.query(
+      `SELECT COUNT(*) as count FROM ${tableName}`
+    );
+    return result[0].count;
+  } catch (error) {
+    emitLog(`⚠️ Could not get table size for ${tableName}, assuming small`);
+    return 0;
+  }
+}
+
+async function hasUpdatedAtColumn(sequelize, tableName) {
+  const [columns] = await sequelize.query(
+    `SHOW COLUMNS FROM ${tableName} LIKE 'updatedAt'`
+  );
+  return columns.length > 0;
+}
+
+async function determineLargeTableStrategy(dbName, tableName) {
+  // For large tables, use incremental unless it's time for a full backup
+  const lastFullBackup = await getLastFullBackupTime(dbName);
+  if (!lastFullBackup) return 'full';
+  
+  const daysSinceFullBackup = Math.floor(
+    (new Date() - new Date(lastFullBackup)) / (1000 * 60 * 60 * 24)
+  );
+  
+  return daysSinceFullBackup >= BACKUP_CONFIG.databases[dbName].fullBackupInterval 
+    ? 'full' 
+    : 'incremental';
+}
+
+async function shouldPerformFullBackup(dbName, forceFull) {
+  if (forceFull) return true;
+  
+  const lastFullBackup = await getLastFullBackupTime(dbName);
+  if (!lastFullBackup) return true;
+  
+  const daysSinceFullBackup = Math.floor(
+    (new Date() - new Date(lastFullBackup)) / (1000 * 60 * 60 * 24)
+  );
+  
+  return daysSinceFullBackup >= BACKUP_CONFIG.databases[dbName].fullBackupInterval;
+}
+
+async function getLastFullBackupTime(dbName) {
+  try {
+    const markerKey = `backup_markers/${dbName}/last_full_backup.txt`;
+    const data = await s3.getObject({
+      Bucket: BACKUP_BUCKET,
+      Key: markerKey,
+    }).promise();
+    return data.Body.toString("utf-8");
+  } catch (err) {
+    if (err.code === "NoSuchKey") return null;
+    throw err;
+  }
+}
+
+async function setLastFullBackupTime(dbName, timestamp) {
+  const markerKey = `backup_markers/${dbName}/last_full_backup.txt`;
+  await s3.putObject({
+    Bucket: BACKUP_BUCKET,
+    Key: markerKey,
+    Body: timestamp,
+    ContentType: "text/plain",
+  }).promise();
+}
+
+// Enhanced cleanup that understands backup types
+async function cleanupOldVersions(dbName, backupFolder, isFullBackup) {
+  try {
+    emitLog(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
+
+    const list = await s3.listObjectsV2({
+      Bucket: BACKUP_BUCKET,
+      Prefix: backupFolder + "/",
+      Delimiter: "/",
+    }).promise();
+
+    const versions = list.CommonPrefixes?.map((p) => p.Prefix) || [];
+    versions.sort().reverse();
+
+    if (isFullBackup) {
+      // For full backups, keep only the last X full backups
+      const fullBackups = await identifyFullBackups(dbName, versions);
+      if (fullBackups.length > BACKUP_CONFIG.versionHistory.full) {
+        const toDelete = fullBackups.slice(BACKUP_CONFIG.versionHistory.full);
+        await deleteBackupVersions(toDelete);
+      }
+    } else {
+      // For incremental backups, clean up by age
+      const oldIncrementals = await getOldIncrementalBackups(versions);
+      if (oldIncrementals.length > 0) {
+        await deleteBackupVersions(oldIncrementals);
+      }
+    }
+  } catch (err) {
+    console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);
   }
 }
 
@@ -243,57 +381,6 @@ function getLatestTimestamp(rows, field) {
     .toISOString();
 }
 
-// Clean up old backup versions
-async function cleanupOldVersions(dbName, backupFolder) {
-  try {
-    emitLog(`\n🧹 Checking for old backups to clean up in ${dbName}...`);
-
-    const list = await s3
-      .listObjectsV2({
-        Bucket: BACKUP_BUCKET,
-        Prefix: backupFolder + "/",
-        Delimiter: "/",
-      })
-      .promise();
-
-    const versions = list.CommonPrefixes?.map((p) => p.Prefix) || [];
-    versions.sort().reverse(); // Sort newest first
-
-    if (versions.length > BACKUP_CONFIG.versionHistory) {
-      const toDelete = versions.slice(BACKUP_CONFIG.versionHistory);
-      emitLog(
-        `🗑️ Found ${toDelete.length} old versions to delete in ${dbName}`
-      );
-
-      for (const version of toDelete) {
-        // List all files in this version
-        const files = await s3
-          .listObjectsV2({
-            Bucket: BACKUP_BUCKET,
-            Prefix: version,
-          })
-          .promise();
-
-        if (files.Contents?.length > 0) {
-          await s3
-            .deleteObjects({
-              Bucket: BACKUP_BUCKET,
-              Delete: {
-                Objects: files.Contents.map((f) => ({ Key: f.Key })),
-              },
-            })
-            .promise();
-          emitLog(`♻️ Deleted version: ${version}`);
-        }
-      }
-    } else {
-      emitLog(`👍 No old versions need cleanup in ${dbName}`);
-    }
-  } catch (err) {
-    console.error(`⚠️ Failed to clean up old versions in ${dbName}:`, err);
-  }
-}
-
 function emitLog(message, isError = false) {
   console.log(message); // still log to backend console
   const io = getIo();
@@ -317,4 +404,5 @@ function emitLog(message, isError = false) {
 
 module.exports = {
   createBackup,
+  tableBackupStrategies, // Export for monitoring
 };

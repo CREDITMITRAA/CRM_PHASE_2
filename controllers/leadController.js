@@ -2965,12 +2965,18 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
       );
     }
 
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+
+
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-b2c-report-by-customer-phone-or-id`,
       {
         params: {
           ...(customer_id && { customer_id }),
           ...(mob1 && { mob1 }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
         },
         validateStatus: () => true, // ✅ Always resolve response
       }
@@ -3051,12 +3057,17 @@ async function getCrifSummaryReport(req, res) {
       );
     }
 
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
       {
         params: {
           ...(startDate && { startDate }),
           ...(endDate && { endDate }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
         },
         validateStatus: () => true,
       }
@@ -3119,6 +3130,8 @@ async function getCustomers(req, res) {
       );
     }
 
+    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`)).data.data
+
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,
       {
@@ -3127,6 +3140,9 @@ async function getCustomers(req, res) {
           ...(endDate && { endDate }),
           ...(page && { page }),
           ...(pageSize && { pageSize }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
         },
         validateStatus: () => true,
       }

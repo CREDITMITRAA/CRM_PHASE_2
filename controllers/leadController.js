@@ -956,40 +956,43 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (for_walk_ins_page) {
-      if (application_status === null || application_status === "null") {
-        whereConditions.application_status = { [Op.is]: null };
-      } else if (!application_status) {
-        // exclude "Normal Login" but include null and others
-        whereConditions[Op.and] = [
-          {
-            [Op.or]: [
-              { application_status: { [Op.notLike]: "Normal Login" } },
-              { application_status: { [Op.is]: null } },
-            ],
-          },
-          { 
-            [Op.or]: [
-              { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
-              { lead_bucket: { [Op.is]: null } },
-            ],
-          },
-        ];
-      } else {
-          whereConditions.application_status = {
-          [Op.like]: `%${application_status}%`,
-        };
-      }
-
-      // ✅ Always push walkIns include
-      includeConditions.push({
-        model: WalkIn,
-        as: "walkIns",
-        attributes: walk_in_attributes,
-        required: false,
-        order: [["id", "DESC"]],
-        limit: 1,
-      });
+  if (application_status !== undefined && application_status !== null) {
+    if (application_status === "null") {
+      whereConditions.application_status = { [Op.is]: null };
+    } else {
+      whereConditions.application_status = {
+        [Op.like]: `%${application_status}%`,
+      };
     }
+  } else {
+    // This executes when application_status is undefined or null
+    // exclude "Normal Login" but include null and others
+    whereConditions[Op.and] = [
+      {
+        [Op.or]: [
+          { application_status: { [Op.notLike]: "Normal Login" } },
+          { application_status: { [Op.is]: null } },
+        ],
+      },
+      { 
+        [Op.or]: [
+          { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
+          { lead_bucket: { [Op.is]: null } },
+        ],
+      },
+    ];
+  }
+
+  // ✅ Always push walkIns include
+  includeConditions.push({
+    model: WalkIn,
+    as: "walkIns",
+    attributes: walk_in_attributes,
+    required: false,
+    order: [["id", "DESC"]],
+    limit: 1,
+  });
+}
 
 
     if (user_status === "inactive") {
@@ -1035,7 +1038,8 @@ async function getAllLeadsWithPagination(req, res) {
       const loanReports = await LoanReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
-          // loan_status: "Closed",
+          loan_status: "Closed",
+          status: 'active'
         },
         attributes: ["lead_id", "dispute_status"],
       });
@@ -1044,7 +1048,8 @@ async function getAllLeadsWithPagination(req, res) {
       const creditReports = await CreditReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
-          // loan_status: "Closed",
+          loan_status: "Closed",
+          status: 'active'
         },
         attributes: ["lead_id", "dispute_status"],
       });

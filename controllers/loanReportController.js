@@ -518,9 +518,7 @@ async function editLoanReport(req, res) {
     // update lead status code
     let shouldUpdateLeadStatus = false
     if(
-      lead_status === ALL_DISPUTES_UPDATED &&
-      dispute_status &&
-      dispute_status !== DISPUTE_UPDATED && 
+      lead_status === ALL_DISPUTES_UPDATED && ( loan_status !== 'Closed' || dispute_status !== DISPUTE_UPDATED ) &&
       loanReportFromDB.dispute_status === DISPUTE_UPDATED
     ){
       shouldUpdateLeadStatus = true

@@ -2498,6 +2498,12 @@ async function uploadLead(req, res) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
+    const phoneValidationReason = getPhoneValidationReason(String(phone))
+    if(phoneValidationReason){
+      await transaction.rollback()
+      return ApiResponse(res, "error", 400, `Invalid phone number : ${phoneValidationReason}`)
+    }
+
     if (income_type === "Salaried" && (!company || !salary)) {
       await transaction.rollback();
       return ApiResponse(
@@ -2525,10 +2531,9 @@ async function uploadLead(req, res) {
        ],
        transaction 
       });
-    console.log('lead from db = ', leadFromDB.toJSON());
-    
 
     if (leadFromDB) {
+      console.log('lead from db = ', leadFromDB.toJSON());
       const prev_lead_data = leadFromDB.toJSON();
       // Update current lead source
       leadFromDB.lead_source = lead_source;

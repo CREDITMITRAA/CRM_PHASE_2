@@ -18,7 +18,7 @@ router.put('/update-lead-details/:id', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROL
 router.get('/get-all-leads-of-ex-emp', authenticate([ROLE_ADMIN]), leadController.getAllLeadsOfExEmployees)
 router.post('/upload-lead', authenticate([ROLE_ADMIN,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_OPERATIONS_TEAM], true), leadController.uploadLead)
 router.post('/add-new-lead', authenticate([ROLE_ADMIN]), leadController.addNewLead),
-router.get('/get-crif-report-by-customer-id-or-phone', authenticate([ROLE_ADMIN,ROLE_VIEWER]), leadController.getCrifReportByCustomerIdOrPhone)
+router.get('/get-crif-report-by-customer-id-or-phone', authenticate([ROLE_ADMIN,ROLE_VIEWER, ROLE_EMPLOYEE, ROLE_MANAGER]), leadController.getCrifReportByCustomerIdOrPhone)
 router.get('/get-crif-summary-report', authenticate([ROLE_ADMIN,ROLE_VIEWER]), leadController.getCrifSummaryReport)
 router.get('/get-customers', authenticate([ROLE_ADMIN,ROLE_VIEWER]), leadController.getCustomers)
 router.get('/get-distinct-utm-campaigns-sources', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_VIEWER]), leadController.getAllDistinctUtmCampaignsAndSources)

@@ -956,44 +956,43 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (for_walk_ins_page) {
-  if (application_status !== undefined && application_status !== null) {
-    if (application_status === "null") {
-      whereConditions.application_status = { [Op.is]: null };
-    } else {
-      whereConditions.application_status = {
-        [Op.like]: `%${application_status}%`,
-      };
+      if (application_status !== undefined && application_status !== null) {
+        if (application_status === "null") {
+          whereConditions.application_status = { [Op.is]: null };
+        } else {
+          whereConditions.application_status = {
+            [Op.like]: `%${application_status}%`,
+          };
+        }
+      } else {
+        // This executes when application_status is undefined or null
+        // exclude "Normal Login" but include null and others
+        whereConditions[Op.and] = [
+          {
+            [Op.or]: [
+              { application_status: { [Op.notLike]: "Normal Login" } },
+              { application_status: { [Op.is]: null } },
+            ],
+          },
+          {
+            [Op.or]: [
+              { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
+              { lead_bucket: { [Op.is]: null } },
+            ],
+          },
+        ];
+      }
+
+      // ✅ Always push walkIns include
+      includeConditions.push({
+        model: WalkIn,
+        as: "walkIns",
+        attributes: walk_in_attributes,
+        required: false,
+        order: [["id", "DESC"]],
+        limit: 1,
+      });
     }
-  } else {
-    // This executes when application_status is undefined or null
-    // exclude "Normal Login" but include null and others
-    whereConditions[Op.and] = [
-      {
-        [Op.or]: [
-          { application_status: { [Op.notLike]: "Normal Login" } },
-          { application_status: { [Op.is]: null } },
-        ],
-      },
-      { 
-        [Op.or]: [
-          { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
-          { lead_bucket: { [Op.is]: null } },
-        ],
-      },
-    ];
-  }
-
-  // ✅ Always push walkIns include
-  includeConditions.push({
-    model: WalkIn,
-    as: "walkIns",
-    attributes: walk_in_attributes,
-    required: false,
-    order: [["id", "DESC"]],
-    limit: 1,
-  });
-}
-
 
     if (user_status === "inactive") {
       leadAssignmentConditions.status = user_status;
@@ -1039,7 +1038,7 @@ async function getAllLeadsWithPagination(req, res) {
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
           loan_status: "Closed",
-          status: 'active'
+          status: "active",
         },
         attributes: ["lead_id", "dispute_status"],
       });
@@ -1049,7 +1048,7 @@ async function getAllLeadsWithPagination(req, res) {
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
           loan_status: "Closed",
-          status: 'active'
+          status: "active",
         },
         attributes: ["lead_id", "dispute_status"],
       });
@@ -2487,21 +2486,27 @@ async function uploadLead(req, res) {
       income_type,
       company,
       salary,
+      from_google_sheet = false
     } = req.body;
     if (client_secret !== "SQ") {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Un-Authorized Access !");
     }
-
+    
     if (!name || !phone || !lead_source || !loan_type) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
-    const phoneValidationReason = getPhoneValidationReason(String(phone))
-    if(phoneValidationReason){
-      await transaction.rollback()
-      return ApiResponse(res, "error", 400, `Invalid phone number : ${phoneValidationReason}`)
+    const phoneValidationReason = getPhoneValidationReason(String(phone));
+    if (phoneValidationReason) {
+      await transaction.rollback();
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        `Invalid phone number : ${phoneValidationReason}`
+      );
     }
 
     if (income_type === "Salaried" && (!company || !salary)) {
@@ -2520,20 +2525,20 @@ async function uploadLead(req, res) {
     }
 
     const leadFromDB = await Lead.findOne({
-       where: { phone }, 
-       include: [
+      where: { phone },
+      include: [
         {
           model: LeadAssignment,
           as: "LeadAssignments",
           attributes: ["id", "assigned_to"],
-          required: false
-        }
-       ],
-       transaction 
-      });
+          required: false,
+        },
+      ],
+      transaction,
+    });
 
     if (leadFromDB) {
-      console.log('lead from db = ', leadFromDB.toJSON());
+      console.log("lead from db = ", leadFromDB.toJSON());
       const prev_lead_data = leadFromDB.toJSON();
       // Update current lead source
       leadFromDB.lead_source = lead_source;
@@ -2607,10 +2612,10 @@ async function uploadLead(req, res) {
       }
 
       if (prev_lead_data.lead_status !== updatedLead.lead_status) {
-          logMessages.push(
+        logMessages.push(
           `lead_status changed from '${prev_lead_data.lead_status}' to '${updatedLead.lead_status}'`
-      );
-}
+        );
+      }
 
       if (logMessages.length > 0) {
         let logData = createLogData(
@@ -2624,25 +2629,25 @@ async function uploadLead(req, res) {
         await createActivityLog(logData, transaction);
       }
 
-      if(leadFromDB?.LeadAssignments.length > 0){
-        let assigned_to = leadFromDB.LeadAssignments[0].assigned_to
+      if (leadFromDB?.LeadAssignments.length > 0) {
+        let assigned_to = leadFromDB.LeadAssignments[0].assigned_to;
         const io = getIo();
-           const notification = await saveNotification(
-            {
-              employee_id: assigned_to,
-              notification_from: "Website",
-              notification_title: "Lead Re-Engaged",
-              message:`1 lead has been re-engaged.`,
-            },
-            transaction
-          );
-          io.to(`user_${assigned_to}`).emit("leadAssignment", {
-            notification_title: "Leads Re-Engaged",
+        const notification = await saveNotification(
+          {
+            employee_id: assigned_to,
+            notification_from: from_google_sheet ? "Meta Ads" : "Website",
+            notification_title: "Lead Re-Engaged",
             message: `1 lead has been re-engaged.`,
-            assignedBy: "Website",
-            leadCount: 1,
-            notificationId: notification.id,
-          });
+          },
+          transaction
+        );
+        io.to(`user_${assigned_to}`).emit("leadAssignment", {
+          notification_title: "Leads Re-Engaged",
+          message: `1 lead has been re-engaged.`,
+          notification_from: from_google_sheet ? "Meta Ads" : "Website",
+          leadCount: 1,
+          notificationId: notification.id,
+        });
       }
 
       await transaction.commit();
@@ -2679,6 +2684,41 @@ async function uploadLead(req, res) {
       }
 
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
+      const adminUsers = await User.findAll({
+        where: {
+          status: "active",
+          role_id: 1,
+        },
+        attributes: ["id"],
+        raw: true,
+        transaction,
+      });
+
+      const adminUserIds = adminUsers.map((user) => user.id);
+
+      const io = getIo();
+
+      for (const adminId of adminUserIds) {
+        const notification = await saveNotification(
+          {
+            employee_id: adminId, // Send to admin user
+            notification_from: from_google_sheet ? "Meta Ads" : "Website",
+            notification_title: "Lead Added",
+            message: `1 lead ( ${name} - ${phone}) has been added.`,
+          },
+          transaction
+        );
+
+        // Emit to each admin user's socket
+        io.to(`user_${adminId}`).emit("leadAssignment", {
+          notification_title: "Lead Added",
+          message: `1 lead ( ${name} - ${phone}) has been added.`,
+          notification_from: from_google_sheet ? "Meta Ads" : "Website",
+          leadCount: 1,
+          notificationId: notification.id,
+        });
+      }
+
       await transaction.commit();
       return ApiResponse(
         res,
@@ -2977,10 +3017,14 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
-      CLIENT_SECRET_KEY : "SQ"
-    })).data.data
-
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-b2c-report-by-customer-phone-or-id`,
@@ -3071,9 +3115,14 @@ async function getCrifSummaryReport(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
-      CLIENT_SECRET_KEY : "SQ"
-    })).data.data
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
@@ -3146,9 +3195,14 @@ async function getCustomers(req, res) {
       );
     }
 
-    const authToken = (await axios.post(`${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,{
-      CLIENT_SECRET_KEY : "SQ"
-    })).data.data
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
 
     const response = await axios.get(
       `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,

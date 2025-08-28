@@ -2488,6 +2488,7 @@ async function uploadLead(req, res) {
       salary,
       from_google_sheet = false
     } = req.body;
+
     if (client_secret !== "SQ") {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Un-Authorized Access !");
@@ -2498,15 +2499,17 @@ async function uploadLead(req, res) {
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
-    const phoneValidationReason = getPhoneValidationReason(String(phone));
-    if (phoneValidationReason) {
-      await transaction.rollback();
-      return ApiResponse(
-        res,
-        "error",
-        400,
-        `Invalid phone number : ${phoneValidationReason}`
-      );
+    if(lead_source !== "Veda Elite"){
+      const phoneValidationReason = getPhoneValidationReason(String(phone));
+      if (phoneValidationReason) {
+        await transaction.rollback();
+        return ApiResponse(
+          res,
+          "error",
+          400,
+          `Invalid phone number : ${phoneValidationReason}`
+        );
+      } 
     }
 
     if (income_type === "Salaried" && (!company || !salary)) {

@@ -2488,6 +2488,8 @@ async function uploadLead(req, res) {
       salary,
       from_google_sheet = false
     } = req.body;
+    
+    console.log('request received = ', req.body)
 
     if (client_secret !== "SQ") {
       await transaction.rollback();

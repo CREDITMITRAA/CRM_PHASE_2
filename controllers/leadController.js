@@ -2486,7 +2486,8 @@ async function uploadLead(req, res) {
       income_type,
       company,
       salary,
-      from_google_sheet = false
+      from_google_sheet = false,
+      pan
     } = req.body;
     
     console.log('request received = ', req.body)
@@ -2595,6 +2596,7 @@ async function uploadLead(req, res) {
       if (salary) leadFromDB.salary = salary;
       if (name) leadFromDB.name = name;
       if (email) leadFromDB.email = email;
+      if (pan) leadFromDB.pan = pan;
 
       await leadFromDB.save({ transaction });
 

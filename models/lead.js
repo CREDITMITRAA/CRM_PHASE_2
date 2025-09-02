@@ -54,6 +54,7 @@ module.exports = (sequelize) => {
     fb_ad_id: { type: DataTypes.STRING },
     required_loan_amount: { type: DataTypes.TEXT },
     start_login_date: {type: DataTypes.DATE},
+    pan: {type: DataTypes.STRING},
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

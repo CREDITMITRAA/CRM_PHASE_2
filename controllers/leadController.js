@@ -3524,6 +3524,71 @@ async function getAllReEngagedLeads(req, res) {
   }
 }
 
+async function downloadCrifReport(req, res) {
+  try {
+    const { customer_id } = req.body;
+    console.log('received customer id = ', customer_id);
+    
+    if (!customer_id) {
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !");
+    }
+
+    // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/customer/full-report`,
+      { customerId: customer_id },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        responseType: "arraybuffer", // 👈 important to get raw PDF
+      }
+    );
+
+    if (response.status !== 200) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.status,
+        "Failed to download CRIF report",
+        null,
+        response.data
+      );
+    }
+
+    // 3. Set headers to tell client it's a PDF download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=crif_report_${customer_id}.pdf`
+    );
+
+    // 4. Send PDF buffer to client
+    return res.send(response.data);
+
+  } catch (error) {
+    console.log("failed to download crif report = ", error.message);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to download crif report !",
+      null,
+      error
+    );
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -3544,4 +3609,5 @@ module.exports = {
   getCustomers,
   getAllDistinctUtmCampaignsAndSources,
   getAllReEngagedLeads,
+  downloadCrifReport
 };

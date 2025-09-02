@@ -23,5 +23,6 @@ router.get('/get-crif-summary-report', authenticate([ROLE_ADMIN,ROLE_VIEWER]), l
 router.get('/get-customers', authenticate([ROLE_ADMIN,ROLE_VIEWER]), leadController.getCustomers)
 router.get('/get-distinct-utm-campaigns-sources', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_EMPLOYEE,ROLE_VIEWER]), leadController.getAllDistinctUtmCampaignsAndSources)
 router.get('/get-all-reengaged-leads', authenticate([ROLE_ADMIN,ROLE_EMPLOYEE,ROLE_MANAGER,ROLE_OPERATIONS_TEAM,ROLE_VIEWER]), leadController.getAllReEngagedLeads)
+router.post('/download-crif-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_EMPLOYEE]), leadController.downloadCrifReport)
 
 module.exports = router

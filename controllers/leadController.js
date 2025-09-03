@@ -2549,10 +2549,15 @@ async function uploadLead(req, res) {
       // Update current lead source
       leadFromDB.lead_source = lead_source;
 
-      // Update previous sources array
-      const prevSources = leadFromDB.prev_lead_sources || [];
-      const updatedSources = [lead_source, ...prevSources];
-      leadFromDB.prev_lead_sources = updatedSources;
+        // ✅ Only update lead_source if utm_campaign is NOT "/internal/free-credit-score"
+      if (utm_campaign !== "/internal/free-credit-score") {
+        leadFromDB.lead_source = lead_source;
+
+        // Update previous sources array
+        const prevSources = leadFromDB.prev_lead_sources || [];
+        const updatedSources = [lead_source, ...prevSources];
+        leadFromDB.prev_lead_sources = updatedSources;
+      }
 
       leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;
       leadFromDB.product = loan_type;

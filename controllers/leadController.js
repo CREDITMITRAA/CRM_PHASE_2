@@ -3677,7 +3677,7 @@ async function getCibilReport(req,res){
       return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch cibil report")
     }
   } catch (error) {
-    console.log('error in fetching cibil report = ', error.message);
+    console.log('error in fetching cibil report = ', error);
     
     return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch cibil report !", null, error)
   }

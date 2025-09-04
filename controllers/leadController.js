@@ -3594,6 +3594,93 @@ async function downloadCrifReport(req, res) {
   }
 }
 
+async function uploadCibilReport(req,res){
+  try {
+    const { customer_id, report_id, lead_id, pan, report_date, full_report } = req.body
+        if(!report_id || !lead_id || !pan || !report_date || !full_report){
+            return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+        }
+
+        // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/cibil-reports/upload-cibil-report`,
+      { report_id, lead_id, pan, report_date, full_report, ...(customer_id && {customer_id}) },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (
+      response.data.statusCode === 201 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(res, "SUCCESS", 201, "Cibil report uploaded successfully !", response.data.data)
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to upload cibil report 1"
+      );
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload cibil report !", null, error)
+  }
+}
+
+async function getCibilReport(req,res){
+  try {
+    const { pan, lead_id,  report_id } = req.query
+    if(!pan && !lead_id && !report_id){
+      return ApiResponse(res, "ERROR", 400, "At least one of pan, lead_id, or report_id is required.")
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/cibil-reports/fetch-cibil-report`,
+      {
+        params: {
+          ...(pan && {pan}),
+          ...(lead_id && {lead_id}),
+          ...(report_id && {report_id})
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
+      return ApiResponse(res, "SUCCESS", 200, "asda", response.data.data)
+    }else {
+      return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch cibil report")
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch cibil report !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -3614,5 +3701,7 @@ module.exports = {
   getCustomers,
   getAllDistinctUtmCampaignsAndSources,
   getAllReEngagedLeads,
-  downloadCrifReport
+  downloadCrifReport,
+  uploadCibilReport,
+  getCibilReport
 };

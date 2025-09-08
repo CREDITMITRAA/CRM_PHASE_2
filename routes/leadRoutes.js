@@ -26,5 +26,7 @@ router.get('/get-all-reengaged-leads', authenticate([ROLE_ADMIN,ROLE_EMPLOYEE,RO
 router.post('/download-crif-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM,ROLE_MANAGER,ROLE_EMPLOYEE]), leadController.downloadCrifReport)
 router.post('/upload-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.uploadCibilReport)
 router.get('/get-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getCibilReport)
+router.post('/upload-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.uploadExperianReport)
+router.get('/get-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getExperianReport)
 
 module.exports = router

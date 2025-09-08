@@ -3683,6 +3683,95 @@ async function getCibilReport(req,res){
   }
 }
 
+async function uploadExperianReport(req,res){
+  try {
+    const { customer_id, report_id, lead_id, pan, report_date, full_report } = req.body
+        if(!report_id || !lead_id || !pan || !report_date || !full_report){
+            return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+        }
+
+        // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/upload-experian-report`,
+      { report_id, lead_id, pan, report_date, full_report, ...(customer_id && {customer_id}) },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (
+      response.data.statusCode === 201 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(res, "SUCCESS", 201, "Experian report uploaded successfully !", response.data.data)
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to upload experian report !"
+      );
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload experian report !", null, error)
+  }
+}
+
+async function getExperianReport(req,res){
+  try {
+    const { pan, lead_id,  report_id } = req.query
+    if(!pan && !lead_id && !report_id){
+      return ApiResponse(res, "ERROR", 400, "At least one of pan, lead_id, or report_id is required.")
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/fetch-experian-report`,
+      {
+        params: {
+          ...(pan && {pan}),
+          ...(lead_id && {lead_id}),
+          ...(report_id && {report_id})
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
+      return ApiResponse(res, "SUCCESS", 200, "asda", response.data.data)
+    }else {
+      return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch experian report")
+    }
+  } catch (error) {
+    console.log('error in fetching experian report = ', error);
+    
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch experian report !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -3705,5 +3794,7 @@ module.exports = {
   getAllReEngagedLeads,
   downloadCrifReport,
   uploadCibilReport,
-  getCibilReport
+  getCibilReport,
+  uploadExperianReport,
+  getExperianReport
 };

@@ -21,7 +21,8 @@ async function getExEmployeesLeads(req, res) {
         lead_status,
         assigned_to="true",
         assigned_on,
-        last_updated
+        last_updated,
+        last_updated_status
       } = req.query;
   
       // Default validation to prevent non-integer inputs
@@ -42,6 +43,9 @@ async function getExEmployeesLeads(req, res) {
       if (reason) whereConditions.reason = reason;
       if (lead_status) {
         whereConditions.lead_status = lead_status
+      }
+      if (last_updated_status) {
+        whereConditions.last_updated_status = last_updated_status
       }
   
       if (importedOn) {

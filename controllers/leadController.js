@@ -525,6 +525,7 @@ async function getAllLeadsWithPagination(req, res) {
       lead_type,
       utm_campaign,
       utm_source,
+      last_updated_status
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -582,6 +583,7 @@ async function getAllLeadsWithPagination(req, res) {
     if (email) whereConditions.email = { [Op.like]: `%${email}%` };
     if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
     if (leadId) whereConditions.id = { [Op.like]: `%${leadId}%` };
+    if (last_updated_status) whereConditions.last_updated_status = last_updated_status;
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
     console.log("verification status = ", verification_status);
@@ -3329,6 +3331,7 @@ async function getAllReEngagedLeads(req, res) {
       last_updated,
       assigned_on,
       userId,
+      last_updated_status
     } = req.query;
 
     page = parseInt(page);
@@ -3342,6 +3345,9 @@ async function getAllReEngagedLeads(req, res) {
 
     if (lead_status) {
       leadWhere.lead_status = lead_status;
+    }
+    if(last_updated_status) {
+      leadWhere.last_updated_status = last_updated_status;
     }
 
     if (leadId) leadWhere.id = { [Op.like]: `%${leadId}%` };

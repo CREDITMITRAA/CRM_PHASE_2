@@ -28,5 +28,6 @@ router.post('/upload-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TE
 router.get('/get-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getCibilReport)
 router.post('/upload-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.uploadExperianReport)
 router.get('/get-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getExperianReport)
-
+router.post('/upload-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.uploadCrifParsedReport)
+router.get('/get-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getCrifParsedReport)
 module.exports = router

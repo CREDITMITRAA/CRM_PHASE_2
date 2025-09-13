@@ -30,4 +30,5 @@ router.post('/upload-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS
 router.get('/get-experian-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getExperianReport)
 router.post('/upload-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.uploadCrifParsedReport)
 router.get('/get-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getCrifParsedReport)
+router.post('/update-b2c-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateB2cReport)
 module.exports = router

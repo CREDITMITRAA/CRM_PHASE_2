@@ -110,6 +110,7 @@ const PIPELINE_ENTRIES = "PIPELINE_ENTRIES"
 const ALL_DISPUTES_UPDATED = "All Disputes Updated";
 const ALL_CLEAR = "All Clear"
 const DISPUTE_UPDATED = "Dispute Updated"
+const TASK_REMINDER = "Task Reminder"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -231,5 +232,6 @@ module.exports = {
     REJECTED,
     ALL_DISPUTES_UPDATED,
     ALL_CLEAR,
-    DISPUTE_UPDATED
+    DISPUTE_UPDATED,
+    TASK_REMINDER
 }

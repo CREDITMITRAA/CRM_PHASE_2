@@ -12,7 +12,8 @@ const { createBackup } = require('./controllers/backupController');
 const socketIo = require('socket.io');
 const { initializeSocket } = require('./socket/socket');
 const verifyFacebookSignature = require('./middlewares/verifyFacebookSignature');
-const facebookWebhookRoutes = require("./routes/facebookWebhookRoutes")
+const facebookWebhookRoutes = require("./routes/facebookWebhookRoutes");
+const { sendRecentTaskNotifications } = require('./services/NotificationServices');
 
 const app = express();
 const allowedOrigins = process.env.FRONTEND_ORIGIN_URL.split(",")
@@ -72,6 +73,11 @@ cron.schedule("30 5 * * *", async () => {
   console.log("⏳ Running scheduled database backup...");
   await createBackup(); // No req, res here
 });
+
+// to run job every minute
+cron.schedule("* * * * *", ()=>{
+  sendRecentTaskNotifications()
+})
 
 
 let server;

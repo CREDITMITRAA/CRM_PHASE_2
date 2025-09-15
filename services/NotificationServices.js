@@ -22,9 +22,9 @@ async function saveNotification(notification,transaction){
 async function sendRecentTaskNotifications(){
     const transaction = await sequelize.transaction()
     try {
-        // fetch all tasks whose task date is in next 5 minutes
+        // fetch all tasks whose task date is in next 1 minute
         const nowUTC = moment.utc()
-        const fiveMinutesLaterUTC = moment.utc().add(5, 'minute')
+        const fiveMinutesLaterUTC = moment.utc().add(1, 'minute')
 
         const activities = await Activity.findAll({
             where: {
@@ -42,11 +42,11 @@ async function sendRecentTaskNotifications(){
             await transaction.rollback()
         }
 
-        // fetch notifications with notification_title = "Task Reminder" within same 5 minutes
+        // fetch notifications with notification_title = "Task Reminder" within same 1 minute
         const notificationsFromDB = await Notification.findAll({
             where: {
                 createdAt: {
-                    [Op.between]: [moment.utc().subtract(5, "minute").toDate(), moment.utc().toDate()]
+                    [Op.between]: [moment.utc().subtract(1, "minute").toDate(), moment.utc().toDate()]
                 },
                 notification_title: "Task Reminder",
                 status: "active"

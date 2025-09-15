@@ -40,6 +40,7 @@ async function sendRecentTaskNotifications(){
 
         if(!activities.length){
             await transaction.rollback()
+            return
         }
 
         // fetch notifications with notification_title = "Task Reminder" within same 1 minute

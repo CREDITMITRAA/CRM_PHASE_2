@@ -106,7 +106,7 @@ async function sendRecentTaskNotifications(){
 
         await transaction.commit()
     } catch (error) {
-        await transaction.rollback()
+        if (transaction) await transaction.rollback()
         throw error
     }
 }

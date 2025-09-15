@@ -235,7 +235,7 @@ async function getUsersNameAndId(req, res) {
     const users = await User.findAll({
       attributes: ['id', 'name', 'role_id', 'profile_image_url'],
       where: {
-        status: 'active',
+        // status: 'active',
       },
     });
     ApiResponse(res, "success", 200, "Users fetched successfully", users);

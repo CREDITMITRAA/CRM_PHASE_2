@@ -235,7 +235,67 @@ async function addActivityLogNote(req, res) {
   }
 }
 
+async function getLeadBasicDetailsChangeHistory(req, res) {
+  try {
+    let { lead_id } = req.query
+
+    if (!lead_id) {
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !");
+    }
+
+    lead_id = Number(lead_id)
+
+    const logs = await ActivityLog.findAll({
+      where: { lead_id: lead_id, status: "active", activity_type: ACTIVITY_TYPES.LEAD_UPDATE },
+      attributes: ["id", "created_by", "activity_desc", "lead_id", "createdAt"],
+      order: [["createdAt", "ASC"]],
+      raw: true
+    });
+
+    const historyMap = {};
+
+    logs.forEach(log => {
+      const regex = /(\w+)\s+changed from '([^']*)'\s+to\s+'([^']*)'/g;
+      let match;
+      while ((match = regex.exec(log.activity_desc)) !== null) {
+        const fieldName = match[1];
+        const fromVal = match[2];
+        const toVal = match[3];
+
+        if (!historyMap[fieldName]) {
+          historyMap[fieldName] = [];
+        }
+
+        historyMap[fieldName].push({
+          from: fromVal === "null" ? null : fromVal,
+          to: toVal === "null" ? null : toVal,
+          date_of_change: log.createdAt,
+          updated_by: String(log.created_by)
+        });
+      }
+    });
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Change history fetched successfully",
+      historyMap
+    );
+  } catch (error) {
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch lead basic details change history !",
+      null,
+      error
+    );
+  }
+}
+
 module.exports = {
   getActivityLogs,
   addActivityLogNote,
+  getLeadBasicDetailsChangeHistory
 };

@@ -3912,6 +3912,52 @@ async function updateB2cReport(req,res){
   }
 }
 
+async function updateExperianReport(req,res){
+  try {
+      const { report_id, pan, open_accounts } = req.body
+      
+      if(!report_id || !pan || !open_accounts){
+        return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+      }
+      // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/update-experian-report`,
+      { report_id, pan, open_accounts },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+    
+    if(
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ){
+      return ApiResponse(res, "SUCCESS", 200, "b2c report updated successfully .", response.data.data)
+    } else {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to updated b2c report !"
+      )
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to update bc2 report !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -3939,5 +3985,6 @@ module.exports = {
   getExperianReport,
   uploadCrifParsedReport,
   getCrifParsedReport,
-  updateB2cReport
+  updateB2cReport,
+  updateExperianReport
 };

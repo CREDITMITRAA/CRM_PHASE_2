@@ -32,4 +32,6 @@ router.post('/upload-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATI
 router.get('/get-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getCrifParsedReport)
 router.post('/update-b2c-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateB2cReport)
 router.post('/update-experian-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateExperianReport)
+router.post('/update-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateCibilReport)
+router.post('/update-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateCrifParsedReport)
 module.exports = router

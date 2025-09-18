@@ -4052,6 +4052,57 @@ async function updateCrifParsedReport(req,res){
   }
 }
 
+async function getImportedLeadStats(req,res){
+  try {
+    const { chartType="lead_source", startDate, endDate } = req.query
+
+    // Build where clause with UTC conversion
+    let where = {};
+    if (startDate && endDate) {
+      const startUtc = moment(startDate).utc().startOf("day").toDate();
+      const endUtc = moment(endDate).utc().endOf("day").toDate();
+
+      where.createdAt = {
+        [Op.between]: [startUtc, endUtc],
+      };
+    }
+
+    let stats;
+
+    if (chartType === "utm_source") {
+      // Group by utm_source + utm_campaign
+      stats = await Lead.findAll({
+        attributes: [
+          "utm_source",
+          "utm_campaign",
+          [Sequelize.fn("COUNT", Sequelize.col("id")), "total_leads"],
+        ],
+        where,
+        group: ["utm_source", "utm_campaign"],
+        order: [["utm_source", "ASC"]],
+        raw: true, // returns plain JSON
+      });
+    } else {
+      // Default: Group by lead_source
+      stats = await Lead.findAll({
+        attributes: [
+          "lead_source",
+          [Sequelize.fn("COUNT", Sequelize.col("id")), "total_leads"],
+        ],
+        where,
+        group: ["lead_source"],
+        order: [["lead_source", "ASC"]],
+        raw: true,
+      });
+    }
+
+    return ApiResponse(res, "SUCCESS", 200, "Imported Leads stats fetched successfully ", stats)
+
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch imported lead stats", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4082,5 +4133,6 @@ module.exports = {
   updateB2cReport,
   updateExperianReport,
   updateCibilReport,
-  updateCrifParsedReport
+  updateCrifParsedReport,
+  getImportedLeadStats
 };

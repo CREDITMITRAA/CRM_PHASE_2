@@ -35,4 +35,5 @@ router.post('/update-experian-report', authenticate([ROLE_ADMIN,ROLE_OPERATIONS_
 router.post('/update-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateCibilReport)
 router.post('/update-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateCrifParsedReport)
 router.get('/get-imported-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getImportedLeadStats)
+router.get('/get-employee-wise-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getEmployeeWiseLeadStats)
 module.exports = router

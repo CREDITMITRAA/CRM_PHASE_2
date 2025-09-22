@@ -1,93 +1,101 @@
-const { ApiResponse } = require("../utilities/api-responses/ApiResponse")
-const { CallLog } = require("../models"); // Ensure correct path to models
-// const ffmpeg = require("fluent-ffmpeg")
-const multer = require('multer')
-const fs = require('fs')
-const path = require("path");
-// const ffmpegStatic = require("ffmpeg-static");
-const os = require('os')
+const { sequelize, CallLog } = require("../models");
+const { createActivityLog, createLogData } = require("../services/ActivityLogServices");
+const { getLeadByPhone } = require("../services/leadServices");
+const { getUserByPhone } = require("../services/UserServices");
+const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
+const moment = require("moment-timezone");
 
-// ffmpeg.setFfmpegPath(ffmpegStatic);
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const savePath = path.join(os.homedir(), "Downloads"); // Change path if needed
-        if (!fs.existsSync(savePath)) {
-            fs.mkdirSync(savePath, { recursive: true });
-        }
-        cb(null, savePath);
-    },
-    filename: (req, file, cb) => {
-        cb(null, file.originalname); // Store with original filename
-    }
-});
-
-async function createCallLog(req, res) {
-    try {
-        const { phone_number, call_type, status, audio_file, employee_name, employee_id, duration } = req.body;
-        console.log('request received ...', req.body);
-        
-
-        if (!phone_number || !call_type) {
-            return ApiResponse(res, "error", 400, "Phone number and call type are required!");
-        }
-
-        if (req.file) {
-            const downloadsPath = path.join(os.homedir(), "Downloads", req.file.originalname);
-            fs.renameSync(req.file.path, downloadsPath); // Move file to Downloads
-            console.log("File saved at:", downloadsPath);
-        } else {
-            console.log("No file uploaded.");
-        }
-
-        const newCallLog = await CallLog.create({
-            phone_number,
-            call_type,
-            employee_id,
-            employee_name,
-            duration,
-            status: status || "active" // Default to 'active' if not provided
-        });
-
-        return ApiResponse(res, "success", 201, "Call log created successfully!", newCallLog);
-    } catch (error) {
-        return ApiResponse(res, "error", 500, error?.message || "Failed to create call log!", null, error);
-    }
+// Helper to normalize phone to last 10 digits
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.slice(-10);
 }
 
-// async function convert(req, res) {
-//     if (!req.file) {
-//         return res.status(400).send("No file uploaded.");
-//     }
+function parseDuration(durationStr) {
+  if (!durationStr) return 0;
+  const match = durationStr.match(/\d+/); // extract the number
+  return match ? parseInt(match[0], 10) : 0;
+}
 
-//     const inputPath = req.file.path; // MP4 file path
-//     const desktopPath = path.join(os.homedir(), "Desktop");
-//     const outputPath = path.join(os.homedir(), "Downloads", req.file.filename + ".mp3");
-//     console.log("Saving file at:", outputPath);
+async function addCallLog(req, res) {
+  const transaction = await sequelize.transaction();
+  try {
+    let {
+      myNumber,
+      otherNumber,
+      call_duration,
+      call_type,
+      call_status,
+      call_timestamp,
+      ringing_duration,
+      total_duration
+    } = req.body;
 
+    console.log("recieved data = ", req.body);
 
-//     ffmpeg(inputPath)
-//         .toFormat("mp3")
-//         .on("end", () => {
-//             console.log("Conversion completed:", outputPath);
+    // Check required fields
+    if (!myNumber || !otherNumber || !call_duration || !call_type || !call_status || !call_timestamp || !ringing_duration || !total_duration) {
+      return ApiResponse(res, "ERROR", 400, "Missing required fields!");
+    }    
 
-//             // Send the MP3 file as a response for download
-//             res.download(outputPath, "converted.mp3", (err) => {
-//                 if (err) console.error("Error sending file:", err);
+    // Normalize phone numbers to last 10 digits
+    myNumber = normalizePhone(myNumber);
+    otherNumber = normalizePhone(otherNumber);
+    call_duration = parseDuration(call_duration);
+    ringing_duration = parseDuration(ringing_duration);
+    total_duration = parseDuration(total_duration);
 
-//                 // Cleanup: Delete both files after sending
-//                 fs.unlinkSync(inputPath);
-//                 // fs.unlinkSync(outputPath);
-//             });
-//         })
-//         .on("error", (err) => {
-//             console.error("Error converting file:", err);
-//             res.status(500).send("Error converting file.");
-//         })
-//         .save(outputPath);
-// }
+    console.log("my number = ", myNumber, " other number = ", otherNumber);
+    
+
+    // Get lead and user data
+    const leadData = await getLeadByPhone(otherNumber, transaction);
+    const userData = await getUserByPhone(myNumber, transaction);
+
+    if (!leadData) {
+      return ApiResponse(res, "ERROR", 404, "Lead not found!");
+    }
+    if (!userData) {
+      return ApiResponse(res, "ERROR", 404, "User not found!");
+    }
+
+    // Prepare call log data
+    const callLogDataToBeSaved = {
+    my_number: myNumber,
+    other_number: otherNumber,
+    employee_id: userData.id,
+    lead_id: leadData.id,
+    call_duration,
+    call_type,
+    call_status,
+    call_timestamp,
+    ringing_duration,
+    total_duration
+};
+
+    // Save call log
+    const savedCallLog = await CallLog.create(callLogDataToBeSaved, { transaction });
+
+    // create activity log
+    let formattedTimestamp = moment(call_timestamp).format('DD-MM-YYYY hh:mm A');
+    let activityDescription = `Call Log Added : Call done at ${formattedTimestamp}, Call Type : ${call_type}, Call Status : ${call_status}, Call Duration : ${call_duration} seconds, Ringing Duration : ${ringing_duration} seconds, Total Duration : ${total_duration}`
+    let logData = createLogData(activityDescription, 'CALL_LOG_ADDED', userData.id, leadData.id, null, leadData.name )
+
+    await createActivityLog(logData, transaction)
+
+    // Commit transaction
+    await transaction.commit();
+
+    return ApiResponse(res, "SUCCESS", 201, "Call log added successfully!", savedCallLog.get({ plain: true }));
+
+  } catch (error) {
+    await transaction.rollback();
+    console.log("Failed to add call log = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to add call log!", null, error);
+  }
+}
 
 module.exports = {
-    createCallLog,
-    // convert
+  addCallLog
 };

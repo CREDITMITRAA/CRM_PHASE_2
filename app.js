@@ -42,8 +42,14 @@ app.use('/webhook', facebookWebhookRoutes); // <== Directly here, not under /api
 
 // Test endpoint
 app.get('/', (req, res) => {
+  console.log("health check api called...", req.query);
+  
   return ApiResponse(res, 'success', 200, 'API is running smoothly');
 });
+
+app.post('/api', (req,res) => {
+  console.log("post request recieved = ", req.body);
+})
 
 // Routes
 app.use('/api', routes);

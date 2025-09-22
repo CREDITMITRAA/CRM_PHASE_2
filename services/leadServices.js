@@ -20,7 +20,23 @@ async function getLead(leadId,transaction){
   return lead
 }
 
+async function getLeadByPhone(phone, transaction=null){
+  if(!phone){
+    throw new Error("Phone is required to fetch the lead")
+  }
+
+  const lead = await Lead.findOne({
+    where: { phone },
+    attributes: ["id", "name"],
+    raw: true,
+    ...(transaction && {transaction})
+  })
+
+  return lead
+}
+
 module.exports = {
   updateLead,
-  getLead
+  getLead,
+  getLeadByPhone
 };

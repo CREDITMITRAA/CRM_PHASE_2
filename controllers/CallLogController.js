@@ -201,7 +201,7 @@ async function getOverallCallsSummary(req,res){
         COUNT(CASE WHEN call_type = 'OUTGOING' THEN 1 END) AS totalOutgoingCalls,
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status = 'ANSWERED' THEN 1 END) AS outgoingAnswered,
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status != 'ANSWERED' THEN 1 END) AS outgoingUnanswered
-      FROM calllogs
+      FROM CallLogs
       ${dateFilter}
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }

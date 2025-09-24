@@ -18,11 +18,17 @@ module.exports = (sequelize) => {
       allowNull: false 
     },
 
-    // store duration in seconds instead of "9 seconds"
     call_duration: { 
       type: DataTypes.INTEGER, 
       allowNull: true,
-      comment: 'Duration in seconds'
+      comment: 'Duration in seconds',
+      set(value) {
+        if (typeof value === 'string') {
+          this.setDataValue('call_duration', parseInt(value));
+        } else {
+          this.setDataValue('call_duration', value);
+        }
+      }
     },
 
     call_type: { 
@@ -43,18 +49,57 @@ module.exports = (sequelize) => {
     ringing_duration: { 
       type: DataTypes.INTEGER, 
       allowNull: true,
-      comment: 'Duration in seconds'
+      comment: 'Duration in seconds',
+      set(value) {
+        if (typeof value === 'string') {
+          this.setDataValue('ringing_duration', parseInt(value));
+        } else {
+          this.setDataValue('ringing_duration', value);
+        }
+      }
     },
 
     total_duration: { 
       type: DataTypes.INTEGER, 
       allowNull: true,
-      comment: 'Duration in seconds'
+      comment: 'Duration in seconds',
+      set(value) {
+        if (typeof value === 'string') {
+          this.setDataValue('total_duration', parseInt(value));
+        } else {
+          this.setDataValue('total_duration', value);
+        }
+      }
     },
 
     status: { 
       type: DataTypes.ENUM('active', 'inactive'), 
       defaultValue: 'active' 
+    },
+
+    contact_name: {   // added from JSON
+      type: DataTypes.STRING, 
+      allowNull: true 
+    },
+
+    call_log_id: {    // added from JSON
+      type: DataTypes.INTEGER, 
+      allowNull: true 
+    },
+
+    call_date: { // added from JSON
+      type: DataTypes.DATE, 
+      allowNull: false 
+    },
+
+    employee_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+
+    lead_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false
     }
 
   }, { 

@@ -12,6 +12,7 @@ function normalizePhone(phone) {
   return digits.slice(-10);
 }
 
+// Helper to parse durations like "17 seconds" -> 17
 function parseDuration(durationStr) {
   if (!durationStr) return 0;
   const match = durationStr.match(/\d+/); // extract the number
@@ -29,60 +30,70 @@ async function addCallLog(req, res) {
       call_status,
       call_timestamp,
       ringing_duration,
-      total_duration
+      total_duration,
+      contact_name,
+      call_log_id,
+      call_date,
+      call_log_duration
     } = req.body;
 
-    console.log("recieved data = ", req.body);
+    total_duration = total_duration ?? call_log_duration
 
-    // Check required fields
-    if (!myNumber || !otherNumber || !call_duration || !call_type || !call_status || !call_timestamp || !ringing_duration || !total_duration) {
-      return ApiResponse(res, "ERROR", 400, "Missing required fields!");
-    }    
+    console.log("Received data =", req.body);
 
-    // Normalize phone numbers to last 10 digits
+    // Check all fields are provided
+    if ([myNumber, otherNumber, call_duration, call_type, call_status, call_timestamp, ringing_duration, total_duration, contact_name, call_log_id, call_date].some(v => v === undefined || v === null)) {
+      return ApiResponse(res, "ERROR", 400, "All fields are required!");
+    }
+
+    // Normalize phone numbers
     myNumber = normalizePhone(myNumber);
     otherNumber = normalizePhone(otherNumber);
+
+    // Parse durations to integer seconds
     call_duration = parseDuration(call_duration);
     ringing_duration = parseDuration(ringing_duration);
     total_duration = parseDuration(total_duration);
 
-    console.log("my number = ", myNumber, " other number = ", otherNumber);
-    
+    // Normalize ENUM values to uppercase
+    call_type = call_type.toUpperCase();
+    call_status = call_status.toUpperCase();
+
+    console.log("Normalized numbers:", myNumber, otherNumber);
 
     // Get lead and user data
     const leadData = await getLeadByPhone(otherNumber, transaction);
     const userData = await getUserByPhone(myNumber, transaction);
 
-    if (!leadData) {
-      return ApiResponse(res, "ERROR", 404, "Lead not found!");
-    }
-    if (!userData) {
-      return ApiResponse(res, "ERROR", 404, "User not found!");
-    }
+    if (!leadData) return ApiResponse(res, "ERROR", 404, "Lead not found!");
+    if (!userData) return ApiResponse(res, "ERROR", 404, "User not found!");
 
     // Prepare call log data
     const callLogDataToBeSaved = {
-    my_number: myNumber,
-    other_number: otherNumber,
-    employee_id: userData.id,
-    lead_id: leadData.id,
-    call_duration,
-    call_type,
-    call_status,
-    call_timestamp,
-    ringing_duration,
-    total_duration
-};
+      my_number: myNumber,
+      other_number: otherNumber,
+      employee_id: userData.id,
+      lead_id: leadData.id,
+      call_duration,
+      call_type,
+      call_status,
+      call_timestamp: new Date(call_timestamp),
+      ringing_duration,
+      total_duration,
+      contact_name,
+      call_log_id,
+      call_date: new Date(call_date)
+    };
 
     // Save call log
     const savedCallLog = await CallLog.create(callLogDataToBeSaved, { transaction });
 
-    // create activity log
+    // Create activity log
     let formattedTimestamp = moment(call_timestamp).format('DD-MM-YYYY hh:mm A');
-    let activityDescription = `Call Log Added : Call done at ${formattedTimestamp}, Call Type : ${call_type}, Call Status : ${call_status}, Call Duration : ${call_duration} seconds, Ringing Duration : ${ringing_duration} seconds, Total Duration : ${total_duration}`
-    let logData = createLogData(activityDescription, 'CALL_LOG_ADDED', userData.id, leadData.id, null, leadData.name )
+    let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds`;
+    let logData = createLogData(activityDescription, 'CALL_LOG_ADDED', userData.id, leadData.id, null, leadData.name);
 
-    await createActivityLog(logData, transaction)
+    await createActivityLog(logData, transaction);
 
     // Commit transaction
     await transaction.commit();
@@ -91,11 +102,131 @@ async function addCallLog(req, res) {
 
   } catch (error) {
     await transaction.rollback();
-    console.log("Failed to add call log = ", error);
+    console.error("Failed to add call log =", error);
     return ApiResponse(res, "ERROR", 500, error?.message || "Failed to add call log!", null, error);
   }
 }
 
+async function getCallLogs(req, res) {
+  try {
+    const {
+      myNumber,
+      otherNumber,
+      call_type,
+      call_status,
+      startDate,
+      endDate,
+      contact_name,
+      lead_id,
+      employee_id,
+      pageNumber = 1,  // default page
+      pageSize = 20    // default batch size
+    } = req.query;
+
+    const whereClause = {};
+
+    if (myNumber) whereClause.my_number = myNumber.replace(/\D/g, '').slice(-10);
+    if (otherNumber) whereClause.other_number = otherNumber.replace(/\D/g, '').slice(-10);
+
+    if (call_type) whereClause.call_type = call_type.toUpperCase();
+    if (call_status) whereClause.call_status = call_status.toUpperCase();
+
+    if (lead_id) whereClause.lead_id = lead_id;
+    if (employee_id) whereClause.employee_id = employee_id;
+
+    if (contact_name) whereClause.contact_name = { [Op.like]: `%${contact_name}%` };
+
+    if (startDate) {
+      const start = moment.utc(startDate, 'YYYY-MM-DD').startOf('day').toDate();
+      const end = endDate
+        ? moment.utc(endDate, 'YYYY-MM-DD').endOf('day').toDate()
+        : moment.utc(startDate, 'YYYY-MM-DD').endOf('day').toDate();
+      whereClause.call_timestamp = { [Op.between]: [start, end] };
+    }
+
+    // calculate offset for pagination
+    const offset = (parseInt(pageNumber) - 1) * parseInt(pageSize);
+
+    const { count, rows } = await CallLog.findAndCountAll({
+      where: whereClause,
+      order: [['call_timestamp', 'DESC']],
+      limit: parseInt(pageSize),
+      offset
+    });
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Call logs fetched successfully!",
+      rows.map((log) => log.get({ plain: true })),
+      { total: count, pageNumber: parseInt(pageNumber), pageSize: parseInt(pageSize) }
+    );
+
+  } catch (error) {
+    console.error("Failed to fetch call logs =", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch call logs!", null, error);
+  }
+}
+
+
+async function getOverallCallsSummary(req,res){
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (endDate && !startDate) {
+      return ApiResponse(res, "ERROR", 400, "startDate is required if endDate is provided");
+    }
+
+    let dateFilter = "";
+    const replacements = {};
+
+    if (startDate) {
+      const start = moment.utc(startDate, "YYYY-MM-DD").startOf("day").toDate();
+      const end = endDate
+        ? moment.utc(endDate, "YYYY-MM-DD").endOf("day").toDate()
+        : moment.utc(startDate, "YYYY-MM-DD").endOf("day").toDate();
+
+      dateFilter = "WHERE call_timestamp BETWEEN :start AND :end";
+      replacements.start = start;
+      replacements.end = end;
+    }
+
+    const [results] = await sequelize.query(
+      `
+      SELECT 
+        COUNT(*) AS totalCalls,
+        COUNT(CASE WHEN call_type = 'INCOMING' THEN 1 END) AS totalIncomingCalls,
+        COUNT(CASE WHEN call_type = 'INCOMING' AND call_status = 'NOT_ANSWERED' THEN 1 END) AS totalMissedCalls,
+        COUNT(CASE WHEN call_type = 'OUTGOING' THEN 1 END) AS totalOutgoingCalls,
+        COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status = 'ANSWERED' THEN 1 END) AS outgoingAnswered,
+        COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status != 'ANSWERED' THEN 1 END) AS outgoingUnanswered
+      FROM calllogs
+      ${dateFilter}
+      `,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
+
+    const summary = {
+      totalCalls: parseInt(results.totalCalls, 10),
+      totalIncomingCalls: parseInt(results.totalIncomingCalls, 10),
+      totalMissedCalls: parseInt(results.totalMissedCalls, 10),
+      totalOutgoingCalls: {
+        total: parseInt(results.totalOutgoingCalls, 10),
+        answered: parseInt(results.outgoingAnswered, 10),
+        unanswered: parseInt(results.outgoingUnanswered, 10),
+      },
+    };
+
+    return ApiResponse(res, "SUCCESS", 200, "Overall calls summary fetched successfully!", summary);
+  } catch (error) {
+    console.log("Failed to fetch overall calls summary = ", error);
+    return ApiResponse(res, "ERROR", error?.message || "Failed to fetch overall calls summary", null, error)
+  }
+}
+
 module.exports = {
-  addCallLog
-};
+  addCallLog,
+  getOverallCallsSummary,
+  getCallLogs
+}

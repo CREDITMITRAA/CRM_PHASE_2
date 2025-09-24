@@ -197,7 +197,7 @@ async function getOverallCallsSummary(req,res){
       SELECT 
         COUNT(*) AS totalCalls,
         COUNT(CASE WHEN call_type = 'INCOMING' THEN 1 END) AS totalIncomingCalls,
-        COUNT(CASE WHEN call_type = 'INCOMING' AND call_status = 'NOT_ANSWERED' THEN 1 END) AS totalMissedCalls,
+        COUNT(CASE WHEN call_type = 'MISSED' THEN 1 END) AS totalMissedCalls,
         COUNT(CASE WHEN call_type = 'OUTGOING' THEN 1 END) AS totalOutgoingCalls,
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status = 'ANSWERED' THEN 1 END) AS outgoingAnswered,
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status != 'ANSWERED' THEN 1 END) AS outgoingUnanswered

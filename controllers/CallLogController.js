@@ -63,10 +63,10 @@ async function addCallLog(req, res) {
 
     // Default if not found
     if (!leadData) {
-      leadData = { id: null, name: "UNKNOWN_LEAD" };
+      leadData = { id: 0, name: "UNKNOWN_LEAD" };
     }
     if (!userData) {
-      userData = { id: null, name: "UNKNOWN_USER" };
+      userData = { id: 0, name: "UNKNOWN_USER" };
     }
 
     const callLogDataToBeSaved = {
@@ -77,12 +77,12 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp: moment(String(call_timestamp), "YYYY-MM-DD HH:mm:ss").utc().toDate(),
+      call_timestamp: new Date(call_timestamp),
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",
       call_log_id,
-      call_date: moment(String(call_date), "YYYY-MM-DD HH:mm:ss").utc().toDate()
+      call_date: new Date(call_date)
     };
 
     const savedCallLog = await CallLog.create(callLogDataToBeSaved, { transaction });

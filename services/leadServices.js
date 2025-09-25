@@ -20,19 +20,30 @@ async function getLead(leadId,transaction){
   return lead
 }
 
-async function getLeadByPhone(phone, transaction=null){
-  if(!phone){
-    throw new Error("Phone is required to fetch the lead")
+async function getLeadByPhone(phone, transaction = null) {
+  if (!phone) {
+    throw new Error("Phone is required to fetch the lead");
   }
 
-  const lead = await Lead.findOne({
+  // Primary phone
+  let lead = await Lead.findOne({
     where: { phone },
     attributes: ["id", "name"],
     raw: true,
-    ...(transaction && {transaction})
-  })
+    ...(transaction && { transaction })
+  });
 
-  return lead
+  if (!lead) {
+    // Check in alternate_phones JSON (ARRAY_CONTAINS)
+    lead = await Lead.findOne({
+      where: sequelize.literal(`JSON_CONTAINS(alternate_phones, '"${phone}"')`),
+      attributes: ["id", "name"],
+      raw: true,
+      ...(transaction && { transaction })
+    });
+  }
+
+  return lead;
 }
 
 module.exports = {

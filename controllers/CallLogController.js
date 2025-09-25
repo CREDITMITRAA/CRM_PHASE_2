@@ -73,21 +73,88 @@ async function addCallLog(req, res) {
 
     console.log("Normalized numbers:", myNumber, otherNumber);
 
-    // Enhanced UTC date validation and conversion
+    // Enhanced UTC date handling with explicit timezone conversion
     let utcCallTimestamp, utcCallDate;
     
     try {
-      utcCallTimestamp = moment.utc(call_timestamp, moment.ISO_8601);
-      utcCallDate = moment.utc(call_date, moment.ISO_8601);
+      console.log("Original call_timestamp:", call_timestamp);
+      console.log("Original call_date:", call_date);
+
+      // Method 1: Check if it's already in ISO format with timezone
+      if (moment(call_timestamp, moment.ISO_8601, true).isValid()) {
+        utcCallTimestamp = moment.utc(call_timestamp);
+        console.log("Parsed as ISO format");
+      } else {
+        // Method 2: Parse as IST and convert to UTC
+        // Try common IST formats
+        const istFormats = [
+          "YYYY-MM-DD HH:mm:ss",
+          "DD-MM-YYYY HH:mm:ss",
+          "YYYY/MM/DD HH:mm:ss",
+          "DD/MM/YYYY HH:mm:ss"
+        ];
+        
+        let parsed = null;
+        for (const format of istFormats) {
+          parsed = moment.tz(call_timestamp, format, "Asia/Kolkata");
+          if (parsed.isValid()) {
+            break;
+          }
+        }
+        
+        if (parsed && parsed.isValid()) {
+          utcCallTimestamp = parsed.utc();
+          console.log("Parsed as IST and converted to UTC");
+        } else {
+          // Method 3: Last resort - assume it's UTC
+          utcCallTimestamp = moment.utc(call_timestamp);
+          console.log("Parsed as UTC (fallback)");
+        }
+      }
+
+      // Repeat for call_date
+      if (moment(call_date, moment.ISO_8601, true).isValid()) {
+        utcCallDate = moment.utc(call_date);
+      } else {
+        const dateFormats = [
+          "YYYY-MM-DD",
+          "DD-MM-YYYY", 
+          "YYYY/MM/DD",
+          "DD/MM/YYYY"
+        ];
+        
+        let parsedDate = null;
+        for (const format of dateFormats) {
+          parsedDate = moment.tz(call_date, format, "Asia/Kolkata");
+          if (parsedDate.isValid()) {
+            break;
+          }
+        }
+        
+        if (parsedDate && parsedDate.isValid()) {
+          utcCallDate = parsedDate.utc();
+        } else {
+          utcCallDate = moment.utc(call_date);
+        }
+      }
       
+      // Validate the converted dates
       if (!utcCallTimestamp.isValid()) {
+        console.error("Invalid call_timestamp after conversion:", call_timestamp);
         return ApiResponse(res, "ERROR", 400, "Invalid call_timestamp format!");
       }
       
       if (!utcCallDate.isValid()) {
+        console.error("Invalid call_date after conversion:", call_date);
         return ApiResponse(res, "ERROR", 400, "Invalid call_date format!");
       }
+
+      console.log("UTC call_timestamp:", utcCallTimestamp.format());
+      console.log("UTC call_date:", utcCallDate.format());
+      console.log("IST equivalent:", utcCallTimestamp.tz("Asia/Kolkata").format());
+
     } catch (dateError) {
+      console.error("Date parsing error:", dateError);
       return ApiResponse(res, "ERROR", 400, "Invalid date format provided!");
     }
 
@@ -111,20 +178,26 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp: utcCallTimestamp.toDate(),
-      call_date: utcCallDate.toDate(),
+      call_timestamp: utcCallTimestamp.toDate(), // Store as UTC Date object
+      call_date: utcCallDate.toDate(), // Store as UTC Date object
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",
       call_log_id,
     };
 
+    console.log("Data to be saved:", {
+      ...callLogDataToBeSaved,
+      call_timestamp: callLogDataToBeSaved.call_timestamp.toISOString(),
+      call_date: callLogDataToBeSaved.call_date.toISOString()
+    });
+
     const savedCallLog = await CallLog.create(callLogDataToBeSaved, {
       transaction,
     });
 
-    // Use UTC time for consistent formatting
-    let formattedTimestamp = utcCallTimestamp.format("DD-MM-YYYY hh:mm A");
+    // Use UTC time for consistent formatting in activity log
+    let formattedTimestamp = utcCallTimestamp.tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm A");
     let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds`;
     let logData = createLogData(
       activityDescription,
@@ -144,7 +217,11 @@ async function addCallLog(req, res) {
       "SUCCESS",
       201,
       "Call log added successfully!",
-      savedCallLog.get({ plain: true })
+      {
+        ...savedCallLog.get({ plain: true }),
+        call_timestamp: utcCallTimestamp.format(), // Return UTC ISO string
+        call_date: utcCallDate.format() // Return UTC ISO string
+      }
     );
   } catch (error) {
     await transaction.rollback();

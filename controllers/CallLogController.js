@@ -73,6 +73,24 @@ async function addCallLog(req, res) {
 
     console.log("Normalized numbers:", myNumber, otherNumber);
 
+    // Enhanced UTC date validation and conversion
+    let utcCallTimestamp, utcCallDate;
+    
+    try {
+      utcCallTimestamp = moment.utc(call_timestamp, moment.ISO_8601);
+      utcCallDate = moment.utc(call_date, moment.ISO_8601);
+      
+      if (!utcCallTimestamp.isValid()) {
+        return ApiResponse(res, "ERROR", 400, "Invalid call_timestamp format!");
+      }
+      
+      if (!utcCallDate.isValid()) {
+        return ApiResponse(res, "ERROR", 400, "Invalid call_date format!");
+      }
+    } catch (dateError) {
+      return ApiResponse(res, "ERROR", 400, "Invalid date format provided!");
+    }
+
     // Try finding lead & user
     let leadData = await getLeadByPhone(otherNumber, transaction);
     let userData = await getUserByPhone(myNumber, transaction);
@@ -93,8 +111,8 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp: moment.utc(call_timestamp, moment.ISO_8601).toDate(),
-      call_date: moment.utc(call_date, moment.ISO_8601).toDate(),
+      call_timestamp: utcCallTimestamp.toDate(),
+      call_date: utcCallDate.toDate(),
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",
@@ -105,8 +123,8 @@ async function addCallLog(req, res) {
       transaction,
     });
 
-    let formattedTimestamp =
-      moment(call_timestamp).format("DD-MM-YYYY hh:mm A");
+    // Use UTC time for consistent formatting
+    let formattedTimestamp = utcCallTimestamp.format("DD-MM-YYYY hh:mm A");
     let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds`;
     let logData = createLogData(
       activityDescription,

@@ -1,8 +1,5 @@
 const { sequelize, CallLog } = require("../models");
-const {
-  createActivityLog,
-  createLogData,
-} = require("../services/ActivityLogServices");
+const { createActivityLog, createLogData } = require("../services/ActivityLogServices");
 const { getLeadByPhone } = require("../services/leadServices");
 const { getUserByPhone } = require("../services/UserServices");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
@@ -11,7 +8,7 @@ const moment = require("moment-timezone");
 // Helper to normalize phone to last 10 digits
 function normalizePhone(phone) {
   if (!phone) return null;
-  const digits = phone.replace(/\D/g, "");
+  const digits = phone.replace(/\D/g, '');
   return digits.slice(-10);
 }
 
@@ -37,28 +34,15 @@ async function addCallLog(req, res) {
       contact_name,
       call_log_id,
       call_date,
-      call_log_duration,
+      call_log_duration
     } = req.body;
 
     total_duration = total_duration ?? call_log_duration;
 
     console.log("Received data =", req.body);
 
-    if (
-      [
-        myNumber,
-        otherNumber,
-        call_duration,
-        call_type,
-        call_status,
-        call_timestamp,
-        ringing_duration,
-        total_duration,
-        contact_name,
-        call_log_id,
-        call_date,
-      ].some((v) => v === undefined || v === null)
-    ) {
+    if ([myNumber, otherNumber, call_duration, call_type, call_status, call_timestamp, ringing_duration, total_duration, contact_name, call_log_id, call_date]
+      .some(v => v === undefined || v === null)) {
       return ApiResponse(res, "ERROR", 400, "All fields are required!");
     }
 
@@ -73,101 +57,16 @@ async function addCallLog(req, res) {
 
     console.log("Normalized numbers:", myNumber, otherNumber);
 
-    // Enhanced UTC date handling with explicit timezone conversion
-    let utcCallTimestamp, utcCallDate;
-    
-    try {
-      console.log("Original call_timestamp:", call_timestamp);
-      console.log("Original call_date:", call_date);
-
-      // Method 1: Check if it's already in ISO format with timezone
-      if (moment(call_timestamp, moment.ISO_8601, true).isValid()) {
-        utcCallTimestamp = moment.utc(call_timestamp);
-        console.log("Parsed as ISO format");
-      } else {
-        // Method 2: Parse as IST and convert to UTC
-        // Try common IST formats
-        const istFormats = [
-          "YYYY-MM-DD HH:mm:ss",
-          "DD-MM-YYYY HH:mm:ss",
-          "YYYY/MM/DD HH:mm:ss",
-          "DD/MM/YYYY HH:mm:ss"
-        ];
-        
-        let parsed = null;
-        for (const format of istFormats) {
-          parsed = moment.tz(call_timestamp, format, "Asia/Kolkata");
-          if (parsed.isValid()) {
-            break;
-          }
-        }
-        
-        if (parsed && parsed.isValid()) {
-          utcCallTimestamp = parsed.utc();
-          console.log("Parsed as IST and converted to UTC");
-        } else {
-          // Method 3: Last resort - assume it's UTC
-          utcCallTimestamp = moment.utc(call_timestamp);
-          console.log("Parsed as UTC (fallback)");
-        }
-      }
-
-      // Repeat for call_date
-      if (moment(call_date, moment.ISO_8601, true).isValid()) {
-        utcCallDate = moment.utc(call_date);
-      } else {
-        const dateFormats = [
-          "YYYY-MM-DD",
-          "DD-MM-YYYY", 
-          "YYYY/MM/DD",
-          "DD/MM/YYYY"
-        ];
-        
-        let parsedDate = null;
-        for (const format of dateFormats) {
-          parsedDate = moment.tz(call_date, format, "Asia/Kolkata");
-          if (parsedDate.isValid()) {
-            break;
-          }
-        }
-        
-        if (parsedDate && parsedDate.isValid()) {
-          utcCallDate = parsedDate.utc();
-        } else {
-          utcCallDate = moment.utc(call_date);
-        }
-      }
-      
-      // Validate the converted dates
-      if (!utcCallTimestamp.isValid()) {
-        console.error("Invalid call_timestamp after conversion:", call_timestamp);
-        return ApiResponse(res, "ERROR", 400, "Invalid call_timestamp format!");
-      }
-      
-      if (!utcCallDate.isValid()) {
-        console.error("Invalid call_date after conversion:", call_date);
-        return ApiResponse(res, "ERROR", 400, "Invalid call_date format!");
-      }
-
-      console.log("UTC call_timestamp:", utcCallTimestamp.format());
-      console.log("UTC call_date:", utcCallDate.format());
-      console.log("IST equivalent:", utcCallTimestamp.tz("Asia/Kolkata").format());
-
-    } catch (dateError) {
-      console.error("Date parsing error:", dateError);
-      return ApiResponse(res, "ERROR", 400, "Invalid date format provided!");
-    }
-
     // Try finding lead & user
     let leadData = await getLeadByPhone(otherNumber, transaction);
     let userData = await getUserByPhone(myNumber, transaction);
 
     // Default if not found
     if (!leadData) {
-      leadData = { id: 0, name: "UNKNOWN_LEAD" };
+      leadData = { id: null, name: "UNKNOWN_LEAD" };
     }
     if (!userData) {
-      userData = { id: 0, name: "UNKNOWN_USER" };
+      userData = { id: null, name: "UNKNOWN_USER" };
     }
 
     const callLogDataToBeSaved = {
@@ -178,62 +77,30 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp: utcCallTimestamp.toDate(), // Store as UTC Date object
-      call_date: utcCallDate.toDate(), // Store as UTC Date object
+      call_timestamp,
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",
       call_log_id,
+      call_date
     };
 
-    console.log("Data to be saved:", {
-      ...callLogDataToBeSaved,
-      call_timestamp: callLogDataToBeSaved.call_timestamp.toISOString(),
-      call_date: callLogDataToBeSaved.call_date.toISOString()
-    });
+    const savedCallLog = await CallLog.create(callLogDataToBeSaved, { transaction });
 
-    const savedCallLog = await CallLog.create(callLogDataToBeSaved, {
-      transaction,
-    });
-
-    // Use UTC time for consistent formatting in activity log
-    let formattedTimestamp = utcCallTimestamp.tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm A");
+    let formattedTimestamp = moment(call_timestamp).format("DD-MM-YYYY hh:mm A");
     let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds`;
-    let logData = createLogData(
-      activityDescription,
-      "CALL_LOG_ADDED",
-      userData.id,
-      leadData.id,
-      null,
-      leadData.name
-    );
+    let logData = createLogData(activityDescription, "CALL_LOG_ADDED", userData.id, leadData.id, null, leadData.name);
 
     await createActivityLog(logData, transaction);
 
     await transaction.commit();
 
-    return ApiResponse(
-      res,
-      "SUCCESS",
-      201,
-      "Call log added successfully!",
-      {
-        ...savedCallLog.get({ plain: true }),
-        call_timestamp: utcCallTimestamp.format(), // Return UTC ISO string
-        call_date: utcCallDate.format() // Return UTC ISO string
-      }
-    );
+    return ApiResponse(res, "SUCCESS", 201, "Call log added successfully!", savedCallLog.get({ plain: true }));
+
   } catch (error) {
     await transaction.rollback();
     console.error("Failed to add call log =", error);
-    return ApiResponse(
-      res,
-      "ERROR",
-      500,
-      error?.message || "Failed to add call log!",
-      null,
-      error
-    );
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to add call log!", null, error);
   }
 }
 
@@ -249,16 +116,14 @@ async function getCallLogs(req, res) {
       contact_name,
       lead_id,
       employee_id,
-      pageNumber = 1, // default page
-      pageSize = 20, // default batch size
+      pageNumber = 1,  // default page
+      pageSize = 20    // default batch size
     } = req.query;
 
     const whereClause = {};
 
-    if (myNumber)
-      whereClause.my_number = myNumber.replace(/\D/g, "").slice(-10);
-    if (otherNumber)
-      whereClause.other_number = otherNumber.replace(/\D/g, "").slice(-10);
+    if (myNumber) whereClause.my_number = myNumber.replace(/\D/g, '').slice(-10);
+    if (otherNumber) whereClause.other_number = otherNumber.replace(/\D/g, '').slice(-10);
 
     if (call_type) whereClause.call_type = call_type.toUpperCase();
     if (call_status) whereClause.call_status = call_status.toUpperCase();
@@ -266,14 +131,13 @@ async function getCallLogs(req, res) {
     if (lead_id) whereClause.lead_id = lead_id;
     if (employee_id) whereClause.employee_id = employee_id;
 
-    if (contact_name)
-      whereClause.contact_name = { [Op.like]: `%${contact_name}%` };
+    if (contact_name) whereClause.contact_name = { [Op.like]: `%${contact_name}%` };
 
     if (startDate) {
-      const start = moment.utc(startDate, "YYYY-MM-DD").startOf("day").toDate();
+      const start = moment.utc(startDate, 'YYYY-MM-DD').startOf('day').toDate();
       const end = endDate
-        ? moment.utc(endDate, "YYYY-MM-DD").endOf("day").toDate()
-        : moment.utc(startDate, "YYYY-MM-DD").endOf("day").toDate();
+        ? moment.utc(endDate, 'YYYY-MM-DD').endOf('day').toDate()
+        : moment.utc(startDate, 'YYYY-MM-DD').endOf('day').toDate();
       whereClause.call_timestamp = { [Op.between]: [start, end] };
     }
 
@@ -282,9 +146,9 @@ async function getCallLogs(req, res) {
 
     const { count, rows } = await CallLog.findAndCountAll({
       where: whereClause,
-      order: [["call_timestamp", "DESC"]],
+      order: [['call_timestamp', 'DESC']],
       limit: parseInt(pageSize),
-      offset,
+      offset
     });
 
     return ApiResponse(
@@ -293,36 +157,22 @@ async function getCallLogs(req, res) {
       200,
       "Call logs fetched successfully!",
       rows.map((log) => log.get({ plain: true })),
-      {
-        total: count,
-        pageNumber: parseInt(pageNumber),
-        pageSize: parseInt(pageSize),
-      }
+      { total: count, pageNumber: parseInt(pageNumber), pageSize: parseInt(pageSize) }
     );
+
   } catch (error) {
     console.error("Failed to fetch call logs =", error);
-    return ApiResponse(
-      res,
-      "ERROR",
-      500,
-      error?.message || "Failed to fetch call logs!",
-      null,
-      error
-    );
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch call logs!", null, error);
   }
 }
 
-async function getOverallCallsSummary(req, res) {
+
+async function getOverallCallsSummary(req,res){
   try {
     const { startDate, endDate } = req.query;
 
     if (endDate && !startDate) {
-      return ApiResponse(
-        res,
-        "ERROR",
-        400,
-        "startDate is required if endDate is provided"
-      );
+      return ApiResponse(res, "ERROR", 400, "startDate is required if endDate is provided");
     }
 
     let dateFilter = "";
@@ -365,27 +215,15 @@ async function getOverallCallsSummary(req, res) {
       },
     };
 
-    return ApiResponse(
-      res,
-      "SUCCESS",
-      200,
-      "Overall calls summary fetched successfully!",
-      summary
-    );
+    return ApiResponse(res, "SUCCESS", 200, "Overall calls summary fetched successfully!", summary);
   } catch (error) {
     console.log("Failed to fetch overall calls summary = ", error);
-    return ApiResponse(
-      res,
-      "ERROR",
-      error?.message || "Failed to fetch overall calls summary",
-      null,
-      error
-    );
+    return ApiResponse(res, "ERROR", error?.message || "Failed to fetch overall calls summary", null, error)
   }
 }
 
 module.exports = {
   addCallLog,
   getOverallCallsSummary,
-  getCallLogs,
-};
+  getCallLogs
+}

@@ -77,7 +77,7 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp,
+      call_timestamp: moment(String(call_timestamp), "YYYY-MM-DD HH:mm:ss").utc().format(),
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",

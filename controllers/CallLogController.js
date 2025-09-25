@@ -93,12 +93,12 @@ async function addCallLog(req, res) {
       call_duration,
       call_type,
       call_status,
-      call_timestamp: moment(call_timestamp).utc().toDate(), // ✅ UTC
+      call_timestamp: moment.utc(call_timestamp, moment.ISO_8601).toDate(),
+      call_date: moment.utc(call_date, moment.ISO_8601).toDate(),
       ringing_duration,
       total_duration,
       contact_name: contact_name || "UNKNOWN",
       call_log_id,
-      call_date: moment(call_date).utc().toDate(), // ✅ UTC
     };
 
     const savedCallLog = await CallLog.create(callLogDataToBeSaved, {

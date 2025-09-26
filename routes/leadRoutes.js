@@ -36,4 +36,5 @@ router.post('/update-cibil-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TE
 router.post('/update-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.updateCrifParsedReport)
 router.get('/get-imported-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getImportedLeadStats)
 router.get('/get-employee-wise-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getEmployeeWiseLeadStats)
+router.get('/get-lead-names', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getLeadNames)
 module.exports = router

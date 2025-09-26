@@ -4186,6 +4186,19 @@ async function getEmployeeWiseLeadStats(req, res) {
   }
 }
 
+async function getLeadNames(req,res){
+  try {
+    const { leadIds } = req.body
+
+    const leads = await LeadServices.getLeadNamesByLeadIds(leadIds)
+
+    return ApiResponse(res, "SUCCESS", 200, "Names fetched succussfully", leads)
+
+  } catch (error) {
+    return ApiResponse(res, "ERROR", error?.message || "Failed to fetch lead names !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4218,5 +4231,6 @@ module.exports = {
   updateCibilReport,
   updateCrifParsedReport,
   getImportedLeadStats,
-  getEmployeeWiseLeadStats
+  getEmployeeWiseLeadStats,
+  getLeadNames
 };

@@ -46,8 +46,23 @@ async function getLeadByPhone(phone, transaction = null) {
   return lead;
 }
 
+async function getLeadNamesByLeadIds(leadIds, transaction){
+  if(!leadIds || leadIds.length === 0){
+    throw new Error("Lead ids cannot be empty !")
+  }
+
+  const leads = await Lead.findAll({
+    where: {id:leadIds},
+    attributes: ["id", "name"],
+    transaction
+  })
+
+  return leads
+}
+
 module.exports = {
   updateLead,
   getLead,
-  getLeadByPhone
+  getLeadByPhone,
+  getLeadNamesByLeadIds
 };

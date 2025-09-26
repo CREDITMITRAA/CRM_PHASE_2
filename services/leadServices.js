@@ -1,4 +1,4 @@
-const { Lead } = require("../models");
+const { Lead, sequelize } = require("../models");
 
 async function updateLead(leadId, leadData, transaction) {
   if (!leadId) {

@@ -223,7 +223,17 @@ async function getCallLogs(req, res) {
 
 async function getOverallCallsSummary(req, res) {
   try {
-    const { startDate, endDate } = req.query;
+    const {
+      myNumber,
+      otherNumber,
+      call_type,
+      call_status,
+      startDate,
+      endDate,
+      contact_name,
+      lead_id,
+      employee_id,
+    } = req.query;
 
     if (endDate && !startDate) {
       return ApiResponse(
@@ -234,18 +244,63 @@ async function getOverallCallsSummary(req, res) {
       );
     }
 
-    let dateFilter = "";
+    // Build where conditions dynamically
+    const whereConditions = [];
     const replacements = {};
 
-    if (startDate) {
-      const start = moment.utc(startDate, "YYYY-MM-DD").startOf("day").toDate();
-      const end = endDate
-        ? moment.utc(endDate, "YYYY-MM-DD").endOf("day").toDate()
-        : moment.utc(startDate, "YYYY-MM-DD").endOf("day").toDate();
+    if (myNumber) {
+      const cleanedMyNumber = myNumber.replace(/\D/g, "").slice(-10);
+      whereConditions.push("my_number = :myNumber");
+      replacements.myNumber = cleanedMyNumber;
+    }
 
-      dateFilter = "WHERE call_timestamp BETWEEN :start AND :end";
+    if (otherNumber) {
+      const cleanedOtherNumber = otherNumber.replace(/\D/g, "").slice(-10);
+      whereConditions.push("other_number = :otherNumber");
+      replacements.otherNumber = cleanedOtherNumber;
+    }
+
+    if (call_type) {
+      whereConditions.push("call_type = :callType");
+      replacements.callType = call_type.toUpperCase();
+    }
+
+    if (call_status) {
+      whereConditions.push("call_status = :callStatus");
+      replacements.callStatus = call_status.toUpperCase();
+    }
+
+    if (lead_id) {
+      whereConditions.push("lead_id = :leadId");
+      replacements.leadId = lead_id;
+    }
+
+    if (employee_id) {
+      whereConditions.push("employee_id = :employeeId");
+      replacements.employeeId = employee_id;
+    }
+
+    if (contact_name) {
+      whereConditions.push("contact_name LIKE :contactName");
+      replacements.contactName = `%${contact_name}%`;
+    }
+
+    // Date filter
+    if (startDate) {
+      const start = moment(startDate, "YYYY-MM-DD").startOf("day").toDate();
+      const end = endDate
+        ? moment(endDate, "YYYY-MM-DD").endOf("day").toDate()
+        : moment(startDate, "YYYY-MM-DD").endOf("day").toDate();
+
+      whereConditions.push("call_timestamp BETWEEN :start AND :end");
       replacements.start = start;
       replacements.end = end;
+    }
+
+    // Build the WHERE clause
+    let whereClause = "";
+    if (whereConditions.length > 0) {
+      whereClause = "WHERE " + whereConditions.join(" AND ");
     }
 
     const [results] = await sequelize.query(
@@ -258,7 +313,7 @@ async function getOverallCallsSummary(req, res) {
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status = 'ANSWERED' THEN 1 END) AS outgoingAnswered,
         COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status != 'ANSWERED' THEN 1 END) AS outgoingUnanswered
       FROM CallLogs
-      ${dateFilter}
+      ${whereClause}
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
@@ -286,6 +341,7 @@ async function getOverallCallsSummary(req, res) {
     return ApiResponse(
       res,
       "ERROR",
+      500,
       error?.message || "Failed to fetch overall calls summary",
       null,
       error

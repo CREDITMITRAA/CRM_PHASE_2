@@ -244,79 +244,56 @@ async function getOverallCallsSummary(req, res) {
       );
     }
 
-    // Build where conditions dynamically
-    const whereConditions = [];
-    const replacements = {};
+    const where = {};
 
     if (myNumber) {
-      const cleanedMyNumber = myNumber.replace(/\D/g, "").slice(-10);
-      whereConditions.push("my_number = :myNumber");
-      replacements.myNumber = cleanedMyNumber;
+      where.my_number = myNumber.replace(/\D/g, "").slice(-10);
     }
 
     if (otherNumber) {
-      const cleanedOtherNumber = otherNumber.replace(/\D/g, "").slice(-10);
-      whereConditions.push("other_number = :otherNumber");
-      replacements.otherNumber = cleanedOtherNumber;
+      where.other_number = otherNumber.replace(/\D/g, "").slice(-10);
     }
 
     if (call_type) {
-      whereConditions.push("call_type = :callType");
-      replacements.callType = call_type.toUpperCase();
+      where.call_type = call_type.toUpperCase();
     }
 
     if (call_status) {
-      whereConditions.push("call_status = :callStatus");
-      replacements.callStatus = call_status.toUpperCase();
+      where.call_status = call_status.toUpperCase();
     }
 
     if (lead_id) {
-      whereConditions.push("lead_id = :leadId");
-      replacements.leadId = lead_id;
+      where.lead_id = lead_id;
     }
 
     if (employee_id) {
-      whereConditions.push("employee_id = :employeeId");
-      replacements.employeeId = employee_id;
+      where.employee_id = parseInt(employee_id, 10);
     }
 
     if (contact_name) {
-      whereConditions.push("contact_name LIKE :contactName");
-      replacements.contactName = `%${contact_name}%`;
+      where.contact_name = { [Op.like]: `%${contact_name}%` };
     }
 
-    // Date filter
     if (startDate) {
       const start = moment(startDate, "YYYY-MM-DD").startOf("day").toDate();
       const end = endDate
         ? moment(endDate, "YYYY-MM-DD").endOf("day").toDate()
         : moment(startDate, "YYYY-MM-DD").endOf("day").toDate();
-
-      whereConditions.push("call_timestamp BETWEEN :start AND :end");
-      replacements.start = start;
-      replacements.end = end;
+      where.call_timestamp = { [Op.between]: [start, end] };
     }
 
-    // Build the WHERE clause
-    let whereClause = "";
-    if (whereConditions.length > 0) {
-      whereClause = "WHERE " + whereConditions.join(" AND ");
-    }
-
-    const [results] = await sequelize.query(
-      `
-      SELECT 
-        COUNT(*) AS totalCalls,
-        COUNT(CASE WHEN call_type = 'INCOMING' THEN 1 END) AS totalIncomingCalls,
-        COUNT(CASE WHEN call_type = 'MISSED' THEN 1 END) AS totalMissedCalls,
-        COUNT(CASE WHEN call_type = 'OUTGOING' THEN 1 END) AS totalOutgoingCalls,
-        COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status = 'ANSWERED' THEN 1 END) AS outgoingAnswered,
-        COUNT(CASE WHEN call_type = 'OUTGOING' AND call_status != 'ANSWERED' THEN 1 END) AS outgoingUnanswered
-      FROM CallLogs
-      ${whereClause}
-      `,
-      { replacements, type: sequelize.QueryTypes.SELECT }
-    );
+    const [results] = await CallLog.findAll({
+      attributes: [
+        [sequelize.fn("COUNT", sequelize.col("id")), "totalCalls"],
+        [sequelize.fn("SUM", sequelize.literal("call_type = 'INCOMING'")), "totalIncomingCalls"],
+        [sequelize.fn("SUM", sequelize.literal("call_type = 'MISSED'")), "totalMissedCalls"],
+        [sequelize.fn("SUM", sequelize.literal("call_type = 'OUTGOING'")), "totalOutgoingCalls"],
+        [sequelize.fn("SUM", sequelize.literal("call_type = 'OUTGOING' AND call_status = 'ANSWERED'")), "outgoingAnswered"],
+        [sequelize.fn("SUM", sequelize.literal("call_type = 'OUTGOING' AND call_status != 'ANSWERED'")), "outgoingUnanswered"],
+      ],
+     where,
+      raw: true,
+    });
 
     const summary = {
       totalCalls: parseInt(results.totalCalls, 10),

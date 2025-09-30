@@ -2549,16 +2549,31 @@ async function uploadLead(req, res) {
       console.log("lead from db = ", leadFromDB.toJSON());
       const prev_lead_data = leadFromDB.toJSON();
       // Update current lead source
-      leadFromDB.lead_source = lead_source;
+      // leadFromDB.lead_source = lead_source;
 
         // ✅ Only update lead_source if utm_campaign is NOT "/internal/free-credit-score"
       if (utm_campaign !== "/internal/free-credit-score") {
-        leadFromDB.lead_source = lead_source;
 
-        // Update previous sources array
-        const prevSources = leadFromDB.prev_lead_sources || [];
-        const updatedSources = [lead_source, ...prevSources];
-        leadFromDB.prev_lead_sources = updatedSources;
+        // check if bureau name is 'Crif'
+        if(bereau_name === 'Crif'){
+          const createdAt = leadFromDB.createdAt
+          const now = moment.utc()
+
+          const isOlderThan30Days = now.diff(moment.utc(createdAt), "milliseconds") > 30 * 24 * 60 * 60 * 1000;
+          if(isOlderThan30Days){
+              leadFromDB.lead_source = lead_source;
+              // Update previous sources array
+              const prevSources = leadFromDB.prev_lead_sources || [];
+              const updatedSources = [lead_source, ...prevSources];
+              leadFromDB.prev_lead_sources = updatedSources;
+          }
+        }else {
+          leadFromDB.lead_source = lead_source;
+          // Update previous sources array
+          const prevSources = leadFromDB.prev_lead_sources || [];
+          const updatedSources = [lead_source, ...prevSources];
+          leadFromDB.prev_lead_sources = updatedSources;
+        }
       }
 
       leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;

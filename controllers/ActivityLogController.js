@@ -1,5 +1,5 @@
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { ActivityLog, sequelize, Lead } = require("../models");
+const { ActivityLog, sequelize, Lead, User, Role } = require("../models");
 const moment = require("moment-timezone");
 const { Op } = require("sequelize");
 const {
@@ -10,17 +10,19 @@ const {
   ACTIVITY_LOGS,
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
+const { ROLE_ADMIN } = require("../utilities/constants");
 
 async function getActivityLogs(req, res) {
   try {
     let {
       lead_id,
       page = 1,
-      pageSize = 10,
+      pageSize = 20,
       created_by,
       createdAt,
       lead_name,
       from_dashboard,
+      user_id
     } = req.query;
     const pageNumber = parseInt(page, 10);
     pageSize = parseInt(pageSize, 10);
@@ -61,6 +63,27 @@ async function getActivityLogs(req, res) {
         whereConditions.createdAt = {
           [Op.between]: [startOfDayUTC, endOfDayUTC],
         };
+      }
+    }
+
+    if(user_id){
+      const user = await User.findByPk(user_id, {
+        include: {
+          model: Role,
+          as: "Role",
+          attributes: ["role_name"],
+          raw: true
+        }
+      })
+
+      if(!user){
+        return ApiResponse(res, "ERROR", 404, "User not found !")
+      }
+
+      const roleName = user.Role.get("role_name")
+      
+      if(roleName !== ROLE_ADMIN){
+        whereConditions.activity_type = { [Op.ne]: ACTIVITY_TYPES.CALL_LOG_ADDED}
       }
     }
 

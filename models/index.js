@@ -19,6 +19,7 @@ const UserMetrics = require('./UserMetrics')(sequelize)
 const ProfileImageUrl = require('./ProfileImageUrl')(sequelize)
 const LeadPartner = require('./LeadPartner')(sequelize)
 const LoginDetail = require('./LoginDetail')(sequelize)
+const PhoneNumber = require('./PhoneNumber')(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -98,6 +99,17 @@ Notification.belongsTo(User, {
     as: 'AssignedToUser'
 });
 
+User.hasMany(PhoneNumber, {
+  foreignKey: 'user_id',
+  as: 'phones',
+  onDelete: 'CASCADE'
+})
+
+PhoneNumber.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+})
+
 module.exports = {
   sequelize,
   User,
@@ -119,5 +131,6 @@ module.exports = {
   UserMetrics,
   ProfileImageUrl,
   LeadPartner,
-  LoginDetail
+  LoginDetail,
+  PhoneNumber
 };

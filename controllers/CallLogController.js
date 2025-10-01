@@ -83,13 +83,13 @@ async function addCallLog(req, res) {
       leadData = { id: 0, name: "UNKNOWN_LEAD" };
     }
     if (!userData) {
-      userData = { id: 0, name: "UNKNOWN_USER" };
+      userData = { user_id: 0, name: "UNKNOWN_USER" };
     }
 
     const callLogDataToBeSaved = {
       my_number: myNumber,
       other_number: otherNumber,
-      employee_id: userData.id,
+      employee_id: userData.user_id,
       lead_id: leadData.id,
       call_duration,
       call_type,
@@ -112,7 +112,7 @@ async function addCallLog(req, res) {
     let logData = createLogData(
       activityDescription,
       "CALL_LOG_ADDED",
-      userData.id,
+      userData.user_id,
       leadData.id,
       null,
       leadData.name

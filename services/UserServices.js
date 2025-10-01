@@ -1,18 +1,18 @@
-const { User } = require("../models")
+const { User, PhoneNumber } = require("../models")
 
 async function getUserByPhone(phone, transaction=null){
     if(!phone){
         throw new Error("Phone is required to fetch the user")
     }
 
-    const user = await User.findOne({
+    const phoneRecord = await PhoneNumber.findOne({
         where: { phone },
-        attributes: ["id", "name"],
+        attributes: ["user_id"],
         raw: true,
-        ...(transaction && {transaction})
+        ...(transaction && { transaction })
     })
 
-    return user
+    return phoneRecord
 }
 
 module.exports = {

@@ -1,5 +1,5 @@
 const { where, Op } = require("sequelize");
-const { User, sequelize, Role, LeadAssignment, Activity } = require("../models");
+const { User, sequelize, Role, LeadAssignment, Activity, PhoneNumber } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const bcrypt = require("bcryptjs");
 
@@ -7,6 +7,13 @@ async function getAllUsers(req, res) {
   try {
     const {status='active'} = req.query
     const users = await User.findAll({
+      include: [
+        {
+          model: PhoneNumber,
+          as: 'phones',
+          attributes: ['id', 'phone']
+        }
+      ],
       where: {
         status: status,
       },
@@ -60,12 +67,37 @@ async function createUser(req, res) {
       working_mode,
       status,
       role_name,
-      date_of_join
+      date_of_join,
+      phones
     } = req.body;
 
     // Validation: Check if all required fields are provided
-    if (!employee_id || !name || !email || !phone || !password || !designation || !role_name || !date_of_join) {
+    if (!employee_id || !name || !email || !password || !designation || !role_name || !date_of_join) {
+      await t.rollback()
       return ApiResponse(res, "error", 400, "Missing required fields");
+    }
+
+    if(!phones || !Array.isArray(phones) || phones.length === 0){
+      await t.rollback()
+      return ApiResponse(res, "ERROR", 400, "At least one phone number is required")
+    }
+
+    for(let phoneObj of phones){
+      if(!phoneObj.phone || phoneObj.phone.trim() === ''){
+        await t.rollback()
+        return ApiResponse(res, "ERROR", 400, "Phone number cannot be empty")
+      }
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ 
+      where: { email },
+      transaction: t 
+    });
+    
+    if (existingUser) {
+      await t.rollback();
+      return ApiResponse(res, "error", 400, "Email already exists");
     }
 
     // Fetch the role ID for the role name (e.g., 'admin')
@@ -89,7 +121,7 @@ async function createUser(req, res) {
         employee_id,
         name,
         email,
-        phone,
+        // phone,
         address,
         password: hashedPassword,
         salary,
@@ -103,16 +135,50 @@ async function createUser(req, res) {
       { transaction: t }
     );
 
+    // create phone number records 
+    const phonePromises = phones.map((phoneObj, index) =>
+      PhoneNumber.create({
+        phone: phoneObj.phone,
+        user_id: user.id
+      }, {transaction:t})
+    )
+
+    await Promise.all(phonePromises)
+
+    // fetch the complete user with phones to return in response
+    const createdUser = await User.findByPk(user.id, {
+      include: [
+        {
+          model: PhoneNumber,
+          as: 'phones',
+          attributes: ['id', 'phone']
+        },
+        // {
+        //   model: Role,
+        //   as: 'role',
+        //   attributes: ['id', 'role_name']
+        // }
+      ],
+      attributes: {exclude: ['password']},
+      transaction: t
+    })
+
     // Commit the transaction to persist all changes
     await t.commit();
 
     // Return success response with the created user
-    return ApiResponse(res, "success", 201, "User created successfully", user);
+    return ApiResponse(res, "success", 201, "User created successfully", createdUser);
   } catch (error) {
     // Rollback the transaction in case of any error
     await t.rollback();
 
     console.error("Error creating user:", error);
+
+    // Handle specific errors
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return ApiResponse(res, "error", 400, "Email already exists");
+    }
+
     return ApiResponse(
       res,
       "error",
@@ -126,25 +192,94 @@ async function createUser(req, res) {
 }
 
 async function updateUser(req, res) {
+  const t = await sequelize.transaction();
+  
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findByPk(req.params.id, {
+      transaction: t
+    });
+    
     if (!user) {
+      await t.rollback();
       return ApiResponse(res, "error", 404, "User not found");
     }
 
-    // Check if the password field is in the request body
-    if (req.body.password) {
-      // Hash the new password
-      const salt = await bcrypt.genSalt(12);
-      const hashedPassword = await bcrypt.hash(req.body.password, salt);
-      req.body.password = hashedPassword;
+    const { phones, role_name, password, ...userData } = req.body;
+
+    // Update role if provided
+    if (role_name) {
+      const role = await Role.findOne(
+        { where: { role_name: role_name } },
+        { transaction: t }
+      );
+      
+      if (!role) {
+        await t.rollback();
+        return ApiResponse(res, "error", 404, "Role not found");
+      }
+      userData.role_id = role.id;
     }
 
-    // Update user with the rest of the fields
-    const updatedUser = await user.update(req.body);
+    // Hash password if provided
+    if (password) {
+      const salt = await bcrypt.genSalt(12);
+      userData.password = await bcrypt.hash(password, salt);
+    }
 
+    // Update user
+    await user.update(userData, { transaction: t });
+
+    // Update phones if provided
+    if (phones && Array.isArray(phones)) {
+      // Validate phones array
+      const validPhones = phones.filter(phoneObj => phoneObj.phone && phoneObj.phone.trim() !== '');
+      
+      if (validPhones.length === 0) {
+        await t.rollback();
+        return ApiResponse(res, "error", 400, "At least one valid phone number is required");
+      }
+
+      // Remove existing phones
+      await PhoneNumber.destroy({
+        where: { user_id: user.id },
+        transaction: t
+      });
+
+      // Create new phones
+      const phonePromises = validPhones.map((phoneObj, index) =>
+        PhoneNumber.create({
+          phone: phoneObj.phone,
+          user_id: user.id
+        }, { transaction: t })
+      );
+
+      await Promise.all(phonePromises);
+    }
+
+    // Fetch updated user with phones
+    const updatedUser = await User.findByPk(user.id, {
+      include: [
+        {
+          model: PhoneNumber,
+          as: 'phones',
+          attributes: ['id', 'phone']
+        },
+      ],
+      attributes: { exclude: ['password'] },
+      transaction: t
+    });
+
+    await t.commit();
+    
     ApiResponse(res, "success", 200, "User updated successfully", updatedUser);
   } catch (err) {
+    await t.rollback();
+    console.error("Error updating user:", err);
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return ApiResponse(res, "error", 400, "Email already exists");
+    }
+    
     ApiResponse(res, "error", 500, err?.message || "Failed to update user", null, {
       message: err.message,
     });

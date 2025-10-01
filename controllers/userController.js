@@ -232,12 +232,18 @@ async function getUsersByName(req,res){
 
 async function getUsersNameAndId(req, res) {
   try {
+    const { status } = req.query
+    const whereConditions = {}
+
+    if(status){
+      whereConditions.status = status;
+    }
+
     const users = await User.findAll({
-      attributes: ['id', 'name', 'role_id', 'profile_image_url'],
-      where: {
-        // status: 'active',
-      },
+      attributes: ['id', 'name', 'role_id', 'profile_image_url', 'status'],
+      where: whereConditions
     });
+
     ApiResponse(res, "success", 200, "Users fetched successfully", users);
   } catch (err) {
     ApiResponse(res, "error", 500, err?.message || "Failed to fetch users", null, {

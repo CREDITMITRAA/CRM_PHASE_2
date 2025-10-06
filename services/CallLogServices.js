@@ -348,7 +348,7 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
       ]);
 
       const connectivityRate = totalCalls > 0 
-        ? ((connectedCalls / totalCalls) * 100).toFixed(1) + '%'
+        ? ((connectedCalls / totalCalls) * 100).toFixed(2)
         : '0%';
 
       return {

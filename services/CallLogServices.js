@@ -355,7 +355,7 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
         hour: slot.label,
         total: totalCalls,
         connected: connectedCalls,
-        rate: connectivityRate
+        rate: parseFloat(connectivityRate)
       };
     })
   );

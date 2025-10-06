@@ -216,14 +216,14 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       // If no leads contacted, return basic call stats
       if (contactedLeadIds.length === 0) {
         return {
-          agent_name: agent.name,
-          total_calls: totalCalls,
-          connected_calls: connectedCalls,
-          connectivity_percentage: connectivityPercentage,
-          avg_call_duration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
-          talk_time: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
-          active_prospects: 0,
-          conversion_rate: 0,
+          name: agent.name,
+          totalCalls,
+          connectedCalls,
+          connectivity: connectivityPercentage,
+          avgDuration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
+          talkTime: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
+          prospects: 0,
+          conversion: 0,
           total_leads_contacted: 0
         };
       }
@@ -292,7 +292,6 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
         // Normal time slot (e.g., 9 AM - 10 AM)
         hourCondition = {
           [Op.and]: [
-            // Since call_timestamp is in IST, we can directly use HOUR function
             sequelize.where(sequelize.fn('HOUR', sequelize.col('call_timestamp')), Op.gte, slot.start),
             sequelize.where(sequelize.fn('HOUR', sequelize.col('call_timestamp')), Op.lt, slot.end)
           ]
@@ -313,33 +312,29 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
         };
       }
 
-      // Build the complete where clause
-      const whereClause = {
-        ...dateFilter.condition,
-        ...employeeFilter.condition, // This includes employee_id filter if provided
-        ...hourCondition,
+      // Build the complete where clause properly
+      const baseWhereClause = {
+        ...employeeFilter.condition,
         status: 'active'
       };
 
-      // Remove call_timestamp from dateFilter.condition if it exists to avoid conflicts
-      if (whereClause.call_timestamp && dateFilter.condition.call_timestamp) {
-        // We need to handle both date range and hour condition
-        // Use Op.and to combine both conditions
-        whereClause[Op.and] = [
-          dateFilter.condition.call_timestamp,
+      // Combine date filter and hour condition using Op.and
+      const finalWhereClause = {
+        ...baseWhereClause,
+        [Op.and]: [
+          dateFilter.condition.call_timestamp ? dateFilter.condition : {},
           hourCondition
-        ];
-        delete whereClause.call_timestamp;
-      }
+        ].filter(condition => Object.keys(condition).length > 0) // Remove empty objects
+      };
 
       const [totalCalls, connectedCalls] = await Promise.all([
         CallLog.count({
-          where: whereClause,
+          where: finalWhereClause,
           transaction
         }),
         CallLog.count({
           where: {
-            ...whereClause,
+            ...finalWhereClause,
             call_type: 'OUTGOING',
             call_status: 'ANSWERED'
           },

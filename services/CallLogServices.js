@@ -216,14 +216,14 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       // If no leads contacted, return basic call stats
       if (contactedLeadIds.length === 0) {
         return {
-          agent_name: agent.name,
-          total_calls: totalCalls,
-          connected_calls: connectedCalls,
-          connectivity_percentage: connectivityPercentage,
-          avg_call_duration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
-          talk_time: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
-          active_prospects: 0,
-          conversion_rate: 0,
+          name: agent.name,
+          totalCalls,
+          connectedCalls,
+          connectivity: connectivityPercentage,
+          avgDuration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
+          talkTime: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
+          prospects: 0,
+          conversion: 0,
           total_leads_contacted: 0
         };
       }

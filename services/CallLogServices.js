@@ -197,8 +197,8 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       const totalCalls = parseInt(callStats?.total_calls || 0);
       const connectedCalls = parseInt(callStats?.connected_calls || 0);
       const connectivityPercentage = totalCalls > 0 
-        ? ((connectedCalls / totalCalls) * 100).toFixed(1) + '%'
-        : '0%';
+        ? ((connectedCalls / totalCalls) * 100).toFixed(1)
+        : 0;
 
       const avgDurationSeconds = Math.round(callStats?.avg_duration || 0);
       const totalTalkTimeSeconds = Math.round(callStats?.total_talk_time || 0);
@@ -223,7 +223,7 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
           avg_call_duration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
           talk_time: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
           active_prospects: 0,
-          conversion_rate: '0%',
+          conversion_rate: 0,
           total_leads_contacted: 0
         };
       }
@@ -248,8 +248,8 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       const convertedLeads = parseInt(leadMetrics?.converted_leads || 0);
       
       const conversionRate = totalLeadsContacted > 0 
-        ? ((convertedLeads / totalLeadsContacted) * 100).toFixed(1) + '%'
-        : '0%';
+        ? ((convertedLeads / totalLeadsContacted) * 100).toFixed(1)
+        : 0;
 
       return {
         name: agent.name,

@@ -194,6 +194,17 @@ const LOGIN_SCHEME_OPTIONS = [
     "BT"
 ]
 
+const callTypes = {
+    OUTGOING: "OUTGOING",
+    INCOMING: "INCOMING",
+    MISSED: "MISSED"
+}
+
+const callStatuses = {
+    ANSWERED: "ANSWERED",
+    NOT_ANSWERED: "NOT_ANSWERED"
+}
+
 module.exports = {
     LEAD_STATUSES,
     VERIFICATION_STATUSES,
@@ -233,5 +244,7 @@ module.exports = {
     ALL_DISPUTES_UPDATED,
     ALL_CLEAR,
     DISPUTE_UPDATED,
-    TASK_REMINDER
+    TASK_REMINDER,
+    callTypes,
+    callStatuses
 }

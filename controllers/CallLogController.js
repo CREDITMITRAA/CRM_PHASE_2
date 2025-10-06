@@ -8,6 +8,7 @@ const { getLeadByPhone } = require("../services/leadServices");
 const { getUserByPhone } = require("../services/UserServices");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const moment = require("moment-timezone");
+const { buildDateFilter, buildEmployeeFilter, getKPIMetrics, getAgentPerformance, getTimeAnalysis } = require("../services/CallLogServices");
 
 // Helper to normalize phone to last 10 digits
 function normalizePhone(phone) {
@@ -326,8 +327,42 @@ async function getOverallCallsSummary(req, res) {
   }
 }
 
+async function getCallAnalytics(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { startDate, endDate, employee_id, time_period } = req.query
+
+    // build date filters
+    const dateFilter = buildDateFilter(startDate, endDate, time_period)
+
+    // build employee filters
+    const employeeFilter = buildEmployeeFilter(employee_id)
+
+    const [kpiData,agentPerformance,timeAnalysis] = await Promise.all([
+      getKPIMetrics(dateFilter,employeeFilter,transaction),
+      getAgentPerformance(dateFilter, employeeFilter, transaction),
+      getTimeAnalysis(dateFilter, employeeFilter, transaction)
+    ])
+
+    await transaction.commit()
+
+    let responseData = {
+      kpis: kpiData,
+      agentPerformance, 
+      timeAnalysis
+    }
+
+    return ApiResponse(res, "SUCCESS", 200, "Call analytics fetched successfully", responseData)
+  } catch (error) {
+    await transaction.rollback()
+    console.log("failed to fetch call analytics = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch call analytics !", null, error)
+  }
+}
+
 module.exports = {
   addCallLog,
   getOverallCallsSummary,
   getCallLogs,
+  getCallAnalytics
 };

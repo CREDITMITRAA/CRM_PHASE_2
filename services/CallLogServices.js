@@ -109,8 +109,8 @@ async function getKPIMetrics(dateFilter, employeeFilter, transaction){
 
     // connection rate
     const connectionRate = totalCallsMade > 0
-        ? ((connectedCalls / totalCallsMade) * 100).toFixed(2) + '%'
-        : '0%'
+        ? parseFloat(((connectedCalls / totalCallsMade) * 100).toFixed(2))
+        : 0
 
     // missed calls
     const missedCalls = await CallLog.count({
@@ -152,8 +152,8 @@ async function getKPIMetrics(dateFilter, employeeFilter, transaction){
         totalCallsReceived,
         connectedCalls,
         connectionRate,
-        avgCallDuration:formatDuration(avgDurationSeconds),
-        totalTalkTime:formatDuration(totalTalkTimeSeconds),
+        avgCallDuration:avgDurationSeconds,
+        totalTalkTime:totalTalkTimeSeconds,
         missedCalls
     }
 }
@@ -197,7 +197,7 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       const totalCalls = parseInt(callStats?.total_calls || 0);
       const connectedCalls = parseInt(callStats?.connected_calls || 0);
       const connectivityPercentage = totalCalls > 0 
-        ? ((connectedCalls / totalCalls) * 100).toFixed(1)
+        ? parseFloat(((connectedCalls / totalCalls) * 100).toFixed(1))
         : 0;
 
       const avgDurationSeconds = Math.round(callStats?.avg_duration || 0);
@@ -220,8 +220,8 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
           totalCalls,
           connectedCalls,
           connectivity: connectivityPercentage,
-          avgDuration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
-          talkTime: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
+          avgDuration: avgDurationSeconds,
+          talkTime: totalTalkTimeSeconds,
           prospects: 0,
           conversion: 0,
           total_leads_contacted: 0
@@ -248,7 +248,7 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       const convertedLeads = parseInt(leadMetrics?.converted_leads || 0);
       
       const conversionRate = totalLeadsContacted > 0 
-        ? ((convertedLeads / totalLeadsContacted) * 100).toFixed(1)
+        ? parseFloat(((convertedLeads / totalLeadsContacted) * 100).toFixed(1))
         : 0;
 
       return {
@@ -256,8 +256,8 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
         totalCalls,
         connectedCalls,
         connectivity: connectivityPercentage,
-        avgDuration: `${Math.floor(avgDurationSeconds / 60)}:${(avgDurationSeconds % 60).toString().padStart(2, '0')}`,
-        talkTime: `${Math.floor(totalTalkTimeSeconds / 3600)}:${Math.floor((totalTalkTimeSeconds % 3600) / 60).toString().padStart(2, '0')}`,
+        avgDuration: avgDurationSeconds,
+        talkTime: totalTalkTimeSeconds,
         prospects: activeProspects,
         conversion: conversionRate,
         total_leads_contacted: totalLeadsContacted
@@ -269,7 +269,6 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
 }
 
 async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
-  // Define time slots for analysis in IST
   const timeSlots = [
     { start: 9, end: 10, label: '9 AM - 10 AM' },
     { start: 10, end: 11, label: '10 AM - 11 AM' },
@@ -281,25 +280,28 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
     { start: 16, end: 17, label: '04 PM - 05 PM' },
     { start: 17, end: 18, label: '05 PM - 06 PM' },
     { start: 18, end: 19, label: '06 PM - 07 PM' },
-    { start: 19, end: 9, label: '07 PM - 09 AM' } // Overnight slot
+    { start: 19, end: 9, label: '07 PM - 09 AM' }
   ];
 
   const timeAnalysis = await Promise.all(
     timeSlots.map(async (slot) => {
-      let hourCondition;
+      // Build base where clause
+      const baseWhere = {
+        ...employeeFilter.condition,
+        status: 'active'
+      };
 
+      // Build hour condition
+      let hourWhere;
       if (slot.start < slot.end) {
-        // Normal time slot (e.g., 9 AM - 10 AM)
-        hourCondition = {
+        hourWhere = {
           [Op.and]: [
-            // Since call_timestamp is in IST, we can directly use HOUR function
             sequelize.where(sequelize.fn('HOUR', sequelize.col('call_timestamp')), Op.gte, slot.start),
             sequelize.where(sequelize.fn('HOUR', sequelize.col('call_timestamp')), Op.lt, slot.end)
           ]
         };
       } else {
-        // Overnight slot (e.g., 7 PM - 9 AM next day)
-        hourCondition = {
+        hourWhere = {
           [Op.or]: [
             { [Op.and]: [
               sequelize.where(sequelize.fn('HOUR', sequelize.col('call_timestamp')), Op.gte, slot.start),
@@ -313,49 +315,26 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
         };
       }
 
-      // Build the complete where clause
-      const whereClause = {
-        ...dateFilter.condition,
-        ...employeeFilter.condition, // This includes employee_id filter if provided
-        ...hourCondition,
-        status: 'active'
+      // Combine all conditions
+      const finalWhere = {
+        ...baseWhere,
+        ...hourWhere,
+        ...dateFilter.condition
       };
 
-      // Remove call_timestamp from dateFilter.condition if it exists to avoid conflicts
-      if (whereClause.call_timestamp && dateFilter.condition.call_timestamp) {
-        // We need to handle both date range and hour condition
-        // Use Op.and to combine both conditions
-        whereClause[Op.and] = [
-          dateFilter.condition.call_timestamp,
-          hourCondition
-        ];
-        delete whereClause.call_timestamp;
-      }
-
       const [totalCalls, connectedCalls] = await Promise.all([
-        CallLog.count({
-          where: whereClause,
-          transaction
-        }),
-        CallLog.count({
-          where: {
-            ...whereClause,
-            call_type: 'OUTGOING',
-            call_status: 'ANSWERED'
-          },
-          transaction
+        CallLog.count({ where: finalWhere, transaction }),
+        CallLog.count({ 
+          where: { ...finalWhere, call_type: 'OUTGOING', call_status: 'ANSWERED' }, 
+          transaction 
         })
       ]);
-
-      const connectivityRate = totalCalls > 0 
-        ? ((connectedCalls / totalCalls) * 100).toFixed(2)
-        : '0';
 
       return {
         hour: slot.label,
         total: totalCalls,
         connected: connectedCalls,
-        rate: parseFloat(connectivityRate)
+        rate: totalCalls > 0 ? parseFloat(((connectedCalls / totalCalls) * 100).toFixed(2)) : 0
       };
     })
   );

@@ -125,8 +125,14 @@ async function getKPIMetrics(dateFilter, employeeFilter, transaction){
     // call durations
     const durationStats = await CallLog.findOne({
         attributes: [
+            // Average duration
             [sequelize.fn('AVG', sequelize.col('call_duration')), 'avg_duration'],
-            [sequelize.fn('SUM', sequelize.col('call_duration')), 'total_talk_time']
+            // Total talk time ( all answered calls )
+            [sequelize.fn('SUM', sequelize.col('call_duration')), 'total_talk_time'],
+            // Incoming talk time
+            [sequelize.fn('SUM', sequelize.literal(`CASE WHEN call_type = '${callTypes.INCOMING}' THEN call_duration ELSE 0 END`)), 'incoming_talk_time'],
+            // Outgoing talk time
+            [sequelize.fn('SUM', sequelize.literal(`CASE WHEN call_type = '${callTypes.OUTGOING}' THEN call_duration ELSE 0 END`)), 'outgoing_talk_time']
         ],
         where: {
             ...whereClause,
@@ -139,6 +145,8 @@ async function getKPIMetrics(dateFilter, employeeFilter, transaction){
 
     const avgDurationSeconds = Math.round(durationStats?.avg_duration || 0)
     const totalTalkTimeSeconds = Math.round(durationStats?.total_talk_time || 0)
+    const incomingTalkTimeSeconds = Math.round(durationStats?.incoming_talk_time || 0)
+    const outgoingTalkTimeSeconds = Math.round(durationStats?.outgoing_talk_time || 0)
 
     // format duration from seconds to MM:SS
     const formatDuration = (seconds) => {
@@ -154,6 +162,8 @@ async function getKPIMetrics(dateFilter, employeeFilter, transaction){
         connectionRate,
         avgCallDuration:avgDurationSeconds,
         totalTalkTime:totalTalkTimeSeconds,
+        incomingTalkTime: incomingTalkTimeSeconds,
+        outgoingTalkTime: outgoingTalkTimeSeconds,
         missedCalls
     }
 }
@@ -232,8 +242,8 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
       const leadMetrics = await Lead.findOne({
         attributes: [
           [sequelize.fn('COUNT', sequelize.col('id')), 'total_leads'],
-          [sequelize.fn('SUM', sequelize.literal('CASE WHEN lead_status = "Active Prospect" THEN 1 ELSE 0 END')), 'active_prospects'],
-          [sequelize.fn('SUM', sequelize.literal('CASE WHEN application_status = "Approved" THEN 1 ELSE 0 END')), 'converted_leads']
+          [sequelize.fn('SUM', sequelize.literal('CASE WHEN lead_status = "Interested" THEN 1 ELSE 0 END')), 'active_prospects'],
+          [sequelize.fn('SUM', sequelize.literal('CASE WHEN application_status = "Loans Disbursed From Bank" THEN 1 ELSE 0 END')), 'converted_leads']
         ],
         where: {
           id: { [Op.in]: contactedLeadIds },

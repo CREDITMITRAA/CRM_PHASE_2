@@ -377,7 +377,7 @@ async function uploadCallRecordingFile(req,res){
       return ApiResponse(res, "ERROR", 400, "Missing required fields !")
     }
 
-    const uploadedFileUrl = await uploadRecordingFile(customerPhone, employeePhone, file, transaction)
+    const uploadedFileUrl = await uploadRecordingFile(normalizePhone(customerPhone), normalizePhone(employeePhone), file, transaction)
 
     if(!uploadedFileUrl){
       return ApiResponse(res, "ERROR", 500, "Failed to fetch uploaded file url !")

@@ -15,6 +15,22 @@ async function getUserByPhone(phone, transaction=null){
     return phoneRecord
 }
 
+async function getUserByUserId(userId, transaction=null){
+    if(!userId){
+        throw new Error("userId is required to fetch the user")
+    }
+
+    const user = await User.findOne({
+        where: {id:userId},
+        attributes: ["id", "name"],
+        raw: true,
+        ...(transaction && {transaction})
+    })
+
+    return user
+}
+
 module.exports = {
-    getUserByPhone
+    getUserByPhone,
+    getUserByUserId
 }

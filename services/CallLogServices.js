@@ -5,6 +5,7 @@ const { CallLog, sequelize, Lead, User } = require("../models");
 const { callTypes, callStatuses } = require("../utilities/constants");
 const { getLeadByPhone } = require("./leadServices");
 const { s3 } = require("../controllers/filesUploadController");
+const { getUserByPhone, getUserByUserId } = require("./UserServices");
 
 function buildDateFilter(startDate, endDate, timePeriod) {
   // If no date parameters provided, return empty condition for all data
@@ -356,37 +357,35 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
   return timeAnalysis;
 }
 
-async function uploadRecordingFile(customerPhone, employeePhone, recordingFile, transaction=null){
-  // get lead by customerPhone
+async function uploadRecordingFile(customerPhone, employeePhone, recordingFile, transaction = null) {
   const lead = await getLeadByPhone(customerPhone, transaction)
+  if (!lead) throw new Error("Lead not found with customer phone!")
+
   const timestamp = Date.now()
   const extension = path.extname(recordingFile.originalname)
 
-  if(!lead){
-    throw new Error("Lead not found with customer phone !")
+  const phoneRecord = await getUserByPhone(employeePhone, transaction)
+  let user = null
+  if (phoneRecord && phoneRecord.user_id) {
+    user = await getUserByUserId(phoneRecord.user_id, transaction)
   }
-
-  // Generate unique key with directory structure
-  const uniqueKey = `${lead.id}/${lead.id}_${employeePhone}_${customerPhone}_${timestamp}${extension}`
+  const sanitize = (str) => str.replace(/[^a-zA-Z0-9-_]/g, "_")
+  const uniqueKey = `${lead.id}/${lead.id}_${sanitize(lead.name)}_${sanitize(user?.name || customerPhone)}_${timestamp}${extension}`
 
   const params = {
     Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: uniqueKey,
-    Body: fs.createReadStream(recordingFile.path)
+    Body: fs.createReadStream(recordingFile.path),
+    ContentType: recordingFile.mimetype,
+    ACL: "private",
   }
 
-  // upload file to S3
   const data = await s3.upload(params).promise()
 
-  // delete local file only if it exists
-  if(fs.existsSync(recordingFile.path)){
-    fs.unlink(recordingFile.path, (err) => {
-      if (err) {
-        console.error(`Failed to delete local file: ${recordingFile.path}`, err);
-      } else {
-        console.log(`Successfully deleted local file: ${recordingFile.path}`);
-      }
-    })
+  if (fs.existsSync(recordingFile.path)) {
+    await fs.promises.unlink(recordingFile.path).catch(err =>
+      console.error("Failed to delete local file:", err)
+    )
   }
 
   return data.Location

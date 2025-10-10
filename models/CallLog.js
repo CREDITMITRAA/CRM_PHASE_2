@@ -100,6 +100,11 @@ module.exports = (sequelize) => {
     lead_id: {
       type: DataTypes.INTEGER,
       allowNull: false
+    },
+
+    recording_file_url: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
 
   }, { 

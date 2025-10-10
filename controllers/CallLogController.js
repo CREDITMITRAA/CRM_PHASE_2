@@ -40,6 +40,7 @@ async function addCallLog(req, res) {
       call_log_id,
       call_date,
       call_log_duration,
+      recordingFileUrl
     } = req.body;
 
     total_duration = total_duration ?? call_log_duration;
@@ -101,6 +102,7 @@ async function addCallLog(req, res) {
       contact_name: contact_name || "UNKNOWN",
       call_log_id,
       call_date: new Date(call_date),
+      recording_file_url: recordingFileUrl
     };
 
     const savedCallLog = await CallLog.create(callLogDataToBeSaved, {
@@ -109,7 +111,7 @@ async function addCallLog(req, res) {
 
     let formattedTimestamp =
       moment(call_timestamp).format("DD-MM-YYYY hh:mm A");
-    let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds`;
+    let activityDescription = `Call Log Added: Call done at ${formattedTimestamp}, Call Type: ${call_type}, Call Status: ${call_status}, Call Duration: ${call_duration} seconds, Ringing Duration: ${ringing_duration} seconds, Total Duration: ${total_duration} seconds, File: ${recordingFileUrl}`;
     let logData = createLogData(
       activityDescription,
       "CALL_LOG_ADDED",

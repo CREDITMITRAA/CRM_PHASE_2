@@ -1,6 +1,10 @@
+const fs = require("fs");
+const path = require("path");
 const { Op } = require("sequelize");
 const { CallLog, sequelize, Lead, User } = require("../models");
 const { callTypes, callStatuses } = require("../utilities/constants");
+const { getLeadByPhone } = require("./leadServices");
+const { s3 } = require("../controllers/filesUploadController");
 
 function buildDateFilter(startDate, endDate, timePeriod) {
   // If no date parameters provided, return empty condition for all data
@@ -352,10 +356,47 @@ async function getTimeAnalysis(dateFilter, employeeFilter, transaction) {
   return timeAnalysis;
 }
 
+async function uploadRecordingFile(customerPhone, employeePhone, recordingFile, transaction=null){
+  // get lead by customerPhone
+  const lead = await getLeadByPhone(customerPhone, transaction)
+  const timestamp = Date.now()
+  const extension = path.extname(recordingFile.originalname)
+
+  if(!lead){
+    throw new Error("Lead not found with customer phone !")
+  }
+
+  // Generate unique key with directory structure
+  const uniqueKey = `${lead.id}/${lead.id}_${employeePhone}_${customerPhone}_${timestamp}${extension}`
+
+  const params = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: uniqueKey,
+    Body: fs.createReadStream(recordingFile.path)
+  }
+
+  // upload file to S3
+  const data = await s3.upload(params).promise()
+
+  // delete local file only if it exists
+  if(fs.existsSync(recordingFile.path)){
+    fs.unlink(recordingFile.path, (err) => {
+      if (err) {
+        console.error(`Failed to delete local file: ${recordingFile.path}`, err);
+      } else {
+        console.log(`Successfully deleted local file: ${recordingFile.path}`);
+      }
+    })
+  }
+
+  return data.Location
+}
+
 module.exports = {
     buildDateFilter,
     buildEmployeeFilter,
     getKPIMetrics,
     getAgentPerformance,
-    getTimeAnalysis
+    getTimeAnalysis,
+    uploadRecordingFile
 }

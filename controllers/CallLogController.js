@@ -8,7 +8,7 @@ const { getLeadByPhone } = require("../services/leadServices");
 const { getUserByPhone } = require("../services/UserServices");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const moment = require("moment-timezone");
-const { buildDateFilter, buildEmployeeFilter, getKPIMetrics, getAgentPerformance, getTimeAnalysis } = require("../services/CallLogServices");
+const { buildDateFilter, buildEmployeeFilter, getKPIMetrics, getAgentPerformance, getTimeAnalysis, uploadRecordingFile } = require("../services/CallLogServices");
 
 // Helper to normalize phone to last 10 digits
 function normalizePhone(phone) {
@@ -360,9 +360,42 @@ async function getCallAnalytics(req,res){
   }
 }
 
+async function uploadCallRecordingFile(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const file = req.file
+
+    if(!file){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 400, "No file provided !")
+    }
+
+    const { customerPhone, employeePhone } = req.body
+
+    if( !customerPhone || !employeePhone ){
+      await transaction.rollback()
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+    }
+
+    const uploadedFileUrl = await uploadRecordingFile(customerPhone, employeePhone, file, transaction)
+
+    if(!uploadedFileUrl){
+      return ApiResponse(res, "ERROR", 500, "Failed to fetch uploaded file url !")
+    }
+
+    return ApiResponse(res, "SUCCESS", 201, "File uploaded successfully", uploadedFileUrl)
+
+  } catch (error) {
+    await transaction.rollback()
+    console.log("Failed to upload call recording file = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload call recording file !", null, error)
+  }
+}
+
 module.exports = {
   addCallLog,
   getOverallCallsSummary,
   getCallLogs,
-  getCallAnalytics
+  getCallAnalytics,
+  uploadCallRecordingFile
 };

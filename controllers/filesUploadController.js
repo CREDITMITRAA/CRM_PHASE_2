@@ -7,7 +7,7 @@ const { addLeadDocument } = require("../services/leadDocumentServices");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
 
-const s3 = new AWS.S3();
+export const s3 = new AWS.S3();
 
 // const upload = multer({ dest: "uploads/" });
 

@@ -10,4 +10,5 @@ router.post('/add-call-log', CallLogController.addCallLog)
 router.get('/get-overall-calls-summary', CallLogController.getOverallCallsSummary)
 router.get('/get-call-logs', CallLogController.getCallLogs)
 router.get('/get-call-analytics', CallLogController.getCallAnalytics)
+router.post('/upload-call-recording-file', CallLogController.uploadCallRecordingFile)
 module.exports = router

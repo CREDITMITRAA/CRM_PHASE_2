@@ -2713,40 +2713,42 @@ async function uploadLead(req, res) {
       }
 
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
-      const adminUsers = await User.findAll({
-        where: {
-          status: "active",
-          role_id: 1,
-        },
-        attributes: ["id"],
-        raw: true,
-        transaction,
-      });
 
-      const adminUserIds = adminUsers.map((user) => user.id);
+      // uncomment below code if you want to send notification to admins
+      // const adminUsers = await User.findAll({
+      //   where: {
+      //     status: "active",
+      //     role_id: 1,
+      //   },
+      //   attributes: ["id"],
+      //   raw: true,
+      //   transaction,
+      // });
 
-      const io = getIo();
+      // const adminUserIds = adminUsers.map((user) => user.id);
 
-      for (const adminId of adminUserIds) {
-        const notification = await saveNotification(
-          {
-            employee_id: adminId, // Send to admin user
-            notification_from: from_google_sheet ? "Meta Ads" : "Website",
-            notification_title: "Lead Added",
-            message: `1 lead ( ${name} - ${phone}) has been added.`,
-          },
-          transaction
-        );
+      // const io = getIo();
 
-        // Emit to each admin user's socket
-        io.to(`user_${adminId}`).emit("leadAssignment", {
-          notification_title: "Lead Added",
-          message: `1 lead ( ${name} - ${phone}) has been added.`,
-          notification_from: from_google_sheet ? "Meta Ads" : "Website",
-          leadCount: 1,
-          notificationId: notification.id,
-        });
-      }
+      // for (const adminId of adminUserIds) {
+      //   const notification = await saveNotification(
+      //     {
+      //       employee_id: adminId, // Send to admin user
+      //       notification_from: from_google_sheet ? "Meta Ads" : "Website",
+      //       notification_title: "Lead Added",
+      //       message: `1 lead ( ${name} - ${phone}) has been added.`,
+      //     },
+      //     transaction
+      //   );
+
+      //   // Emit to each admin user's socket
+      //   io.to(`user_${adminId}`).emit("leadAssignment", {
+      //     notification_title: "Lead Added",
+      //     message: `1 lead ( ${name} - ${phone}) has been added.`,
+      //     notification_from: from_google_sheet ? "Meta Ads" : "Website",
+      //     leadCount: 1,
+      //     notificationId: notification.id,
+      //   });
+      // }
 
       await transaction.commit();
       return ApiResponse(

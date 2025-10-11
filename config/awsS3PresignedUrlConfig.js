@@ -28,6 +28,9 @@ const generatePresignedUrl = async (s3Key, bucketName = null, expiresIn = 3600) 
       }
     }
 
+    // Decode the key to handle encoded characters properly
+    finalKey = decodeURIComponent(finalKey);
+
     const params = {
       Bucket: finalBucketName,
       Key: finalKey,
@@ -62,14 +65,14 @@ const extractBucketAndKeyFromUrl = (s3Url) => {
         // Format 1 & 3: bucket-name.s3...
         return {
           bucket: hostParts[0],
-          key: url.pathname.substring(1)
+          key: url.pathname.substring(1) // Keep the key encoded for now
         };
       } else {
         // Format 2: s3.region.amazonaws.com/bucket-name/key
         const pathParts = url.pathname.substring(1).split('/');
         return {
           bucket: pathParts[0],
-          key: pathParts.slice(1).join('/')
+          key: pathParts.slice(1).join('/') // Keep the key encoded for now
         };
       }
     }
@@ -89,11 +92,21 @@ const getPresignedUrlFromFullUrl = async (fullS3Url, expiresIn = 3600) => {
     const bucketInfo = extractBucketAndKeyFromUrl(fullS3Url);
     if (!bucketInfo) return null;
 
+    // Decode the key to handle spaces and special characters properly
+    const decodedKey = decodeURIComponent(bucketInfo.key);
+
     const params = {
       Bucket: bucketInfo.bucket,
-      Key: bucketInfo.key,
+      Key: decodedKey, // Use decoded key
       Expires: expiresIn
     };
+
+    console.log('Generating presigned URL for:', {
+      bucket: bucketInfo.bucket,
+      originalKey: bucketInfo.key,
+      decodedKey: decodedKey,
+      fullUrl: fullS3Url
+    });
 
     const presignedUrl = await s3.getSignedUrlPromise('getObject', params);
     return presignedUrl;

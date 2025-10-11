@@ -191,7 +191,7 @@ async function getActivityLogs(req, res) {
         return map;
       }, {});
 
-      // Process each row to add lead_bucket and presigned URLs
+      // Process each row to add lead_bucket and replace File URLs with presigned URLs
       result.rows = await Promise.all(
         result.rows.map(async (row) => {
           // Handle both raw results and model instances
@@ -202,19 +202,22 @@ async function getActivityLogs(req, res) {
             lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
           };
 
-          // Generate presigned URL for CALL_LOG_ADDED activities
+          // Replace File URL with presigned URL for CALL_LOG_ADDED activities
           if (rowData.activity_type === "CALL_LOG_ADDED" && rowData.activity_desc) {
             const audioUrlMatch = rowData.activity_desc.match(/File:\s*(https?:\/\/[^\s,]+)/);
             if (audioUrlMatch && audioUrlMatch[1]) {
               try {
                 const presignedUrl = await getPresignedUrlFromFullUrl(audioUrlMatch[1]);
-                processedRow.recording_presigned_url = presignedUrl;
-                processedRow.recording_original_url = audioUrlMatch[1]; // Keep original URL for reference
+                if (presignedUrl) {
+                  // Replace the original URL with presigned URL in activity_desc
+                  processedRow.activity_desc = rowData.activity_desc.replace(
+                    audioUrlMatch[1], 
+                    presignedUrl
+                  );
+                }
               } catch (error) {
                 console.error('Error generating presigned URL for activity log:', error);
-                // Continue without presigned URL if generation fails
-                processedRow.recording_presigned_url = null;
-                processedRow.recording_original_url = audioUrlMatch[1];
+                // Keep original activity_desc if presigned URL generation fails
               }
             }
           }

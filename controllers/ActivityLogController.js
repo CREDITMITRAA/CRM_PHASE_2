@@ -197,10 +197,15 @@ async function getActivityLogs(req, res) {
           // Handle both raw results and model instances
           const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
           
+          // Create a clean processed row with only existing fields
           const processedRow = {
             ...rowData,
             lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
           };
+
+          // Remove any extra fields that might have been added
+          delete processedRow.recording_presigned_url;
+          delete processedRow.recording_original_url;
 
           // Replace File URL with presigned URL for CALL_LOG_ADDED activities
           if (rowData.activity_type === "CALL_LOG_ADDED" && rowData.activity_desc) {

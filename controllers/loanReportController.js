@@ -19,6 +19,7 @@ const {
   generateLoanOrCreditReportChangeLog,
 } = require("../utilities/helper-functions");
 const LeadServices = require("../services/leadServices");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 async function getLoanReportsByLeadId(req, res) {
   try {
@@ -47,12 +48,35 @@ async function getLoanReportsByLeadId(req, res) {
       where: { lead_id: validLeadId, status: "active" },
     });
 
+    // Convert to plain objects and generate presigned URLs
+    const processedLoanReports = await Promise.all(
+      loanReports.map(async (report) => {
+        const reportData = report.get ? report.get({ plain: true }) : report;
+        
+        // Generate presigned URL for closing_document_url if it exists and is not null
+        if (reportData.closing_document_url) {
+          try {
+            const presignedUrl = await getPresignedUrlFromFullUrl(reportData.closing_document_url);
+            if (presignedUrl) {
+              // Replace the original URL with presigned URL
+              reportData.closing_document_url = presignedUrl;
+            }
+          } catch (error) {
+            console.error('Error generating presigned URL for loan report document:', error);
+            // Keep original URL if presigned URL generation fails
+          }
+        }
+        
+        return reportData;
+      })
+    );
+
     return ApiResponse(
       res,
       "success",
       200,
       "Loan reports retrieved successfully",
-      loanReports
+      processedLoanReports
     );
   } catch (error) {
     console.error("Error fetching loan reports by lead ID:", error);

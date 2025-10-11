@@ -17,6 +17,7 @@ const {
   generateLoanOrCreditReportChangeLog,
 } = require("../utilities/helper-functions");
 const LeadServices = require("../services/leadServices");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 async function getCreditReportsByLeadId(req, res) {
   try {
@@ -44,12 +45,35 @@ async function getCreditReportsByLeadId(req, res) {
       where: { lead_id: validLeadId, status: "active" },
     });
 
+    // Convert to plain objects and generate presigned URLs
+    const processedCreditReports = await Promise.all(
+      creditReports.map(async (report) => {
+        const reportData = report.get ? report.get({ plain: true }) : report;
+        
+        // Generate presigned URL for closing_document_url if it exists
+        if (reportData.closing_document_url) {
+          try {
+            const presignedUrl = await getPresignedUrlFromFullUrl(reportData.closing_document_url);
+            if (presignedUrl) {
+              // Replace the original URL with presigned URL
+              reportData.closing_document_url = presignedUrl;
+            }
+          } catch (error) {
+            console.error('Error generating presigned URL for credit report document:', error);
+            // Keep original URL if presigned URL generation fails
+          }
+        }
+        
+        return reportData;
+      })
+    );
+
     return ApiResponse(
       res,
       "success",
       200,
       "Credit reports retrieved successfully",
-      creditReports
+      processedCreditReports
     );
   } catch (error) {
     console.error("Error fetching credit reports by lead ID:", error);
@@ -72,7 +96,7 @@ async function getAllCreditReports(req, res) {
 
     return ApiResponse(
       res,
-      "success",
+      "SUCCESS",
       200,
       "All credit reports retrieved successfully",
       creditReports
@@ -81,7 +105,7 @@ async function getAllCreditReports(req, res) {
     console.error("Error fetching all credit reports:", error);
     return ApiResponse(
       res,
-      "error",
+      "ERROR",
       500,
       error?.message || "Failed to fetch credit reports",
       null,

@@ -2,6 +2,7 @@ const { where, Op } = require("sequelize");
 const { User, sequelize, Role, LeadAssignment, Activity, PhoneNumber } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const bcrypt = require("bcryptjs");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 async function getAllUsers(req, res) {
   try {
@@ -379,7 +380,30 @@ async function getUsersNameAndId(req, res) {
       where: whereConditions
     });
 
-    ApiResponse(res, "success", 200, "Users fetched successfully", users);
+    // Convert to plain objects and generate presigned URLs
+    const processedUsers = await Promise.all(
+      users.map(async (user) => {
+        const userData = user.get ? user.get({ plain: true }) : user;
+        
+        // Generate presigned URL for profile_image_url
+        if (userData.profile_image_url) {
+          try {
+            const presignedUrl = await getPresignedUrlFromFullUrl(userData.profile_image_url);
+            if (presignedUrl) {
+              // Replace the original URL with presigned URL
+              userData.profile_image_url = presignedUrl;
+            }
+          } catch (error) {
+            console.error('Error generating presigned URL for user profile image:', error);
+            // Keep original URL if presigned URL generation fails
+          }
+        }
+        
+        return userData;
+      })
+    );
+
+    ApiResponse(res, "success", 200, "Users fetched successfully", processedUsers);
   } catch (err) {
     ApiResponse(res, "error", 500, err?.message || "Failed to fetch users", null, {
       message: err.message,

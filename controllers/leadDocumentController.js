@@ -1,3 +1,4 @@
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 const { LeadDocument, Lead, sequelize } = require("../models");
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices");
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants");
@@ -67,7 +68,30 @@ async function getLeadDocumentsByLeadId(req, res) {
         where:{lead_id: validLeadId, status:'active'}
     })
 
-    return ApiResponse(res, 'success', 200, "Lead Documents Fetch Successfully.", leadDocuments, null,null)
+    // Convert to plain objects and generate presigned URLs
+    const processedDocuments = await Promise.all(
+      leadDocuments.map(async (document) => {
+        const documentData = document.get ? document.get({ plain: true }) : document;
+        
+        // Generate presigned URL for document_url
+        if (documentData.document_url) {
+          try {
+            const presignedUrl = await getPresignedUrlFromFullUrl(documentData.document_url);
+            if (presignedUrl) {
+              // Replace the original URL with presigned URL
+              documentData.document_url = presignedUrl;
+            }
+          } catch (error) {
+            console.error('Error generating presigned URL for lead document:', error);
+            // Keep original URL if presigned URL generation fails
+          }
+        }
+        
+        return documentData;
+      })
+    );
+
+    return ApiResponse(res, 'success', 200, "Lead Documents Fetch Successfully.", processedDocuments, null,null)
   } catch (error) {
     return ApiResponse(res,"error",500,error?.message || "Failed to fetch Lead Documents !",null,error,null);
   }

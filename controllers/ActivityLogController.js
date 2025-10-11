@@ -11,6 +11,7 @@ const {
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
 const { ROLE_ADMIN } = require("../utilities/constants");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 async function getActivityLogs(req, res) {
   try {
@@ -170,36 +171,58 @@ async function getActivityLogs(req, res) {
     }
 
     if (result.rows.length > 0) {
-  // Get all unique lead IDs
-  const leadIds = [...new Set(
-    result.rows
-      .map(row => row.lead_id || row.get?.('lead_id')) // Handle both raw and model instances
-      .filter(id => id)
-  )];
+      // Get all unique lead IDs
+      const leadIds = [...new Set(
+        result.rows
+          .map(row => row.lead_id || row.get?.('lead_id')) // Handle both raw and model instances
+          .filter(id => id)
+      )];
 
-  // Fetch all lead buckets at once
-  const leads = await Lead.findAll({
-    where: { id: leadIds },
-    attributes: ['id', 'lead_bucket'],
-    raw: true
-  });
+      // Fetch all lead buckets at once
+      const leads = await Lead.findAll({
+        where: { id: leadIds },
+        attributes: ['id', 'lead_bucket'],
+        raw: true
+      });
 
-  // Create a mapping of lead_id to lead_bucket
-  const leadBucketMap = leads.reduce((map, lead) => {
-    map[lead.id] = lead.lead_bucket;
-    return map;
-  }, {});
+      // Create a mapping of lead_id to lead_bucket
+      const leadBucketMap = leads.reduce((map, lead) => {
+        map[lead.id] = lead.lead_bucket;
+        return map;
+      }, {});
 
-  // Assign lead_bucket to each row
-  result.rows = result.rows.map(row => {
-    // Handle both raw results and model instances
-    const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
-    return {
-      ...rowData,
-      lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
-    };
-  });
-}
+      // Process each row to add lead_bucket and presigned URLs
+      result.rows = await Promise.all(
+        result.rows.map(async (row) => {
+          // Handle both raw results and model instances
+          const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
+          
+          const processedRow = {
+            ...rowData,
+            lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
+          };
+
+          // Generate presigned URL for CALL_LOG_ADDED activities
+          if (rowData.activity_type === "CALL_LOG_ADDED" && rowData.activity_desc) {
+            const audioUrlMatch = rowData.activity_desc.match(/File:\s*(https?:\/\/[^\s,]+)/);
+            if (audioUrlMatch && audioUrlMatch[1]) {
+              try {
+                const presignedUrl = await getPresignedUrlFromFullUrl(audioUrlMatch[1]);
+                processedRow.recording_presigned_url = presignedUrl;
+                processedRow.recording_original_url = audioUrlMatch[1]; // Keep original URL for reference
+              } catch (error) {
+                console.error('Error generating presigned URL for activity log:', error);
+                // Continue without presigned URL if generation fails
+                processedRow.recording_presigned_url = null;
+                processedRow.recording_original_url = audioUrlMatch[1];
+              }
+            }
+          }
+
+          return processedRow;
+        })
+      );
+    }
 
     return ApiResponse(
       res,

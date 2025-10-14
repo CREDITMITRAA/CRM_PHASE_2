@@ -199,8 +199,6 @@ async function getAssignedLeads(filters, paginationData, transaction) {
     transaction,
   });
 
-  // page, pageSize, total, totalPages
-
   let pagination = {
     page: paginationData.page,
     pageSize: paginationData.pageSize,
@@ -214,10 +212,96 @@ async function getAssignedLeads(filters, paginationData, transaction) {
   };
 }
 
+async function getUnAssignedLeads(filters, paginationData, transaction){
+  let whereLead = { status: 'active' }
+  
+  if (filters.leadId) whereLead.id = parseInt(filters.leadId);
+  if (filters.phone) whereLead.phone = { [Op.like]: `%${filters.phone}%` };
+  if (filters.name) whereLead.name = { [Op.like]: `%${filters.name}%` };
+  if (filters.lead_source) whereLead.lead_source = filters.lead_source;
+  if (filters.utm_campaign) whereLead.utm_campaign = { [Op.like]: `%${filters.utm_campaign}%` };
+  if (filters.utm_source) whereLead.utm_source = { [Op.like]: `%${filters.utm_source}%` };
+  if (filters.importedOn) {
+    const [startRange, endRange] = filters.importedOn.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.createdAt = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.createdAt = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  // first find all lead_ids already assigned
+  const assignedLeadIds = await LeadAssignment.findAll({
+    where: { status: 'active' },
+    attributes: ["lead_id"],
+    raw: true,
+    transaction
+  })
+
+  const assignedIds = assignedLeadIds.map((a) => a.lead_id)
+  // exclude the above lead ids
+  if (assignedIds.length > 0) {
+    if (whereLead.id) {
+        whereLead.id = {
+          [Op.and]: [
+            { [Op.eq]: whereLead.id },
+            { [Op.notIn]: assignedIds }
+          ]
+        }
+      } else {
+        whereLead.id = { [Op.notIn]: assignedIds }
+      }
+  }
+
+  // now fetch unassigned leads normally
+  const { count, rows: unAssignedLeads } = await Lead.findAndCountAll({
+    where: whereLead,
+    order: [["id", "DESC"]],
+    limit: paginationData.pageSize,
+    offset: paginationData.offset,
+    transaction,
+  })
+
+  let pagination = {
+    page: paginationData.page,
+    pageSize: paginationData.pageSize,
+    total: count,
+    totalPages: Math.ceil(count / paginationData.pageSize),
+  }
+
+  return {
+    leads: unAssignedLeads,
+    pagination
+  }
+}
+
 module.exports = {
   updateLead,
   getLead,
   getLeadByPhone,
   getLeadNamesByLeadIds,
   getAssignedLeads,
+  getUnAssignedLeads
 };

@@ -4224,7 +4224,7 @@ async function getAssignedLeads(req,res){
     const offset = (page-1)*pageSize;
 
     let filters = { 
-      lead_id:leadId,
+      leadId,
       phone,
       name,
       lead_bucket,
@@ -4243,8 +4243,38 @@ async function getAssignedLeads(req,res){
     await transaction.commit()
     return ApiResponse(res, "SUCCESS", 200, "Assigned leads fetched successfully", response.leads, null, response.pagination)
   } catch (error) {
+    await transaction.rollback()
     console.log("Failed to fetch assigned leads ! = ", error);
     return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch assigned leads !", null, error)
+  }
+}
+
+async function getUnAssignedLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, importedOn=null, utm_campaign=null, utm_source=null } = req.query
+
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      importedOn,
+      utm_campaign,
+      utm_source
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getUnAssignedLeads(filters, paginationData, transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "UnAssigned leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    await transaction.rollback()
+    console.log("Failed to fetch un assigned leads ! = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch un assigned leads !", null, error)
   }
 }
 
@@ -4282,5 +4312,6 @@ module.exports = {
   getImportedLeadStats,
   getEmployeeWiseLeadStats,
   getLeadNames,
-  getAssignedLeads
+  getAssignedLeads,
+  getUnAssignedLeads
 };

@@ -37,4 +37,7 @@ router.post('/update-crif-parsed-report', authenticate([ROLE_ADMIN, ROLE_OPERATI
 router.get('/get-imported-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getImportedLeadStats)
 router.get('/get-employee-wise-lead-stats', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getEmployeeWiseLeadStats)
 router.post('/get-lead-names', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getLeadNames)
+
+// new APIs for optimizations
+router.get('/get-assigned-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getAssignedLeads)
 module.exports = router

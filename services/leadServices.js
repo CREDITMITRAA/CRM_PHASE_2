@@ -1,4 +1,6 @@
-const { Lead, sequelize } = require("../models");
+const { Op } = require("sequelize");
+const { Lead, sequelize, LeadAssignment } = require("../models");
+const moment = require("moment-timezone");
 
 async function updateLead(leadId, leadData, transaction) {
   if (!leadId) {
@@ -12,12 +14,12 @@ async function updateLead(leadId, leadData, transaction) {
   return lead; // Return the updated lead
 }
 
-async function getLead(leadId,transaction){
+async function getLead(leadId, transaction) {
   if (!leadId) {
     throw new Error("Lead ID is required to update the lead.");
   }
-  const lead = await Lead.findByPk(leadId, {transaction});
-  return lead
+  const lead = await Lead.findByPk(leadId, { transaction });
+  return lead;
 }
 
 async function getLeadByPhone(phone, transaction = null) {
@@ -30,7 +32,7 @@ async function getLeadByPhone(phone, transaction = null) {
     where: { phone },
     attributes: ["id", "name"],
     raw: true,
-    ...(transaction && { transaction })
+    ...(transaction && { transaction }),
   });
 
   if (!lead) {
@@ -39,30 +41,183 @@ async function getLeadByPhone(phone, transaction = null) {
       where: sequelize.literal(`JSON_CONTAINS(alternate_phones, '"${phone}"')`),
       attributes: ["id", "name"],
       raw: true,
-      ...(transaction && { transaction })
+      ...(transaction && { transaction }),
     });
   }
 
   return lead;
 }
 
-async function getLeadNamesByLeadIds(leadIds, transaction){
-  if(!leadIds || leadIds.length === 0){
-    throw new Error("Lead ids cannot be empty !")
+async function getLeadNamesByLeadIds(leadIds, transaction) {
+  if (!leadIds || leadIds.length === 0) {
+    throw new Error("Lead ids cannot be empty !");
   }
 
   const leads = await Lead.findAll({
-    where: {id:leadIds},
+    where: { id: leadIds },
     attributes: ["id", "name"],
-    transaction
-  })
+    transaction,
+  });
 
-  return leads
+  return leads;
+}
+
+async function getAssignedLeads(filters, paginationData, transaction) {
+  const whereAssignment = { status: "active" };
+  const whereLead = {};
+
+  // lead assignment filters
+  if (filters.leadId) whereAssignment.lead_id = filters.leadId;
+  if (filters.assigned_to) whereAssignment.assigned_to = parseInt(filters.assigned_to);
+  if (filters.assigned_by) whereAssignment.assigned_by = filters.assigned_by;
+  if (filters.assigned_on) {
+    const [startRange, endRange] = filters.assigned_on.split(",");
+
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+        .startOf("minute")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+        .endOf("minute")
+        .utc()
+        .toDate();
+
+      console.log("Filtered Start UTC:", startOfRangeUTC);
+      console.log("Filtered End UTC:", endOfRangeUTC);
+
+      whereAssignment.updatedAt = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereAssignment.updatedAt = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  // lead filters
+  if (filters.phone) whereLead.phone = { [Op.like]: `%${filters.phone}%` };
+  if (filters.email) whereLead.email = { [Op.like]: `%${filters.email}%` };
+  if (filters.name) whereLead.name = { [Op.like]: `%${filters.name}%` };
+  if (filters.lead_bucket) whereLead.lead_bucket = filters.lead_bucket;
+  if (filters.lead_source) whereLead.lead_source = filters.lead_source;
+  if (filters.last_updated_status)
+    whereLead.last_updated_status = filters.last_updated_status;
+  if (filters.utm_campaign)
+    whereLead.utm_campaign = { [Op.like]: `%${filters.utm_campaign}%` };
+  if (filters.utm_source)
+    whereLead.utm_source = { [Op.like]: `%${filters.utm_source}%` };
+  if (filters.importedOn) {
+    const [startRange, endRange] = filters.importedOn.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.createdAt = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.createdAt = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+  if (filters.last_updated) {
+    const [startRange, endRange] = filters.last_updated.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.updatedAt = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.updatedAt = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  // first find the lead assignments
+  const { count, rows: assignedLeads } = await LeadAssignment.findAndCountAll({
+    where: whereAssignment,
+    include: [
+      {
+        model: Lead,
+        as: "Lead",
+        where: whereLead,
+        required: true,
+        // attributes: [] add attributes while integrating with FE
+      },
+    ],
+    order: [["id", "DESC"]],
+    limit: paginationData.pageSize,
+    offset: paginationData.offset,
+    transaction,
+  });
+
+  // page, pageSize, total, totalPages
+
+  let pagination = {
+    page: paginationData.page,
+    pageSize: paginationData.pageSize,
+    total: count,
+    totalPages: Math.ceil(count / paginationData.pageSize),
+  };
+
+  return {
+    leads: assignedLeads,
+    pagination,
+  };
 }
 
 module.exports = {
   updateLead,
   getLead,
   getLeadByPhone,
-  getLeadNamesByLeadIds
+  getLeadNamesByLeadIds,
+  getAssignedLeads,
 };

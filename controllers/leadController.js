@@ -4216,6 +4216,38 @@ async function getLeadNames(req,res){
   }
 }
 
+async function getAssignedLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_bucket, assigned_to=null, lead_source=null, last_updated_status=null, utm_campaign=null, utm_source=null, importedOn=null, assigned_on=null, last_updated=null } = req.query;
+
+    const offset = (page-1)*pageSize;
+
+    let filters = { 
+      lead_id:leadId,
+      phone,
+      name,
+      lead_bucket,
+      assigned_to,
+      lead_source,
+      last_updated_status,
+      utm_campaign,
+      utm_source,
+      importedOn,
+      assigned_on,
+      last_updated
+    }
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getAssignedLeads(filters,paginationData,transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "Assigned leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    console.log("Failed to fetch assigned leads ! = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch assigned leads !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4249,5 +4281,6 @@ module.exports = {
   updateCrifParsedReport,
   getImportedLeadStats,
   getEmployeeWiseLeadStats,
-  getLeadNames
+  getLeadNames,
+  getAssignedLeads
 };

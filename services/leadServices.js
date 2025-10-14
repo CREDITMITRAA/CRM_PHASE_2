@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { Lead, sequelize, LeadAssignment } = require("../models");
 const moment = require("moment-timezone");
+const { leadBuckets } = require("../utilities/constants");
 
 async function updateLead(leadId, leadData, transaction) {
   if (!leadId) {
@@ -67,7 +68,7 @@ async function getAssignedLeads(filters, paginationData, transaction) {
   const whereLead = {};
 
   // lead assignment filters
-  if (filters.leadId) whereAssignment.lead_id = filters.leadId;
+  if (filters.leadId) whereAssignment.lead_id = { [Op.like]: `%${filters.leadId}%` };
   if (filters.assigned_to) whereAssignment.assigned_to = parseInt(filters.assigned_to);
   if (filters.assigned_by) whereAssignment.assigned_by = filters.assigned_by;
   if (filters.assigned_on) {
@@ -215,7 +216,7 @@ async function getAssignedLeads(filters, paginationData, transaction) {
 async function getUnAssignedLeads(filters, paginationData, transaction){
   let whereLead = { status: 'active' }
   
-  if (filters.leadId) whereLead.id = parseInt(filters.leadId);
+  if (filters.leadId) whereLead.id = { [Op.like]: `%${filters.leadId}%` };
   if (filters.phone) whereLead.phone = { [Op.like]: `%${filters.phone}%` };
   if (filters.name) whereLead.name = { [Op.like]: `%${filters.name}%` };
   if (filters.lead_source) whereLead.lead_source = filters.lead_source;
@@ -297,11 +298,54 @@ async function getUnAssignedLeads(filters, paginationData, transaction){
   }
 }
 
+async function getPreliminaryApprovalLeads(filters, paginationData, transaction){
+  let whereLead = { status: 'active', lead_bucket: leadBuckets.PRELIMINERY_CHECK }
+  let whereLeadAssignment = { }
+
+  if (filters.leadId) whereLead.id = { [Op.like]: `%${filters.leadId}%` };
+  if (filters.phone) whereLead.phone = { [Op.like]: `%${filters.phone}%` };
+  if (filters.name) whereLead.name = { [Op.like]: `%${filters.name}%` };
+  if (filters.verification_status) whereLead.verification_status = { [Op.like]: `%${filters.verification_status}%` };
+  if (filters.lead_status) whereLead.lead_status = { [Op.like]: `%${filters.lead_status}%` };
+  if (filters.lead_source) whereLead.lead_source = filters.lead_source;
+
+  if (filters.assigned_to) whereLeadAssignment.assigned_to = parseInt(filters.assigned_to);
+
+  const { count, rows:leads } = await Lead.findAndCountAll({
+    where: whereLead,
+    include: [
+      {
+        model: LeadAssignment,
+        as: 'LeadAssignments',
+        where: whereLeadAssignment,
+        required: true
+      }
+    ],
+    order: [["id", "DESC"]],
+    limit: paginationData.pageSize,
+    offset: paginationData.offset,
+    transaction,
+  })
+
+  let pagination = {
+    page: paginationData.page,
+    pageSize: paginationData.pageSize,
+    total: count,
+    totalPages: Math.ceil(count / paginationData.pageSize),
+  }
+
+  return {
+    leads,
+    pagination
+  }
+}
+
 module.exports = {
   updateLead,
   getLead,
   getLeadByPhone,
   getLeadNamesByLeadIds,
   getAssignedLeads,
-  getUnAssignedLeads
+  getUnAssignedLeads,
+  getPreliminaryApprovalLeads
 };

@@ -107,6 +107,9 @@ const DISBURSED_FROM_BANKS = "Disbursed from Banks"
 const APPLICATION_IS_CLOSED = "Application Closed";
 const OTHERS = "Others"
 const PIPELINE_ENTRIES = "PIPELINE_ENTRIES"
+const PRELIMINERY_CHECK = "PRELIMINERY_CHECK"
+const APPOINTMENTS = "APPOINTMENTS"
+const APPROVED_APPLICATIONS = "APPROVED_APPLICATIONS"
 const ALL_DISPUTES_UPDATED = "All Disputes Updated";
 const ALL_CLEAR = "All Clear"
 const DISPUTE_UPDATED = "Dispute Updated"
@@ -205,6 +208,14 @@ const callStatuses = {
     NOT_ANSWERED: "NOT_ANSWERED"
 }
 
+const leadBuckets = {
+    PIPELINE_ENTRIES,
+    PRELIMINERY_CHECK,
+    APPOINTMENTS,
+    APPROVED_APPLICATIONS,
+    LOGINS
+}
+
 module.exports = {
     LEAD_STATUSES,
     VERIFICATION_STATUSES,
@@ -246,5 +257,6 @@ module.exports = {
     DISPUTE_UPDATED,
     TASK_REMINDER,
     callTypes,
-    callStatuses
+    callStatuses,
+    leadBuckets
 }

@@ -4278,6 +4278,34 @@ async function getUnAssignedLeads(req,res){
   }
 }
 
+async function getPreliminaryApprovalLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, assigned_to=null, lead_status=null, verification_status=null } = req.query
+
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      assigned_to,
+      verification_status,
+      lead_status
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getPreliminaryApprovalLeads(filters,paginationData,transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "Preliminary leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    await transaction.rollback()
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch preliminary approval leads !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4313,5 +4341,6 @@ module.exports = {
   getEmployeeWiseLeadStats,
   getLeadNames,
   getAssignedLeads,
-  getUnAssignedLeads
+  getUnAssignedLeads,
+  getPreliminaryApprovalLeads
 };

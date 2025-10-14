@@ -41,4 +41,5 @@ router.post('/get-lead-names', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, R
 // new APIs for optimizations
 router.get('/get-assigned-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getAssignedLeads)
 router.get('/get-unassigned-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getUnAssignedLeads)
+router.get('/get-preliminary-approval-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getPreliminaryApprovalLeads)
 module.exports = router

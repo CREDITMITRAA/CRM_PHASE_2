@@ -4332,6 +4332,35 @@ async function getAppointmentLeads(req,res){
   }
 }
 
+async function getApprovedApplicationLeads(req,res){
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, lead_status=null, assigned_to=null, application_status=null, closing_date=null, verification_date=null, login_date=null, is_paid=false } = req.query
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      lead_status,
+      assigned_to,
+      application_status,
+      closing_date,
+      verification_date,
+      login_date,
+      is_paid
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getApprovedApplicationLeads(filters, paginationData)
+    return ApiResponse(res, "SUCCESS", 200, "Approved application leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    console.log("Failed to fetch approved application leads = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch approved application leads !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4369,5 +4398,6 @@ module.exports = {
   getAssignedLeads,
   getUnAssignedLeads,
   getPreliminaryApprovalLeads,
-  getAppointmentLeads
+  getAppointmentLeads,
+  getApprovedApplicationLeads
 };

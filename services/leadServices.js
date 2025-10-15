@@ -468,6 +468,142 @@ async function getAppointmentLeads(filters, paginationData, transaction) {
   };
 }
 
+async function getApprovedApplicationLeads(filters, paginationData){
+  let whereLead = { status: 'active', lead_bucket: leadBuckets.APPROVED_APPLICATIONS }
+  let whereAssignment = {}
+
+  if (filters.leadId) whereLead.id = { [Op.like]: `%${filters.leadId}%` };
+  if (filters.phone) whereLead.phone = { [Op.like]: `%${filters.phone}%` };
+  if (filters.name) whereLead.name = { [Op.like]: `%${filters.name}%` };
+  if (filters.lead_source) whereLead.lead_source = filters.lead_source;
+  if (filters.lead_status) whereLead.lead_status = { [Op.like]: `%${filters.lead_status}%` };
+  if (filters.application_status) whereLead.application_status = { [Op.like]: `%${filters.application_status}%` };
+  if (filters.is_paid !== undefined && filters.is_paid !== '') {
+    whereLead.is_paid = filters.is_paid === 'true' || filters.is_paid === true;
+  }
+  if (filters.closing_date) {
+    const [startRange, endRange] = filters.closing_date.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.closing_date = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.closing_date = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  if (filters.verification_date) {
+    const [startRange, endRange] = filters.verification_date.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.verification_date = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.verification_date = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  if (filters.login_date) {
+    const [startRange, endRange] = filters.login_date.split(",");
+    if (startRange && endRange) {
+      const startOfRangeUTC = moment
+        .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      const endOfRangeUTC = moment
+        .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+        .utc()
+        .toDate();
+      whereLead.login_date = {
+        [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+      };
+    } else {
+      const startOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .startOf("day")
+        .utc()
+        .toDate();
+      const endOfDayUTC = moment
+        .tz(startRange, "Asia/Kolkata")
+        .endOf("day")
+        .utc()
+        .toDate();
+      whereLead.login_date = {
+        [Op.between]: [startOfDayUTC, endOfDayUTC],
+      };
+    }
+  }
+
+  if (filters.assigned_to) whereAssignment.assigned_to = parseInt(filters.assigned_to);
+
+  const { count, rows:leads } = await Lead.findAndCountAll({
+    where: whereLead,
+    include: [
+      {
+        model: LeadAssignment,
+        as: "LeadAssignments",
+        where: whereAssignment,
+        required: false
+      }
+    ],
+    order: [["id", "DESC"]],
+    limit: paginationData.pageSize,
+    offset: paginationData.offset,
+  })
+
+  let pagination = {
+    page: paginationData.page,
+    pageSize: paginationData.pageSize,
+    total: count,
+    totalPages: Math.ceil(count / paginationData.pageSize),
+  };
+
+  return {
+    leads,
+    pagination,
+  };
+}
+
 module.exports = {
   updateLead,
   getLead,
@@ -477,4 +613,5 @@ module.exports = {
   getUnAssignedLeads,
   getPreliminaryApprovalLeads,
   getAppointmentLeads,
+  getApprovedApplicationLeads
 };

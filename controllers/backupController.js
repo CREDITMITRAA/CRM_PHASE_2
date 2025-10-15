@@ -149,9 +149,27 @@ async function backupDatabaseOptimized(dbName, specificTables) {
     const [tables] = await sequelize.query("SHOW TABLES");
     const tableNames = tables.map((row) => Object.values(row)[0]);
 
-    const tablesToBackup = specificTables
-      ? specificTables.split(",").filter((t) => tableNames.includes(t))
-      : tableNames;
+    // Show all available tables in this database
+    emitLog(`📋 Available tables in ${dbName}: ${tableNames.join(', ')}`);
+
+    let tablesToBackup;
+    if (specificTables) {
+      const requestedTables = specificTables.split(",");
+      tablesToBackup = requestedTables.filter((t) => tableNames.includes(t));
+      
+      // Show which tables were found and which weren't
+      const foundTables = requestedTables.filter(t => tableNames.includes(t));
+      const missingTables = requestedTables.filter(t => !tableNames.includes(t));
+      
+      if (foundTables.length > 0) {
+        emitLog(`✅ Tables found: ${foundTables.join(', ')}`);
+      }
+      if (missingTables.length > 0) {
+        emitLog(`❌ Tables not found in ${dbName}: ${missingTables.join(', ')}`);
+      }
+    } else {
+      tablesToBackup = tableNames;
+    }
 
     if (tablesToBackup.length === 0) {
       emitLog("ℹ️ No tables to backup");
@@ -160,7 +178,7 @@ async function backupDatabaseOptimized(dbName, specificTables) {
 
     // Identify large tables based on configuration
     const dbLargeTables = LARGE_TABLES[dbName] || [];
-    emitLog(`📋 Large tables for ${dbName}: ${dbLargeTables.join(', ') || 'None'}`);
+    emitLog(`⚠️ Large tables for ${dbName}: ${dbLargeTables.join(', ') || 'None'}`);
     
     // Get row counts
     emitLog("📊 Counting rows...");
@@ -172,7 +190,7 @@ async function backupDatabaseOptimized(dbName, specificTables) {
       tableIsLarge[tableName] = dbLargeTables.includes(tableName);
       
       if (tableIsLarge[tableName]) {
-        emitLog(`⚠️  ${tableName}: ${tableRowCounts[tableName]} rows (LARGE TABLE - using small chunks)`);
+        emitLog(`⚠️ ${tableName}: ${tableRowCounts[tableName]} rows (LARGE TABLE - using small chunks)`);
       }
     }
 

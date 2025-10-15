@@ -4306,6 +4306,32 @@ async function getPreliminaryApprovalLeads(req,res){
   }
 }
 
+async function getAppointmentLeads(req,res){
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, appointment_date=null, lead_source=null, assigned_to=null, lead_status=null, application_status=null } = req.query
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      appointment_date,
+      lead_source,
+      assigned_to,
+      lead_status,
+      application_status
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getAppointmentLeads(filters, paginationData)
+    return ApiResponse(res, "SUCCESS", 200, "Appointment leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    console.log("Failed to fetch appointment leads = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch appointment leads !", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4342,5 +4368,6 @@ module.exports = {
   getLeadNames,
   getAssignedLeads,
   getUnAssignedLeads,
-  getPreliminaryApprovalLeads
+  getPreliminaryApprovalLeads,
+  getAppointmentLeads
 };

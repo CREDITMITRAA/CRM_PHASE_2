@@ -9,6 +9,7 @@ const { getUserByPhone } = require("../services/UserServices");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const moment = require("moment-timezone");
 const { buildDateFilter, buildEmployeeFilter, getKPIMetrics, getAgentPerformance, getTimeAnalysis, uploadRecordingFile } = require("../services/CallLogServices");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 // Helper to normalize phone to last 10 digits
 function normalizePhone(phone) {
@@ -197,12 +198,35 @@ async function getCallLogs(req, res) {
       offset,
     });
 
+    // Convert to plain objects and generate presigned URLs for recording_file_url
+    const processedCallLogs = await Promise.all(
+      rows.map(async (log) => {
+        const logData = log.get({ plain: true });
+        
+        // Generate presigned URL for recording_file_url if it exists
+        if (logData.recording_file_url) {
+          try {
+            const presignedUrl = await getPresignedUrlFromFullUrl(logData.recording_file_url);
+            if (presignedUrl) {
+              // Replace the original URL with presigned URL
+              logData.recording_file_url = presignedUrl;
+            }
+          } catch (error) {
+            console.error('Error generating presigned URL for call recording:', error);
+            // Keep original URL if presigned URL generation fails
+          }
+        }
+        
+        return logData;
+      })
+    );
+
     return ApiResponse(
       res,
       "SUCCESS",
       200,
       "Call logs fetched successfully!",
-      rows.map((log) => log.get({ plain: true })),
+      processedCallLogs,
       null,
       {
         total: count,

@@ -525,7 +525,8 @@ async function getAllLeadsWithPagination(req, res) {
       lead_type,
       utm_campaign,
       utm_source,
-      last_updated_status
+      last_updated_status,
+      activity_date // Add the new activity_date filter
     } = req.query;
 
     // const limit = parseInt(req.query.limit) || 50;
@@ -538,6 +539,51 @@ async function getAllLeadsWithPagination(req, res) {
 
     const whereConditions = {};
     let leadAssignmentConditions = {};
+    
+    // Handle activity_date filter using subquery
+    if (activity_date) {
+      const [startRange, endRange] = activity_date.split(',');
+      
+      let startOfRangeUTC, endOfRangeUTC;
+      
+      if (startRange && endRange) {
+        // Date range provided
+        startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+      } else {
+        // Single date provided
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        
+        startOfRangeUTC = startOfDayUTC;
+        endOfRangeUTC = endOfDayUTC;
+      }
+
+      // Add subquery condition to whereConditions
+      whereConditions.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT lead_id 
+          FROM ActivityLogs 
+          WHERE createdAt BETWEEN '${startOfRangeUTC.toISOString()}' AND '${endOfRangeUTC.toISOString()}'
+          AND status = 'active'
+          AND lead_id IS NOT NULL
+        )`)
+      };
+    }
 
     if (
       assigned_to &&
@@ -853,76 +899,6 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    // if (appointment_date) {
-    //   const [startDate, endDate] = appointment_date.split(',');
-
-    //   // Convert to UTC dates
-    //   const startUTC = moment.tz(startDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-    //   const endUTC = moment.tz(endDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-
-    //   // Add the walkIns include if not already present
-    //   if (for_walk_ins_page) {
-    //     includeConditions.push({
-    //       model: WalkIn,
-    //       as: 'walkIns',
-    //       attributes: walk_in_attributes,
-    //       required: true,
-    //       order: [["id", "DESC"]],
-    //       limit: 1,
-    //       where: {
-    //         [Op.or]: [
-    //           {
-    //             is_rescheduled: true,
-    //             rescheduled_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: false,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: null,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           }
-    //         ]
-    //       }
-    //     });
-    //   } else {
-    //     // If for_walk_ins_page is true, modify the existing walkIns condition
-    //     const walkInInclude = includeConditions.find(inc => inc.as === 'walkIns');
-    //     if (walkInInclude) {
-    //       walkInInclude.where = {
-    //         [Op.or]: [
-    //           {
-    //             is_rescheduled: true,
-    //             rescheduled_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: false,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: null,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           }
-    //         ]
-    //       };
-    //       walkInInclude.required = true;
-    //     }
-    //   }
-    // }
-
     if (for_walk_ins_page && appointment_date) {
       const [startDate, endDate] = appointment_date.split(",");
       const startUTC = moment
@@ -1016,6 +992,8 @@ async function getAllLeadsWithPagination(req, res) {
         ];
 
     const isPaginationEnabled = isPaginationOff === "false";
+    
+    // This will now work correctly with pagination including activity_date filter
     const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
       include: includeConditions,

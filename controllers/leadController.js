@@ -3326,7 +3326,8 @@ async function getAllReEngagedLeads(req, res) {
       last_updated,
       assigned_on,
       userId,
-      last_updated_status
+      last_updated_status,
+      activity_date // Add the new activity_date filter
     } = req.query;
 
     page = parseInt(page);
@@ -3337,6 +3338,51 @@ async function getAllReEngagedLeads(req, res) {
 
     let leadWhere = {};
     let leadAssignmentWhere = {};
+
+    // Handle activity_date filter using subquery
+    if (activity_date) {
+      const [startRange, endRange] = activity_date.split(',');
+      
+      let startOfRangeUTC, endOfRangeUTC;
+      
+      if (startRange && endRange) {
+        // Date range provided
+        startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+      } else {
+        // Single date provided
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        
+        startOfRangeUTC = startOfDayUTC;
+        endOfRangeUTC = endOfDayUTC;
+      }
+
+      // Add subquery condition to leadWhere
+      leadWhere.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT lead_id 
+          FROM ActivityLogs 
+          WHERE createdAt BETWEEN '${startOfRangeUTC.toISOString()}' AND '${endOfRangeUTC.toISOString()}'
+          AND status = 'active'
+          AND lead_id IS NOT NULL
+        )`)
+      };
+    }
 
     if (lead_status) {
       leadWhere.lead_status = lead_status;
@@ -3381,7 +3427,7 @@ async function getAllReEngagedLeads(req, res) {
           .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
           .utc()
           .toDate();
-        whereConditions.createdAt = {
+        leadWhere.createdAt = {
           [Op.between]: [startOfRangeUTC, endOfRangeUTC],
         };
       } else {
@@ -3412,7 +3458,7 @@ async function getAllReEngagedLeads(req, res) {
           .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
           .utc()
           .toDate();
-        whereConditions.updatedAt = {
+        leadWhere.updatedAt = {
           [Op.between]: [startOfRangeUTC, endOfRangeUTC],
         };
       } else {

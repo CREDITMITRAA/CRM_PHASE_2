@@ -101,12 +101,12 @@ const getPresignedUrlFromFullUrl = async (fullS3Url, expiresIn = 3600) => {
       Expires: expiresIn
     };
 
-    console.log('Generating presigned URL for:', {
-      bucket: bucketInfo.bucket,
-      originalKey: bucketInfo.key,
-      decodedKey: decodedKey,
-      fullUrl: fullS3Url
-    });
+    // console.log('Generating presigned URL for:', {
+    //   bucket: bucketInfo.bucket,
+    //   originalKey: bucketInfo.key,
+    //   decodedKey: decodedKey,
+    //   fullUrl: fullS3Url
+    // });
 
     const presignedUrl = await s3.getSignedUrlPromise('getObject', params);
     return presignedUrl;

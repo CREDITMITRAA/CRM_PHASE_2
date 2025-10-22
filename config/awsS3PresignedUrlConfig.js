@@ -92,19 +92,24 @@ const getPresignedUrlFromFullUrl = async (fullS3Url, expiresIn = 3600) => {
     const bucketInfo = extractBucketAndKeyFromUrl(fullS3Url);
     if (!bucketInfo) return null;
 
-    // Decode the key to handle spaces and special characters properly
-    const decodedKey = decodeURIComponent(bucketInfo.key);
+    // Handle URL encoding properly - replace + with spaces before decoding
+    let decodedKey = bucketInfo.key;
+    
+    // First, replace + with %20 to handle spaces properly
+    decodedKey = decodedKey.replace(/\+/g, '%20');
+    
+    // Then decode the URI component
+    decodedKey = decodeURIComponent(decodedKey);
 
     const params = {
       Bucket: bucketInfo.bucket,
-      Key: decodedKey, // Use decoded key
+      Key: decodedKey,
       Expires: expiresIn
     };
 
     // console.log('Generating presigned URL for:', {
-    //   bucket: bucketInfo.bucket,
     //   originalKey: bucketInfo.key,
-    //   decodedKey: decodedKey,
+    //   finalKey: decodedKey,
     //   fullUrl: fullS3Url
     // });
 
@@ -112,7 +117,23 @@ const getPresignedUrlFromFullUrl = async (fullS3Url, expiresIn = 3600) => {
     return presignedUrl;
 
   } catch (error) {
-    console.error('Error generating presigned URL from full URL:', error);
+    console.error('Error generating presigned URL:', error);
+    
+    // Fallback: try the original key
+    if (error.code === 'NoSuchKey') {
+      console.log('Trying with original key as fallback...');
+      try {
+        const fallbackParams = {
+          Bucket: bucketInfo.bucket,
+          Key: bucketInfo.key,
+          Expires: expiresIn
+        };
+        return await s3.getSignedUrlPromise('getObject', fallbackParams);
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
+    }
+    
     return null;
   }
 };

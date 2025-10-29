@@ -44,4 +44,5 @@ router.get('/get-unassigned-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TE
 router.get('/get-preliminary-approval-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getPreliminaryApprovalLeads)
 router.get('/get-appointment-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getAppointmentLeads)
 router.get('/get-approved-application-leads', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getApprovedApplicationLeads)
+router.get('/get-lead-distribution-counts', authenticate([ROLE_ADMIN, ROLE_OPERATIONS_TEAM, ROLE_MANAGER, ROLE_EMPLOYEE]), leadController.getLeadDistributionCounts)
 module.exports = router

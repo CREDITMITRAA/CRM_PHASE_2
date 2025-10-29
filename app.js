@@ -124,4 +124,14 @@ sequelize
 //   })
 // })
 
+process.on('unhandledRejection', (reason, p) => {
+    console.error('Unhandled Rejection at:', p, 'reason:', reason);
+    setTimeout(() => process.exit(1), 5000);
+  });
+
+  process.on('uncaughtException', err => {
+    console.error('Uncaught Exception:', err);
+    setTimeout(() => process.exit(1), 5000);
+  });
+
 module.exports = {app,io};

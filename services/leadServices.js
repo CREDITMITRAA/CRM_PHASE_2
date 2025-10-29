@@ -5,6 +5,7 @@ const {
   LeadAssignment,
   Activity,
   WalkIn,
+  User
 } = require("../models");
 const moment = require("moment-timezone");
 const { leadBuckets } = require("../utilities/constants");
@@ -604,6 +605,118 @@ async function getApprovedApplicationLeads(filters, paginationData){
   };
 }
 
+async function getLeadDistributionCounts(filters = {}) {
+  try {
+
+    const baseWhere = {
+      status: 'active',
+      ...filters
+    };
+
+    // Get all active lead assignments with employee info
+    const assignments = await LeadAssignment.findAll({
+      include: [
+        {
+          model: Lead,
+          as: 'Lead',
+          where: baseWhere,
+          required: true
+        },
+        {
+          model: User,
+          as: 'AssignedTo',
+          attributes: ['id', 'name'],
+          required: true
+        }
+      ],
+      where: {
+        // status: 'active'
+      },
+      raw: true
+    });
+
+    // Group by employee
+    const employeeMap = new Map();
+
+    assignments.forEach(assignment => {
+      const employeeId = assignment.assigned_to;
+      const employeeName = assignment['AssignedTo.name'];
+      
+      if (!employeeMap.has(employeeId)) {
+        employeeMap.set(employeeId, {
+          employee: employeeName,
+          leads: []
+        });
+      }
+      
+      // Store lead data for counting
+      employeeMap.get(employeeId).leads.push({
+        lead_bucket: assignment['Lead.lead_bucket'],
+        lead_status: assignment['Lead.lead_status'],
+        application_status: assignment['Lead.application_status'],
+        verification_status: assignment['Lead.verification_status']
+      });
+    });
+
+    // Calculate counts for each employee
+    const result = Array.from(employeeMap.values()).map(employeeData => {
+      const leads = employeeData.leads;
+      
+      // Bucket counts
+      const pipeline_entries = leads.filter(lead => lead.lead_bucket === 'PIPELINE_ENTRIES').length;
+      const preliminary_approval = leads.filter(lead => lead.lead_bucket === 'PRELIMINERY_CHECK').length;
+      const appointments = leads.filter(lead => lead.lead_bucket === 'APPOINTMENTS').length;
+      const approved_applications = leads.filter(lead => lead.lead_bucket === 'APPROVED_APPLICATIONS').length;
+      const logins = leads.filter(lead => lead.lead_bucket === 'LOGINS').length;
+      
+      // Status counts
+      const statusCounts = {};
+      const applicationStatusCounts = {};
+      const verificationStatusCounts = {};
+      
+      leads.forEach(lead => {
+        // Count lead_status
+        if (lead.lead_status) {
+          statusCounts[lead.lead_status] = (statusCounts[lead.lead_status] || 0) + 1;
+        }
+        
+        // Count application_status
+        if (lead.application_status) {
+          applicationStatusCounts[lead.application_status] = (applicationStatusCounts[lead.application_status] || 0) + 1;
+        }
+        
+        // Count verification_status
+        if (lead.verification_status) {
+          verificationStatusCounts[lead.verification_status] = (verificationStatusCounts[lead.verification_status] || 0) + 1;
+        }
+      });
+      
+      const totalLeads = leads.length;
+      const conversionRate = totalLeads > 0 ? ((approved_applications / totalLeads) * 100).toFixed(4) : 0;
+      
+      return {
+        employee: employeeData.employee,
+        pipeline_entries,
+        preliminary_approval,
+        appointments,
+        approved_applications,
+        logins,
+        totalLeads,
+        statusCounts,
+        applicationStatusCounts,
+        verificationStatusCounts,
+        conversionRate: parseFloat(conversionRate)
+      };
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error('Error getting lead distribution counts:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   updateLead,
   getLead,
@@ -613,5 +726,6 @@ module.exports = {
   getUnAssignedLeads,
   getPreliminaryApprovalLeads,
   getAppointmentLeads,
-  getApprovedApplicationLeads
+  getApprovedApplicationLeads,
+  getLeadDistributionCounts
 };

@@ -67,6 +67,7 @@ async function createBulkLeads(req, res) {
 
   try {
     if (!Array.isArray(req.body) || req.body.length === 0) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -78,6 +79,7 @@ async function createBulkLeads(req, res) {
     const userId = req.query?.userId;
     const userName = req.query?.userName;
     if (!userId) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -4385,6 +4387,17 @@ async function getApprovedApplicationLeads(req,res){
   }
 }
 
+async function getLeadDistributionCounts(req,res){
+  try {
+    const {} = req.query
+    const response = await LeadServices.getLeadDistributionCounts()
+    return ApiResponse(res, "SUCCESS", 200, "Lead distribution counts fetched successfully", response)
+  } catch (error) {
+    console.log("Failed to fetch lead distribution counts = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch lead distribution counts", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -4423,5 +4436,6 @@ module.exports = {
   getUnAssignedLeads,
   getPreliminaryApprovalLeads,
   getAppointmentLeads,
-  getApprovedApplicationLeads
+  getApprovedApplicationLeads,
+  getLeadDistributionCounts
 };

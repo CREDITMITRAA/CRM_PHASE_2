@@ -6,9 +6,11 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
     dialect: 'mysql',
     pool: {
         max: 40, // Maximum number of connections in the pool
-        min: 8,  // Minimum number of connections in the pool
+        min: 5,  // Minimum number of connections in the pool
         acquire: 60000, // Maximum time, in ms, a connection can be idle before being released
-        idle: 10000, // Maximum time, in ms, that pool will try to get a connection before throwing error
+        idle: 20000, // Maximum time, in ms, that pool will try to get a connection before throwing error
+        evict: 1000,
+        handleDisconnects: true
     },
     logging: false, // Set to `true` to log SQL queries for debugging
 });

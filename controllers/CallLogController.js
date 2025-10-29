@@ -406,9 +406,11 @@ async function uploadCallRecordingFile(req,res){
     const uploadedFileUrl = await uploadRecordingFile(normalizePhone(customerPhone), normalizePhone(employeePhone), file, transaction)
 
     if(!uploadedFileUrl){
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 500, "Failed to fetch uploaded file url !")
     }
 
+    await transaction.commit()
     return ApiResponse(res, "SUCCESS", 201, "File uploaded successfully", uploadedFileUrl)
 
   } catch (error) {

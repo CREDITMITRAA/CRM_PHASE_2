@@ -10,10 +10,10 @@ const { getIo } = require("../socket/socket");
 const s3 = new AWS.S3();
 const BACKUP_BUCKET = process.env.AWS_S3_BACKUP_BUCKET_NAME;
 
-// DB configs
+// DB configs - NOW WITH SEPARATE INSTANCE SUPPORT
 const DB_CONFIG = {
   crm: {
-    database: process.env.CRM_DB_NAME,
+    database: process.env.DB_NAME,
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     host: process.env.DB_HOST,
@@ -22,8 +22,8 @@ const DB_CONFIG = {
   sajan: {
     database: process.env.SAJAN_DB_NAME,
     username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    host: process.env.DB_HOST,
+    password: process.env.DB_PASSWORD, 
+    host: process.env.SAJAN_DB_HOST,
     dialect: "mysql",
   },
 };
@@ -33,6 +33,7 @@ const LARGE_TABLES = {
   crm: [
     // Add large CRM tables here (tables with large JSON data, blobs, etc.)
     // Example: 'users', 'documents'
+    'Leads', 'ActivityLogs', 'Activities'
   ],
   sajan: [
     'B2CReports', // This is already identified as large
@@ -60,28 +61,35 @@ const BACKUP_CONFIG = {
 
 // ------- DB Connection -------
 async function createSequelizeInstance(dbConfig) {
+  const config = {
+    host: dbConfig.host,
+    dialect: dbConfig.dialect,
+    logging: false,
+    pool: {
+      max: 1,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
+    },
+    dialectOptions: {
+      supportBigNumbers: true,
+      bigNumberStrings: true,
+    },
+    benchmark: false,
+    typeValidation: false,
+    operatorsAliases: false,
+  };
+
+  // Add port if specified
+  if (dbConfig.port) {
+    config.port = dbConfig.port;
+  }
+
   return new Sequelize(
     dbConfig.database,
     dbConfig.username,
     dbConfig.password,
-    {
-      host: dbConfig.host,
-      dialect: dbConfig.dialect,
-      logging: false,
-      pool: {
-        max: 1,
-        min: 0,
-        acquire: 30000,
-        idle: 10000,
-      },
-      dialectOptions: {
-        supportBigNumbers: true,
-        bigNumberStrings: true,
-      },
-      benchmark: false,
-      typeValidation: false,
-      operatorsAliases: false,
-    }
+    config
   );
 }
 
@@ -105,6 +113,13 @@ async function createBackup(req, res) {
   try {
     emitLog("🚀 Starting OPTIMIZED backup process...");
     emitLog("💡 Using data-size optimized chunk sizes");
+
+    // Show database instances being used
+    emitLog("🔍 Database instances configuration:");
+    Object.keys(DB_CONFIG).forEach(dbName => {
+      const config = DB_CONFIG[dbName];
+      emitLog(`   ${dbName.toUpperCase()}: ${config.host}:${config.port || 3306}/${config.database}`);
+    });
 
     const databasesToBackup = specificDatabases
       ? specificDatabases.split(",").filter((db) => BACKUP_CONFIG.databases[db])
@@ -135,7 +150,10 @@ async function createBackup(req, res) {
 async function backupDatabaseOptimized(dbName, specificTables) {
   emitLog(`\n💾 Processing database: ${dbName}`);
   
-  const sequelize = await createSequelizeInstance(DB_CONFIG[dbName]);
+  const dbConfig = DB_CONFIG[dbName];
+  emitLog(`📍 Instance: ${dbConfig.host}:${dbConfig.port || 3306}`);
+  
+  const sequelize = await createSequelizeInstance(dbConfig);
 
   try {
     await sequelize.authenticate();
@@ -234,6 +252,9 @@ async function backupDatabaseOptimized(dbName, specificTables) {
     // Cleanup old versions
     await cleanupOldVersions(dbName, BACKUP_CONFIG.databases[dbName].backupFolder);
     
+  } catch (error) {
+    emitLog(`❌ Failed to backup database ${dbName}: ${error.message}`, true);
+    throw error;
   } finally {
     await sequelize.close();
     emitLog(`🔌 Database connection closed`);

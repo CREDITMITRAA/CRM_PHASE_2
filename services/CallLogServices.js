@@ -201,7 +201,7 @@ async function getAgentPerformance(dateFilter, employeeFilter, transaction) {
         attributes: [
           [sequelize.fn('COUNT', sequelize.col('id')), 'total_calls'],
           [sequelize.fn('SUM', sequelize.literal('CASE WHEN call_type = "OUTGOING" AND call_status = "ANSWERED" THEN 1 ELSE 0 END')), 'connected_calls'],
-          [sequelize.fn('AVG', sequelize.col('call_duration')), 'avg_duration'],
+          [sequelize.fn('AVG', sequelize.literal('CASE WHEN call_status = "ANSWERED" THEN call_duration ELSE NULL END')), 'avg_duration'],
           [sequelize.fn('SUM', sequelize.col('call_duration')), 'total_talk_time']
         ],
         where: whereClause,

@@ -20,6 +20,7 @@ const ProfileImageUrl = require('./ProfileImageUrl')(sequelize)
 const LeadPartner = require('./LeadPartner')(sequelize)
 const LoginDetail = require('./LoginDetail')(sequelize)
 const PhoneNumber = require('./PhoneNumber')(sequelize)
+const FcmToken = require("./FcmToken")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -132,5 +133,6 @@ module.exports = {
   ProfileImageUrl,
   LeadPartner,
   LoginDetail,
-  PhoneNumber
+  PhoneNumber,
+  FcmToken
 };

@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./config/firebase");
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -13,21 +14,6 @@ const { initializeSocket } = require("./socket/socket");
 const verifyFacebookSignature = require("./middlewares/verifyFacebookSignature");
 const facebookWebhookRoutes = require("./routes/facebookWebhookRoutes");
 const { sendRecentTaskNotifications } = require("./services/NotificationServices");
-const admin = require("firebase-admin");
-const fs = require("fs");
-
-// ================== FIREBASE INITIALIZATION ==================
-const serviceAccountPath = "./calldialerapp-86ee1-firebase-adminsdk-fbsvc-1d1a0959d1.json";
-if (!fs.existsSync(serviceAccountPath)) {
-  console.error("❌ Missing firebase-service-account.json file!");
-  process.exit(1);
-}
-
-admin.initializeApp({
-  credential: admin.credential.cert(require(serviceAccountPath)),
-});
-
-console.log("🔥 Firebase Admin initialized successfully");
 
 // ================== EXPRESS APP CONFIG ==================
 const app = express();
@@ -55,100 +41,6 @@ app.options("*", cors());
 app.use("/webhook", bodyParser.json({ verify: verifyFacebookSignature }));
 app.use("/webhook", facebookWebhookRoutes);
 app.use("/api", routes);
-
-// ================== DEVICE MANAGEMENT ==================
-let deviceTokens = new Set();
-deviceTokens.add("dik4YFJkTDSHJHqiIX2HR-:APA91bE-XfK7IiOzENLZlPxvIsHvcqir4ii6CDdW2JblKZZLdfnWexbrU70Tl97-VRZfRm6hi6i8Wx9qDdkNzTyFN8XRDeMsPVbJ7zhYqYF4CPOpRJGD41s")
-
-// Register device token
-app.post("/register-device", (req, res) => {
-  const { token } = req.body;
-  if (!token)
-    return res.status(400).json({ success: false, message: "Missing token" });
-
-  deviceTokens.add(token);
-  console.log("✅ Device registered:", token.slice(0, 25) + "...");
-  res.json({
-    success: true,
-    message: "Device registered successfully",
-    deviceCount: deviceTokens.size,
-  });
-});
-
-// List all devices
-app.get("/devices", (req, res) => {
-  res.json({
-    success: true,
-    deviceCount: deviceTokens.size,
-    devices: Array.from(deviceTokens).map((t) => ({
-      token: t.slice(0, 25) + "...",
-      fullLength: t.length,
-    })),
-  });
-});
-
-// Delete one device
-app.delete("/devices/:token", (req, res) => {
-  const { token } = req.params;
-  if (deviceTokens.has(token)) {
-    deviceTokens.delete(token);
-    return res.json({ success: true, message: "Device removed" });
-  }
-  res.status(404).json({ success: false, message: "Device not found" });
-});
-
-// Clear all devices
-app.delete("/devices", (req, res) => {
-  const count = deviceTokens.size;
-  deviceTokens.clear();
-  res.json({ success: true, message: `Cleared ${count} devices` });
-});
-
-// ================== TRIGGER DIAL ==================
-app.post("/trigger-dial", async (req, res) => {
-  const { phone_number } = req.body;
-  if (!phone_number)
-    return res
-      .status(400)
-      .json({ success: false, message: "Missing phone number" });
-
-  if (deviceTokens.size === 0)
-    return res
-      .status(400)
-      .json({ success: false, message: "No registered devices found" });
-
-  console.log(`📤 Sending dial command to ${deviceTokens.size} devices: ${phone_number}`);
-  let successCount = 0;
-
-  for (const token of deviceTokens) {
-    try {
-      await admin.messaging().send({
-  token,
-  // notification: {
-  //   title: "Incoming Call 📞",
-  //   body: `Call from ${phone_number}`,
-  // },
-  data: { 
-    action: "DIAL", 
-    phone_number: String(phone_number)
-  },
-  android: {
-    priority: "high",
-  }
-});
-
-      console.log(`✅ Sent to: ${token.slice(0, 25)}...`);
-      successCount++;
-    } catch (err) {
-      console.error(`❌ Failed for ${token.slice(0, 25)}...`, err.message);
-    }
-  }
-
-  res.json({
-    success: true,
-    message: `Dial command sent to ${successCount}/${deviceTokens.size} devices`,
-  });
-});
 
 // ================== HEALTH CHECK ==================
 app.get("/", (req, res) => {
@@ -184,9 +76,7 @@ sequelize
   .authenticate()
   .then(() => {
     console.log("Database connected successfully.");
-    return sequelize.sync({
-      alter: process.env.ALTER_SEQUALIZE === "TRUE",
-    });
+    return sequelize.sync({ alter: process.env.ALTER_SEQUALIZE === 'TRUE' && true, force: process.env.FORCE_SEQUALIZE === 'TRUE' && true, logging:process.env.LOG_SQL === 'TRUE' && console.log });
   })
   .then(() => {
     const server = app.listen(PORT, () =>

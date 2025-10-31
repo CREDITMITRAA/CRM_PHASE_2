@@ -25,6 +25,7 @@ const ExEmployeeRoutes = require('./ExEmployeeRoutes')
 const LeadPartnerRoutes = require("./LeadPartnerRoutes")
 const LoginDetailRoutes = require("./LoginDetailRoutes")
 const FacebookWebhookRoutes = require("./facebookWebhookRoutes")
+const FcmTokenRoutes = require("./FcmTokenRoutes")
 // Add more routes as needed...
 
 // Set up routes
@@ -51,6 +52,7 @@ router.use('/ex-employees', ExEmployeeRoutes)
 router.use('/lead-partner', LeadPartnerRoutes)
 router.use('/login-details', LoginDetailRoutes)
 router.use('/webhook', FacebookWebhookRoutes)
+router.use('/fcm', FcmTokenRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

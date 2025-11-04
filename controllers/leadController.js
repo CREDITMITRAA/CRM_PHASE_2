@@ -528,28 +528,24 @@ async function getAllLeadsWithPagination(req, res) {
       utm_campaign,
       utm_source,
       last_updated_status,
-      activity_date // Add the new activity_date filter
+      activity_date
     } = req.query;
 
-    // const limit = parseInt(req.query.limit) || 50;
     page = parseInt(page);
     pageSize = parseInt(pageSize);
 
-    // Default validation to prevent non-integer inputs
     if (isNaN(page) || page < 1) page = 1;
     if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
 
     const whereConditions = {};
     let leadAssignmentConditions = {};
     
-    // Handle activity_date filter using subquery
     if (activity_date) {
       const [startRange, endRange] = activity_date.split(',');
       
       let startOfRangeUTC, endOfRangeUTC;
       
       if (startRange && endRange) {
-        // Date range provided
         startOfRangeUTC = moment
           .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
           .utc()
@@ -559,7 +555,6 @@ async function getAllLeadsWithPagination(req, res) {
           .utc()
           .toDate();
       } else {
-        // Single date provided
         const startOfDayUTC = moment
           .tz(startRange, "Asia/Kolkata")
           .startOf("day")
@@ -575,7 +570,6 @@ async function getAllLeadsWithPagination(req, res) {
         endOfRangeUTC = endOfDayUTC;
       }
 
-      // Add subquery condition to whereConditions
       whereConditions.id = {
         [Op.in]: Sequelize.literal(`(
           SELECT DISTINCT lead_id 
@@ -602,9 +596,9 @@ async function getAllLeadsWithPagination(req, res) {
       {
         model: Activity,
         as: "Activities",
-        required: false, // Include only if activity_status filter is provided
-        order: [["createdAt", "DESC"]], // Ensure the most recent activity is first
-        limit: 1, // Only include the most recent activity
+        required: false,
+        order: [["createdAt", "DESC"]],
+        limit: 1,
       },
       {
         model: LeadAssignment,
@@ -619,9 +613,9 @@ async function getAllLeadsWithPagination(req, res) {
         where: leadAssignmentConditions,
         include: [
           {
-            model: User, // Assuming `User` is your `AssignedTo` model
-            as: "AssignedTo", // Alias for the related `User` model
-            attributes: ["name"], // Only include the name field
+            model: User,
+            as: "AssignedTo",
+            attributes: ["name"],
           },
         ],
       },
@@ -634,7 +628,7 @@ async function getAllLeadsWithPagination(req, res) {
     if (last_updated_status) whereConditions.last_updated_status = last_updated_status;
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
-    console.log("verification status = ", verification_status);
+
     if (utm_campaign) {
       whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` };
     }
@@ -644,7 +638,6 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (verification_status) {
-      // Normalize to array if it isn't already
       const statuses = Array.isArray(verification_status)
         ? verification_status
         : [verification_status];
@@ -699,18 +692,12 @@ async function getAllLeadsWithPagination(req, res) {
         [Op.between]: [startOfDay, endOfDay],
       };
     }
+    
     if (!for_walk_ins_page && application_status) {
       whereConditions.application_status = {
-        [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
+        [Op.like]: `%${application_status}%`,
       };
     }
-    // if (application_status) {
-    //   whereConditions.application_status = {
-    //     [Op.or]: application_status.map((status) => ({
-    //       [Op.like]: `%${status}%`, // Use Op.iLike for case-insensitivity if supported
-    //     })),
-    //   };
-    // }
 
     if (importedOn) {
       const [startRange, endRange] = importedOn.split(",");
@@ -774,11 +761,7 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    // lead source filter if lead_source is provided
     if (lead_source) {
-      // whereConditions.lead_source = {
-      //   [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
-      // }
       whereConditions.lead_source = lead_source;
     }
 
@@ -800,9 +783,7 @@ async function getAllLeadsWithPagination(req, res) {
     if (table_type === "Normal Login") {
       whereConditions[Op.or] = [
         { verification_status: { [Op.like]: "Normal Login" } },
-        // { verification_status: { [Op.eq]: null } },
         { application_status: { [Op.like]: "Normal Login" } },
-        // { application_status: { [Op.eq]: null } },
       ];
     }
 
@@ -816,7 +797,6 @@ async function getAllLeadsWithPagination(req, res) {
         lead_bucket === "PRELIMINERY_CHECK" &&
         (!verification_status || verification_statuses.length === 0)
       ) {
-        // For PRELIMINARY_CHECK, exclude "Normal Login" but include null and others
         whereConditions[Op.or] = [
           { verification_status: { [Op.notLike]: "Normal Login" } },
           { verification_status: { [Op.eq]: null } },
@@ -825,7 +805,6 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (assigned_to === "not_assigned") {
-      // Check for leads without any assignments
       whereConditions[Op.and] = Sequelize.literal(`
         NOT EXISTS (
           SELECT 1 
@@ -836,11 +815,10 @@ async function getAllLeadsWithPagination(req, res) {
     } else if (assigned_to === "re_assigned") {
       whereConditions.is_reassigned = true;
     } else if (assigned_to || assigned_to_name || assigned_on) {
-      // Apply other lead assignment filters
       includeConditions.push({
         model: LeadAssignment,
         as: "LeadAssignments",
-        required: true, // INNER JOIN to only get assigned leads
+        required: true,
         where: leadAssignmentConditions,
         include: [
           {
@@ -853,7 +831,6 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (assigned_to_name) {
-      // Use `Op.like` to filter based on the assigned user's name
       leadAssignmentConditions["AssignedTo.name"] = {
         [Op.like]: `%${assigned_to_name}%`,
       };
@@ -874,9 +851,6 @@ async function getAllLeadsWithPagination(req, res) {
           .utc()
           .toDate();
 
-        console.log("Filtered Start UTC:", startOfRangeUTC);
-        console.log("Filtered End UTC:", endOfRangeUTC);
-
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfRangeUTC, endOfRangeUTC],
         };
@@ -891,9 +865,6 @@ async function getAllLeadsWithPagination(req, res) {
           .endOf("day")
           .utc()
           .toDate();
-
-        console.log("Filtered Single Day Start UTC:", startOfDayUTC);
-        console.log("Filtered Single Day End UTC:", endOfDayUTC);
 
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfDayUTC, endOfDayUTC],
@@ -912,7 +883,6 @@ async function getAllLeadsWithPagination(req, res) {
         .utc()
         .toDate();
 
-      // Add a subquery condition to the main where clause
       whereConditions.id = {
         [Op.in]: Sequelize.literal(`(
           SELECT DISTINCT lead_id FROM WalkIns
@@ -924,7 +894,6 @@ async function getAllLeadsWithPagination(req, res) {
         )`),
       };
 
-      // Keep the include for getting walkIn data, but make it optional
       includeConditions.push({
         model: WalkIn,
         as: "walkIns",
@@ -945,8 +914,6 @@ async function getAllLeadsWithPagination(req, res) {
           };
         }
       } else {
-        // This executes when application_status is undefined or null
-        // exclude "Normal Login" but include null and others
         whereConditions[Op.and] = [
           {
             [Op.or]: [
@@ -963,7 +930,6 @@ async function getAllLeadsWithPagination(req, res) {
         ];
       }
 
-      // ✅ Always push walkIns include
       includeConditions.push({
         model: WalkIn,
         as: "walkIns",
@@ -984,18 +950,17 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions?.activity_status;
     const orderConditions = shouldOrderByUpdatedAt
       ? [
-          ["updatedAt", "DESC"], // Apply updatedAt sorting if verification_status is included
+          ["updatedAt", "DESC"],
           ["createdAt", "DESC"],
           ["id", "DESC"],
         ]
       : [
-          ["createdAt", "DESC"], // Default ordering
+          ["createdAt", "DESC"],
           ["id", "DESC"],
         ];
 
     const isPaginationEnabled = isPaginationOff === "false";
     
-    // This will now work correctly with pagination including activity_date filter
     const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
       include: includeConditions,
@@ -1005,6 +970,215 @@ async function getAllLeadsWithPagination(req, res) {
       distinct: true,
     });
 
+    // NEW: Update lead response objects based on activity log
+    if (activity_date && rows.length > 0) {    
+      const leadIds = rows.map(lead => lead.id);
+  
+      const [startRange, endRange] = activity_date.split(',');
+      let startOfRangeUTC, endOfRangeUTC;
+  
+      if (startRange && endRange) {
+          startOfRangeUTC = moment
+            .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+            .utc()
+            .toDate();
+          endOfRangeUTC = moment
+            .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+            .utc()
+            .toDate();
+      } else {
+          const startOfDayUTC = moment
+            .tz(startRange, "Asia/Kolkata")
+            .startOf("day")
+            .utc()
+            .toDate();
+          const endOfDayUTC = moment
+            .tz(startRange, "Asia/Kolkata")
+            .endOf("day")
+            .utc()
+            .toDate();
+    
+         startOfRangeUTC = startOfDayUTC;
+         endOfRangeUTC = endOfDayUTC;
+      }
+
+      // Fetch ALL activities for these leads within the date range
+      const activities = await ActivityLog.findAll({
+         where: {
+           lead_id: { [Op.in]: leadIds },
+           createdAt: {
+             [Op.between]: [startOfRangeUTC, endOfRangeUTC]
+           },
+           status: 'active'
+         },
+         order: [['createdAt', 'DESC']] // Most recent first
+      });
+
+      // Group activities by lead_id and then by activity_type (most recent of each type)
+      const activitiesByLeadAndType = {};
+  
+      activities.forEach(activity => {
+         const leadId = activity.lead_id;
+         const activityType = activity.activity_type;
+    
+         if (!activitiesByLeadAndType[leadId]) {
+           activitiesByLeadAndType[leadId] = {};
+         }
+    
+         // Only store the most recent activity for each type
+         if (!activitiesByLeadAndType[leadId][activityType]) {
+           activitiesByLeadAndType[leadId][activityType] = activity;
+         }
+      });
+
+      // Update lead response objects based on activities
+      rows.forEach(lead => {
+      const leadActivities = activitiesByLeadAndType[lead.id];
+    
+    if (leadActivities) {
+      // Store original values before modification
+      lead.dataValues._original_lead_status = lead.lead_status;
+      lead.dataValues._original_application_status = lead.application_status;
+      lead.dataValues._original_verification_status = lead.verification_status;
+      lead.dataValues._original_last_updated_status = lead.last_updated_status;
+
+      let mostRecentStatusValue = null;
+      let mostRecentActivityType = null;
+      
+      // Process each activity type in the order they should be applied
+      const activityTypesToProcess = [
+        'LEAD_STATUS_UPDATE',
+        'APPLICATION_STATUS_UPDATE', 
+        'VERIFICATION_STATUS_UPDATE',
+        'LEAD_BULK_UPDATE',
+        'LEAD_ASSIGNMENT',
+        'LEAD_UPDATE'
+      ];
+
+      activityTypesToProcess.forEach(activityType => {
+        const activity = leadActivities[activityType];
+        if (activity) {
+          let newStatusValue = null;
+          
+          switch(activityType) {
+            case 'LEAD_STATUS_UPDATE':
+              // Format: "Lead status updated from Not Contacted to Interested"
+              const leadStatusMatch = activity.activity_desc.match(/to\s+([^(\n,)]+)/);
+              if (leadStatusMatch && leadStatusMatch[1]) {
+                newStatusValue = leadStatusMatch[1].trim();
+                newStatusValue = newStatusValue.replace(/\s*\([^)]*\)$/, '').trim();
+                lead.dataValues.lead_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'APPLICATION_STATUS_UPDATE':
+              // Format: "Application status updated to Under Process"
+              let appStatusMatch = activity.activity_desc.match(/to\s+"([^"]+)"/);
+              if (!appStatusMatch) {
+                appStatusMatch = activity.activity_desc.match(/to\s+:?\s*([^\n,]+)/);
+              }
+              if (appStatusMatch && appStatusMatch[1]) {
+                newStatusValue = appStatusMatch[1].trim();
+                lead.dataValues.application_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'VERIFICATION_STATUS_UPDATE':
+              // Format: "Updated Verification Status to : Approved for Walk-In"
+              const verStatusMatch = activity.activity_desc.match(/to\s+:?\s*([^\n,]+)/);
+              if (verStatusMatch && verStatusMatch[1]) {
+                newStatusValue = verStatusMatch[1].trim();
+                lead.dataValues.verification_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'LEAD_BULK_UPDATE':
+              // Handle bulk update format
+              if (activity.activity_desc.includes('in bulk import:')) {
+                // Extract lead_status changes
+                const leadStatusBulkMatch = activity.activity_desc.match(/lead_status:\s*([^→]+)→\s*([^;]+)/);
+                if (leadStatusBulkMatch && leadStatusBulkMatch[2]) {
+                  newStatusValue = leadStatusBulkMatch[2].trim();
+                  if (newStatusValue !== 'undefined' && newStatusValue !== 'null') {
+                    lead.dataValues.lead_status = newStatusValue;
+                    mostRecentStatusValue = newStatusValue;
+                    mostRecentActivityType = activityType;
+                  }
+                }
+                
+                // Extract last_updated_status changes
+                const lastUpdatedBulkMatch = activity.activity_desc.match(/last_updated_status:\s*([^→]+)→\s*([^;]+)/);
+                if (lastUpdatedBulkMatch && lastUpdatedBulkMatch[2]) {
+                  const lastUpdatedValue = lastUpdatedBulkMatch[2].trim();
+                  if (lastUpdatedValue !== 'undefined' && lastUpdatedValue !== 'null') {
+                    lead.dataValues.last_updated_status = lastUpdatedValue;
+                  }
+                }
+                
+                // Extract application_status changes if present
+                const appStatusBulkMatch = activity.activity_desc.match(/application_status:\s*([^→]+)→\s*([^;]+)/);
+                if (appStatusBulkMatch && appStatusBulkMatch[2]) {
+                  const appStatusValue = appStatusBulkMatch[2].trim();
+                  if (appStatusValue !== 'undefined' && appStatusValue !== 'null') {
+                    lead.dataValues.application_status = appStatusValue;
+                  }
+                }
+                
+                // Extract verification_status changes if present
+                const verStatusBulkMatch = activity.activity_desc.match(/verification_status:\s*([^→]+)→\s*([^;]+)/);
+                if (verStatusBulkMatch && verStatusBulkMatch[2]) {
+                  const verStatusValue = verStatusBulkMatch[2].trim();
+                  if (verStatusValue !== 'undefined' && verStatusValue !== 'null') {
+                    lead.dataValues.verification_status = verStatusValue;
+                  }
+                }
+              }
+              break;
+              
+            case 'LEAD_ASSIGNMENT':
+              // Format: "Lead Assigned to Rishi Emp"
+              const assignMatch = activity.activity_desc.match(/to\s+([^\n]+)/);
+              if (assignMatch && assignMatch[1]) {
+                lead.dataValues._assigned_to = assignMatch[1].trim();
+                lead.dataValues._assigned_at = activity.createdAt;
+                lead.dataValues._activity_note = `Assigned to: ${assignMatch[1].trim()}`;
+              }
+              break;
+              
+            case 'LEAD_UPDATE':
+              // Handle individual field updates
+              if (activity.activity_desc.includes('Lead details updated:')) {
+                lead.dataValues._activity_note = 'Lead details were updated';
+              }
+              break;
+          }
+        }
+      });
+
+      // Update last_updated_status with the most recent status value
+      if (mostRecentStatusValue) {
+        lead.dataValues.last_updated_status = mostRecentStatusValue;
+      }
+      
+      // Store all activities for this lead on this date
+      lead.dataValues._activities_on_date = Object.values(leadActivities).map(act => ({
+        activity_type: act.activity_type,
+        activity_desc: act.activity_desc,
+        activity_note: act.note,
+        activity_created_at: act.createdAt,
+        updated_by: act.created_by
+      }));
+    }
+      });
+    }
+
+    // Rest of your existing code for dispute checks and call counts
     const approvedLeadIds = rows
       .filter(
         (lead) =>
@@ -1015,7 +1189,6 @@ async function getAllLeadsWithPagination(req, res) {
     let disputeCheckMap = {};
 
     if (approvedLeadIds.length > 0) {
-      // 1️⃣ Fetch closed loans
       const loanReports = await LoanReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
@@ -1025,7 +1198,6 @@ async function getAllLeadsWithPagination(req, res) {
         attributes: ["lead_id", "dispute_status"],
       });
 
-      // 2️⃣ Fetch closed credit reports
       const creditReports = await CreditReport.findAll({
         where: {
           lead_id: { [Op.in]: approvedLeadIds },
@@ -1035,7 +1207,6 @@ async function getAllLeadsWithPagination(req, res) {
         attributes: ["lead_id", "dispute_status"],
       });
 
-      // Combine results into a single grouping
       const reportsByLead = {};
 
       [...loanReports, ...creditReports].forEach((report) => {
@@ -1043,28 +1214,19 @@ async function getAllLeadsWithPagination(req, res) {
         reportsByLead[report.lead_id].push(report.dispute_status);
       });
 
-      // Check the "all dispute updated" condition
       for (const leadId in reportsByLead) {
         const reports = reportsByLead[leadId];
-
-        // Only set to true if:
-        // 1. There are reports (array not empty)
-        // 2. Every report has "Dispute Updated" status
         disputeCheckMap[leadId] =
           reports.length > 0 &&
           reports.every((status) => status === "Dispute Updated");
       }
     }
 
-    // 3️⃣ Add the flag to each lead
     rows.forEach((lead) => {
       if (
         lead.lead_bucket === "APPROVED_APPLICATIONS" &&
         lead.is_paid === true
       ) {
-        // Only set to true if:
-        // 1. The lead exists in disputeCheckMap (has reports)
-        // 2. All reports have "Dispute Updated" status
         lead.dataValues.isUserAllowedToUpdateAllDisputes =
           lead.id in disputeCheckMap && disputeCheckMap[lead.id];
       } else {
@@ -1089,7 +1251,6 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    // SQL to get call count grouped by created_by
     const callCounts = await sequelize.query(
       `SELECT lead_id, COUNT(*) AS total_changes
         FROM Activities
@@ -1105,7 +1266,6 @@ async function getAllLeadsWithPagination(req, res) {
       }
     );
 
-    // Map for quick lookup by lead_id
     const callCountMap = {};
     callCounts.forEach(({ lead_id, total_changes }) => {
       callCountMap[lead_id] = parseInt(total_changes);
@@ -1113,7 +1273,6 @@ async function getAllLeadsWithPagination(req, res) {
 
     rows.forEach((lead) => {
       const leadId = lead.dataValues?.id;
-
       lead.dataValues.calls_count = leadId ? callCountMap[leadId] || 0 : 0;
     });
 

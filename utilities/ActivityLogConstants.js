@@ -216,10 +216,10 @@ const ACTIVITY_LOGS = {
     `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`,
     LEAD_ASSIGNMENT : (employeeName) => `Lead Assigned to ${employeeName}`,
     APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${terminologiesMap.get(newStatus)}`,
-    LEAD_STATUS_UPDATE: (prevStatus, newStatus, verification_date) => 
-        `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}${
-          [ALL_CLEAR, NEGATIVE_TRANSACTION].includes(terminologiesMap.get(newStatus)) ? ` (Verification Date: ${verification_date})` : ''
-        }`,      
+    LEAD_STATUS_UPDATE: (prevStatus, newStatus, verification_date, sub_status = null) => 
+    `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}${sub_status ? ` - ${sub_status}` : ''}${
+        [ALL_CLEAR, NEGATIVE_TRANSACTION].includes(terminologiesMap.get(newStatus)) ? ` (Verification Date: ${verification_date})` : ''
+    }`,  
     TASK_CREATE : (task_type, task_date) => `${terminologiesMap.get(task_type)} on ${task_date}`,
     PAYSLIP_UPLOAD : (document_name) => `Payslip ${document_name} uplaoded`,
     CREDIT_BUREAU_UPLOAD : (document_name) => `Credit Bureau ${document_name} uploaded`,

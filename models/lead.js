@@ -20,6 +20,7 @@ module.exports = (sequelize) => {
       defaultValue: 'Under Review' // Set a default value
     },
     lead_status: { type: DataTypes.STRING, defaultValue: 'Not Contacted' },
+    sub_status: {type: DataTypes.STRING, allowNull:true },
     application_status : { type: DataTypes.ENUM(...APPLICATION_STATUSES) },
     is_rejected: { type: DataTypes.BOOLEAN, defaultValue: false },
     rejection_reason: { type: DataTypes.TEXT },

@@ -32,6 +32,7 @@ async function addActivity(req, res) {
       prev_status,
       lead_name,
       from_activity_logs_page = false,
+      sub_status = null
     } = req.body;
 
     // Validate mandatory fields
@@ -45,6 +46,26 @@ async function addActivity(req, res) {
         null,
         null
       );
+    }
+
+    if (activity_status === "Others" && !description) {
+      await transaction.rollback()
+      return ApiResponse(
+        res, 
+        "error",
+        400,
+        "Note is required for others"
+      )
+    }
+
+    if (["Not Possible", "Not Interested"].includes(activity_status) && !sub_status) {
+      await transaction.rollback()
+      return ApiResponse(
+        res, 
+        "error",
+        400,
+        `Sub status is required for ${activity_status}`
+      )
     }
 
     let existingActivity;
@@ -164,6 +185,13 @@ async function addActivity(req, res) {
         updatePayload.lead_bucket = "PRELIMINERY_CHECK";
       }
 
+      // handle updating sub status
+      if(["Not Possible", "Not Interested"].includes(activity_status)){
+        updatePayload.sub_status = sub_status
+      }else {
+        updatePayload.sub_status = null
+      }
+
       await lead.update(updatePayload, { transaction });
 
       let logData = null;
@@ -194,7 +222,7 @@ async function addActivity(req, res) {
       } else {
         if (!from_activity_logs_page) {
           logData = createLogData(
-            ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status, activity_status),
+            ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status, activity_status, null, sub_status),
             ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
             userId,
             leadId,

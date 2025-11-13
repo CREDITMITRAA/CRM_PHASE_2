@@ -7,6 +7,7 @@ module.exports = (sequelize) => {
     lead_id: { type: DataTypes.INTEGER },
     credit_card_name: { type: DataTypes.STRING },
     total_outstanding: { type: DataTypes.DECIMAL(15, 2) },
+    card_limit: {type: DataTypes.INTEGER, allowNull: true},
     loan_status: {type: DataTypes.ENUM(...LOAN_STATUS_OPTIONS), 
       defaultValue: 'Not Closing' },
     closing_date: { type: DataTypes.DATE, allowNull: true },

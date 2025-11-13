@@ -234,6 +234,7 @@ async function addCreditReport(req, res) {
       created_by,
       lead_name,
       lead_status,
+      card_limit
     } = req.body;
     if (
       !lead_id ||
@@ -241,17 +242,15 @@ async function addCreditReport(req, res) {
       !total_outstanding ||
       !created_by ||
       !lead_name ||
-      !lead_status
+      !lead_status ||
+      !card_limit
     ) {
       await transaction.rollback();
       return ApiResponse(
         res,
         "error",
         400,
-        "Missing required fields!",
-        null,
-        null,
-        transaction
+        "Missing required fields!"
       );
     }
 
@@ -281,7 +280,7 @@ async function addCreditReport(req, res) {
     }
 
     const newCreditReport = await CreditReport.create(
-      { lead_id, created_by, credit_card_name, total_outstanding },
+      { lead_id, created_by, credit_card_name, total_outstanding, card_limit },
       { transaction }
     );
 
@@ -308,7 +307,8 @@ async function addCreditReport(req, res) {
         activity_type: ACTIVITY_TYPES.CREDIT_REPORT_ADD,
         activity_desc: ACTIVITY_LOGS.CREDIT_REPORT_ADD(
           credit_card_name,
-          total_outstanding
+          total_outstanding,
+          card_limit
         ),
         lead_id,
         lead_name,
@@ -328,7 +328,11 @@ async function addCreditReport(req, res) {
       null
     );
   } catch (error) {
-    await transaction.rollback();
+    // Check if transaction is still active before rolling back
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
+    
     return ApiResponse(
       res,
       "error",
@@ -357,7 +361,8 @@ async function editCreditReport(req, res) {
       dispute_status,
       dispute_date,
       closing_document_url,
-      lead_status
+      lead_status,
+      card_limit
     } = req.body;
 
     // Validate required fields
@@ -368,7 +373,8 @@ async function editCreditReport(req, res) {
       !total_outstanding ||
       !updated_by ||
       !lead_name ||
-      !lead_status
+      !lead_status ||
+      !card_limit
     ) {
       await transaction.rollback();
       return ApiResponse(res, "ERROR", 400, "Missing required fields!");
@@ -487,6 +493,7 @@ async function editCreditReport(req, res) {
     const updateData = {
       credit_card_name,
       total_outstanding,
+      card_limit,
       updated_by,
       loan_status,
       closing_date,

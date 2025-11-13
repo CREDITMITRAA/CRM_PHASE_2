@@ -111,6 +111,7 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
       : [
           "credit_card_name",
           "total_outstanding",
+          "card_limit",
           "loan_status",
           "closing_date",
           "dispute_status",

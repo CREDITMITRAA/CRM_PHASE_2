@@ -528,7 +528,8 @@ async function getAllLeadsWithPagination(req, res) {
       utm_campaign,
       utm_source,
       last_updated_status,
-      activity_date
+      activity_date,
+      sub_status
     } = req.query;
 
     page = parseInt(page);
@@ -628,6 +629,9 @@ async function getAllLeadsWithPagination(req, res) {
     if (last_updated_status) whereConditions.last_updated_status = last_updated_status;
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
+    if (sub_status) {
+      whereConditions.sub_status = { [Op.like]: `%${sub_status}`}
+    }
 
     if (utm_campaign) {
       whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` };

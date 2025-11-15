@@ -18,6 +18,7 @@ const { sendRecentTaskNotifications } = require("./services/NotificationServices
 // ================== EXPRESS APP CONFIG ==================
 const app = express();
 const allowedOrigins = process.env.FRONTEND_ORIGIN_URL?.split(",") || ["*"];
+app.set('trust proxy', true); // Trust all proxies
 
 app.use(helmet());
 app.use(bodyParser.json());

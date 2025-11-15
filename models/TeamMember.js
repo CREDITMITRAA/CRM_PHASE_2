@@ -1,11 +1,19 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  return sequelize.define('UserRole', {
+  return sequelize.define('TeamMember', {
     id: { 
       type: DataTypes.INTEGER, 
       autoIncrement: true, 
       primaryKey: true 
+    },
+    team_id: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'Teams',
+        key: 'id'
+      },
+      allowNull: false
     },
     user_id: {
       type: DataTypes.INTEGER,
@@ -14,17 +22,15 @@ module.exports = (sequelize) => {
         key: 'id'
       },
       allowNull: false
-    },
-    role_id: {
-      type: DataTypes.INTEGER,
-      references: {
-        model: 'Roles',
-        key: 'id'
-      },
-      allowNull: false
     }
   }, { 
     timestamps: true,
-    tableName: 'UserRoles'
+    tableName: 'TeamMembers',
+    indexes: [
+      {
+        unique: true,
+        fields: ['team_id', 'user_id']
+      }
+    ]
   });
 };

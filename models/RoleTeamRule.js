@@ -1,21 +1,21 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  return sequelize.define('UserRole', {
+  return sequelize.define('RoleTeamRule', {
     id: { 
       type: DataTypes.INTEGER, 
       autoIncrement: true, 
       primaryKey: true 
     },
-    user_id: {
+    creator_role_id: {
       type: DataTypes.INTEGER,
       references: {
-        model: 'Users',
+        model: 'Roles',
         key: 'id'
       },
       allowNull: false
     },
-    role_id: {
+    allowed_member_id: {
       type: DataTypes.INTEGER,
       references: {
         model: 'Roles',
@@ -25,6 +25,6 @@ module.exports = (sequelize) => {
     }
   }, { 
     timestamps: true,
-    tableName: 'UserRoles'
+    tableName: 'RoleTeamRules'
   });
 };

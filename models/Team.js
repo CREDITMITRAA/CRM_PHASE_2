@@ -1,13 +1,17 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  return sequelize.define('UserRole', {
+  return sequelize.define('Team', {
     id: { 
       type: DataTypes.INTEGER, 
       autoIncrement: true, 
       primaryKey: true 
     },
-    user_id: {
+    name: { 
+      type: DataTypes.STRING, 
+      allowNull: false 
+    },
+    team_leader_id: {
       type: DataTypes.INTEGER,
       references: {
         model: 'Users',
@@ -15,16 +19,12 @@ module.exports = (sequelize) => {
       },
       allowNull: false
     },
-    role_id: {
-      type: DataTypes.INTEGER,
-      references: {
-        model: 'Roles',
-        key: 'id'
-      },
-      allowNull: false
+    status: { 
+      type: DataTypes.ENUM('active', 'inactive'), 
+      defaultValue: 'active' 
     }
   }, { 
     timestamps: true,
-    tableName: 'UserRoles'
+    tableName: 'Teams'
   });
 };

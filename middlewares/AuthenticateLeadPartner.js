@@ -9,10 +9,11 @@ const authenticatePartner = async (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
     const signature = req.headers['x-signature'];
     const timestamp = req.headers['x-timestamp'];
+    const partnerCode = req.headers['x-partner-code'];
     const origin = req.headers.origin || req.headers.referer;
     const ip = requestIP.getClientIp(req);
 
-    if (!apiKey || !signature || !timestamp) {
+    if (!apiKey || !signature || !timestamp || !partnerCode) {
       return ApiResponse(res, "ERROR", 400, "Missing required headers");
     }
 
@@ -25,6 +26,11 @@ const authenticatePartner = async (req, res, next) => {
     const partner = await LeadPartner.findOne({ where: { api_key: apiKey, is_active: true } });
     if (!partner) {
       return ApiResponse(res, "ERROR", 401, 'Invalid API key');
+    }
+
+    // Validate partner_code
+    if (partnerCode !== partner.partner_code) {
+      return ApiResponse(res, "ERROR", 401, 'Invalid partner code');
     }
 
     if (!partner.allowed_ips.includes(ip)) {

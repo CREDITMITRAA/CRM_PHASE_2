@@ -135,6 +135,8 @@ async function addLeadPartner(req, res) {
 
 async function uploadLeadsFromLeadPartner(req, res) {
   const transaction = await sequelize.transaction();
+  let transactionCommitted = false; // Track transaction state
+  
   try {
     const leadPartnerName = req.leadPartner?.name;
     const inputData = Array.isArray(req.body.leads)
@@ -144,7 +146,12 @@ async function uploadLeadsFromLeadPartner(req, res) {
 
     if (inputData.length === 0) {
       await transaction.rollback();
-      return ApiResponse(res, "ERROR", 400, "No leads provided");
+      return ApiResponse(
+        res, 
+        "ERROR", 
+        400, 
+        "No leads provided. Please include at least one lead in your request."
+      );
     }
 
     let validLeads = [];
@@ -156,10 +163,17 @@ async function uploadLeadsFromLeadPartner(req, res) {
     for (const lead of inputData) {
       const { name, phone, email, score, salary } = lead;
 
-      if (!name || !phone || !email || !score || !salary) {
+      if (!name || !phone ) {
+        const missingFields = [];
+        if (!name) missingFields.push("name");
+        if (!phone) missingFields.push("phone");
+        if (!email) missingFields.push("email");
+        if (!score) missingFields.push("score");
+        if (!salary) missingFields.push("salary");
+        
         invalidLeads.push({
-          ...lead,
-          reason: "Missing required fields",
+          phone: phone || "N/A",
+          reason: `Missing required field(s): ${missingFields.join(", ")}`,
           lead_source: leadPartnerName,
         });
         continue;
@@ -171,11 +185,9 @@ async function uploadLeadsFromLeadPartner(req, res) {
 
       if (phoneReason || !normalizedPhone) {
         invalidLeads.push({
-          ...lead,
           phone: phoneRaw,
-          reason: phoneReason || "Invalid phone format",
+          reason: phoneReason || "Invalid phone number format. Please provide a valid 10-digit Indian mobile number",
           lead_source: leadPartnerName,
-          original_data: JSON.stringify(lead),
         });
         continue;
       }
@@ -202,13 +214,11 @@ async function uploadLeadsFromLeadPartner(req, res) {
     for (const lead of normalizedLeads) {
       const { normalizedPhone } = lead;
       if (existingLeadMap.has(normalizedPhone)) {
-        const existing = existingLeadMap.get(normalizedPhone);
         invalidLeads.push({
           ...lead,
           phone: normalizedPhone,
-          reason: `Duplicate of lead ID: ${existing.id}`,
+          reason: "This phone number already exists in our system",
           lead_source: leadPartnerName,
-          original_data: JSON.stringify(lead),
         });
         continue;
       }
@@ -240,9 +250,8 @@ async function uploadLeadsFromLeadPartner(req, res) {
             createdLeads.push(created);
           } catch (err) {
             invalidLeads.push({
-              ...lead,
-              reason: err.message || "Insert failed",
-              original_data: JSON.stringify(lead),
+              phone: lead.phone,
+              reason: "Unable to process this lead. Please verify the data and try again.",
             });
           }
         }
@@ -265,44 +274,72 @@ async function uploadLeadsFromLeadPartner(req, res) {
       }
     }
 
+    // Commit the transaction
     await transaction.commit();
+    transactionCommitted = true; // Mark as committed
 
+    // Generate meaningful success message
+    let successMessage = "";
+    if (createdLeads.length === inputData.length) {
+      successMessage = isBulk 
+        ? `Successfully processed all ${createdLeads.length} lead(s)` 
+        : "Lead successfully submitted and processed";
+    } else if (createdLeads.length > 0) {
+      successMessage = `Successfully processed ${createdLeads.length} out of ${inputData.length} lead(s). ${invalidLeads.length} lead(s) could not be processed.`;
+    } else {
+      successMessage = `None of the ${inputData.length} lead(s) could be processed. Please review the validation errors.`;
+    }
+
+    // Build professional response without exposing internal IDs
     const response = {
-      totalReceived: inputData.length,
-      validCount: createdLeads.length,
-      invalidCount: invalidLeads.length,
-      createdLeads: createdLeads.map((l) => ({
-        id: l.id,
-        name: l.name,
-        phone: l.phone,
-        email: l.email,
-        ...(bereau_score && {bereau_score: l.bereau_score}),
-        ...(campaign && {utm_campaign: l.utm_campaign})
-      })),
-      invalidLeads: invalidLeads.map((l) => ({
-        reason: l.reason,
-        phone: l.phone,
-        original_data: l.original_data,
-      })),
+      summary: {
+        totalReceived: inputData.length,
+        successfullyProcessed: createdLeads.length,
+        failed: invalidLeads.length,
+      },
+      ...(createdLeads.length > 0 && {
+        processedLeads: createdLeads.map((l) => ({
+          name: l.name,
+          phone: l.phone,
+          email: l.email,
+          ...(l.bereau_score && { bureauScore: l.bereau_score }),
+          ...(l.utm_campaign && { campaign: l.utm_campaign }),
+          status: "processed",
+        })),
+      }),
+      ...(invalidLeads.length > 0 && {
+        failedLeads: invalidLeads.map((l) => ({
+          phone: l.phone || "N/A",
+          reason: l.reason,
+        })),
+      }),
     };
+
+    // Determine appropriate status code
+    // 201 Created: At least one lead was successfully processed
+    // 200 OK: No leads were processed (all failed validation)
+    const statusCode = createdLeads.length > 0 ? 201 : 200;
 
     return ApiResponse(
       res,
       "SUCCESS",
-      201,
-      isBulk ? "Bulk leads processed" : "Lead processed",
+      statusCode,
+      successMessage,
       response
     );
   } catch (error) {
-    if (transaction) await transaction.rollback();
+    // Only rollback if transaction hasn't been committed
+    if (transaction && !transactionCommitted) {
+      await transaction.rollback();
+    }
     console.error("Lead processing error:", error);
     return ApiResponse(
       res,
       "ERROR",
       500,
-      error?.message || "Failed to process leads",
+      "An unexpected error occurred while processing your request. Please try again later or contact support if the issue persists.",
       null,
-      error.message
+      null // Don't expose internal error details
     );
   }
 }
@@ -391,31 +428,43 @@ const extractTenDigitMobile = (phone) => {
 };
 
 const getPhoneValidationReason = (rawPhone) => {
-  if (!rawPhone || typeof rawPhone !== "string") return "Phone is missing";
-  if (/[a-zA-Z]/.test(rawPhone)) return "Contains alphabetic characters";
+  if (!rawPhone || typeof rawPhone !== "string") {
+    return "Phone number is required";
+  }
+  if (/[a-zA-Z]/.test(rawPhone)) {
+    return "Phone number cannot contain letters. Please provide only digits.";
+  }
 
   const cleaned = rawPhone.replace(/[\s-]/g, "");
   const digitsOnly = cleaned.replace(/\D/g, "");
 
   if (isValidIndianMobile(rawPhone)) return null;
 
-  // Specific error messages
-  if (digitsOnly.length > 14)
-    return "Too many digits (maximum 14 with 0091 prefix)";
-  if (digitsOnly.length < 10)
-    return `Only ${digitsOnly.length} digits (need 10)`;
-
-  if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
-    return "Invalid starting digit (must be 6-9)";
+  // User-friendly error messages
+  if (digitsOnly.length > 14) {
+    return "Phone number has too many digits. Maximum 14 digits allowed (including country code).";
+  }
+  if (digitsOnly.length < 10) {
+    return `Phone number must have 10 digits. Provided number has only ${digitsOnly.length} digit(s).`;
   }
 
-  if (/^00[^91]/.test(cleaned)) return "Invalid international prefix";
-  if (/^\+[^9]/.test(cleaned)) return "Invalid international prefix";
+  if (digitsOnly.length === 10 && !/^[6-9]/.test(digitsOnly)) {
+    return "Invalid phone number. Indian mobile numbers must start with 6, 7, 8, or 9.";
+  }
+
+  if (/^00[^91]/.test(cleaned)) {
+    return "Invalid country code. For India, use +91 or 0091 prefix.";
+  }
+  if (/^\+[^9]/.test(cleaned)) {
+    return "Invalid country code. For India, use +91 prefix.";
+  }
 
   // Landline specific checks
-  if (/^[02]/.test(digitsOnly)) return "Landline numbers not accepted";
+  if (/^[02]/.test(digitsOnly)) {
+    return "Landline numbers are not accepted. Please provide a valid mobile number.";
+  }
 
-  return "Invalid phone format";
+  return "Invalid phone number format. Please provide a valid 10-digit Indian mobile number (e.g., 9876543210).";
 };
 
 async function generateHeaders(req, res) {
@@ -442,7 +491,7 @@ async function generateHeaders(req, res) {
     let response = {
       "x-api-key": api_key,
       "x-timestamp": timestamp,
-      "=x-signature": signature,
+      "x-signature": signature,
     };
 
     return ApiResponse(

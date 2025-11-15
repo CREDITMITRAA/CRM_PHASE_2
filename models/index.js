@@ -21,6 +21,10 @@ const LeadPartner = require('./LeadPartner')(sequelize)
 const LoginDetail = require('./LoginDetail')(sequelize)
 const PhoneNumber = require('./PhoneNumber')(sequelize)
 const FcmToken = require("./FcmToken")(sequelize)
+const Team = require("./Team")(sequelize)
+const TeamMember = require("./TeamMember")(sequelize)
+const RoleTeamRule = require("./RoleTeamRule")(sequelize)
+const UserRole = require("./userRole")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -111,6 +115,61 @@ PhoneNumber.belongsTo(User, {
   as: 'user'
 })
 
+// Team associations
+Team.belongsTo(User, {
+  foreignKey: 'team_leader_id',
+  as: 'teamLeader'
+});
+
+Team.hasMany(TeamMember, {
+  foreignKey: 'team_id',
+  as: 'teamMembers'
+});
+
+// TeamMember associations
+TeamMember.belongsTo(Team, {
+  foreignKey: 'team_id',
+  as: 'team'
+});
+
+TeamMember.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
+// User associations (add these to your existing User model setup)
+User.hasMany(Team, {
+  foreignKey: 'team_leader_id',
+  as: 'ledTeams'
+});
+
+User.hasMany(TeamMember, {
+  foreignKey: 'user_id',
+  as: 'teamMemberships'
+});
+
+// UserRole associations
+UserRole.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
+UserRole.belongsTo(Role, {
+  foreignKey: 'role_id',
+  as: 'role'
+});
+
+// RoleTeamRule associations
+RoleTeamRule.belongsTo(Role, {
+  foreignKey: 'creator_role_id',
+  as: 'creatorRole'
+});
+
+RoleTeamRule.belongsTo(Role, {
+  foreignKey: 'allowed_member_id',
+  as: 'allowedMemberRole'
+});
+
 module.exports = {
   sequelize,
   User,
@@ -134,5 +193,9 @@ module.exports = {
   LeadPartner,
   LoginDetail,
   PhoneNumber,
-  FcmToken
+  FcmToken,
+  Team,
+  TeamMember,
+  RoleTeamRule,
+  UserRole
 };

@@ -138,7 +138,15 @@ async function uploadLeadsFromLeadPartner(req, res) {
   let transactionCommitted = false; // Track transaction state
   
   try {
-    const leadPartnerName = req.leadPartner?.name;
+    const leadPartner = req.leadPartner;
+    const leadPartnerName = leadPartner?.name;
+    const partnerCode = leadPartner?.partner_code;
+
+    // create the proper lead_source format 
+    const leadSource = partnerCode && leadPartnerName ?
+      `${partnerCode}_${leadPartnerName}`.replace(/\s+/g, '_') :
+      leadPartnerName || "unknown_source";
+    
     const inputData = Array.isArray(req.body.leads)
       ? req.body.leads
       : [req.body.leads];
@@ -174,7 +182,7 @@ async function uploadLeadsFromLeadPartner(req, res) {
         invalidLeads.push({
           phone: phone || "N/A",
           reason: `Missing required field(s): ${missingFields.join(", ")}`,
-          lead_source: leadPartnerName,
+          lead_source: leadSource,
         });
         continue;
       }
@@ -187,7 +195,7 @@ async function uploadLeadsFromLeadPartner(req, res) {
         invalidLeads.push({
           phone: phoneRaw,
           reason: phoneReason || "Invalid phone number format. Please provide a valid 10-digit Indian mobile number",
-          lead_source: leadPartnerName,
+          lead_source: leadSource,
         });
         continue;
       }
@@ -218,7 +226,7 @@ async function uploadLeadsFromLeadPartner(req, res) {
           ...lead,
           phone: normalizedPhone,
           reason: "This phone number already exists in our system",
-          lead_source: leadPartnerName,
+          lead_source: leadSource,
         });
         continue;
       }
@@ -229,7 +237,7 @@ async function uploadLeadsFromLeadPartner(req, res) {
         email: lead.email,
         score: lead.score,
         salary: lead.salary,
-        lead_source: leadPartnerName,
+        lead_source: leadSource,
         status: "active",
         last_updated_status: "Not Contacted",
         ...(lead.bereau_score && {bereau_score: lead.bereau_score}),

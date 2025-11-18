@@ -113,9 +113,13 @@ async function uploadCompaniesFromFile(req, res) {
             percentage: 5
         });
 
-        // Memory-efficient processing for t2.micro (1GB RAM): Very small batches
-        const batchSize = 50; // Very small batch size for limited memory (t2.micro)
-        const processingBatchSize = 50; // Process rows in very small chunks
+        // Memory-efficient processing: Adjust batch size based on available memory
+        // For t2.micro (1GB): batchSize = 50
+        // For t3.medium/t2.medium (4GB): batchSize = 200-500
+        // Auto-detect based on available memory or set manually
+        const availableMemory = process.memoryUsage().heapTotal / 1024 / 1024; // MB
+        const batchSize = availableMemory > 1500 ? 200 : 50; // Larger batches for instances with more RAM
+        const processingBatchSize = batchSize; // Process rows in chunks
         const errors = [];
         let totalRows = 0;
         let parsedRows = 0;

@@ -139,6 +139,7 @@ const MAKER_APPROVED = "Maker Approved"
 const CHECKER_APPROVED = "Checker Approved"
 const SEND_TO_LOGIN = "Send To Login"
 const APPLICATION_ON_HOLD = "Application On Hold"
+const NOT_MET_CRITERIA = "Not met criteria"
 
 const terminologiesMap = new Map([
     [NOT_CONTACTED, 'Unattended'],
@@ -208,7 +209,8 @@ const terminologiesMap = new Map([
   [APPLICATION_IS_CLOSED,APPLICATION_IS_CLOSED],
   [OTHERS,OTHERS],
   [SEND_TO_LOGIN,SEND_TO_LOGIN],
-  [APPLICATION_ON_HOLD,APPLICATION_ON_HOLD]
+  [APPLICATION_ON_HOLD,APPLICATION_ON_HOLD],
+  [NOT_MET_CRITERIA, NOT_MET_CRITERIA]
   ])
 
 const ACTIVITY_LOGS = {

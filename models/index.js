@@ -25,6 +25,7 @@ const Team = require("./Team")(sequelize)
 const TeamMember = require("./TeamMember")(sequelize)
 const RoleTeamRule = require("./RoleTeamRule")(sequelize)
 const UserRole = require("./userRole")(sequelize)
+const Company = require("./company")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -197,5 +198,6 @@ module.exports = {
   Team,
   TeamMember,
   RoleTeamRule,
-  UserRole
+  UserRole,
+  Company
 };

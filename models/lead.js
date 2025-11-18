@@ -11,6 +11,7 @@ module.exports = (sequelize) => {
     company: { type: DataTypes.STRING },
     lead_source: { type: DataTypes.STRING },
     company_category_id: { type: DataTypes.INTEGER },
+    company_category: { type: DataTypes.STRING },
     salary: { type: DataTypes.DECIMAL(10, 2) },
     address: { type: DataTypes.TEXT },
     gender: { type: DataTypes.ENUM('male', 'female', 'transgender', 'others'),allowNull:true },

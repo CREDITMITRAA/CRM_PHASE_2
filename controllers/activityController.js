@@ -17,6 +17,7 @@ const {
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
 const UserMetricsServices = require("../services/UserMetricsServices");
+const { getMissingMandatoryFields, runFirstLevelScoreCardCriteria, getScoreCardFailureReason } = require("../services/activityServices");
 
 async function addActivity(req, res) {
   const transaction = await sequelize.transaction();
@@ -32,7 +33,7 @@ async function addActivity(req, res) {
       prev_status,
       lead_name,
       from_activity_logs_page = false,
-      sub_status = null
+      sub_status = null,
     } = req.body;
 
     // Validate mandatory fields
@@ -49,23 +50,21 @@ async function addActivity(req, res) {
     }
 
     if (activity_status === "Others" && !description) {
-      await transaction.rollback()
-      return ApiResponse(
-        res, 
-        "error",
-        400,
-        "Note is required for others"
-      )
+      await transaction.rollback();
+      return ApiResponse(res, "error", 400, "Note is required for others");
     }
 
-    if (["Not Possible", "Not Interested"].includes(activity_status) && !sub_status) {
-      await transaction.rollback()
+    if (
+      ["Not Possible", "Not Interested"].includes(activity_status) &&
+      !sub_status
+    ) {
+      await transaction.rollback();
       return ApiResponse(
-        res, 
+        res,
         "error",
         400,
         `Sub status is required for ${activity_status}`
-      )
+      );
     }
 
     let existingActivity;
@@ -121,7 +120,154 @@ async function addActivity(req, res) {
         );
       }
 
-      // Create Activity **ONLY AFTER CHECKING pendingActivity**
+      // Check for mandatory fields when activity_status is "Verification 1"
+      if (activity_status === "Verification 1") {
+        const missingFields = getMissingMandatoryFields(lead);
+        
+        if (missingFields.length > 0) {
+          const missingFieldsMessage = `Missing mandatory fields for Verification 1: ${missingFields.join(', ')}`;
+          const autoRejectDescription = `Auto-rejected: ${missingFieldsMessage}`;
+
+          // Create activity for auto-rejection due to missing fields
+          const rejectionActivity = await Activity.create(
+            {
+              lead_id: leadId,
+              activity_status: "Not Possible",
+              description: autoRejectDescription,
+              docs_collected: false,
+              created_by: userId,
+              follow_up: null,
+              lead_status: "Not Possible",
+            },
+            { transaction }
+          );
+
+          // Update lead status to "Not Possible"
+          const updatePayload = {
+            lead_status: "Not Possible",
+            last_updated_status: "Not Possible",
+            sub_status: "Missing Mandatory Fields",
+            updatedAt: new Date().toISOString(),
+          };
+
+          await lead.update(updatePayload, { transaction });
+
+          // Create activity log
+          if (!from_activity_logs_page) {
+            const logData = createLogData(
+              ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+                prev_status,
+                "Not Possible",
+                null,
+                "Missing Mandatory Fields"
+              ),
+              ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+              userId,
+              leadId,
+              autoRejectDescription,
+              lead_name
+            );
+            await createActivityLog(logData, transaction);
+          }
+
+          await transaction.commit();
+
+          return ApiResponse(
+            res,
+            "success",
+            201,
+            "Lead auto-rejected: Missing mandatory fields for Verification 1",
+            {
+              activityId: rejectionActivity.id,
+              description: rejectionActivity.description,
+              activity_status: rejectionActivity.activity_status,
+              docs_collected: rejectionActivity.docs_collected,
+              follow_up: rejectionActivity.follow_up,
+              createdAt: rejectionActivity.createdAt,
+              updatedAt: rejectionActivity.updatedAt,
+              lead_status: rejectionActivity.lead_status,
+              autoRejected: true,
+              missingFields: missingFields,
+              reason: missingFieldsMessage
+            },
+            null
+          );
+        }
+
+        // If all mandatory fields are present, then check score card criteria
+        const passesScoreCard = runFirstLevelScoreCardCriteria(lead);
+        
+        if (!passesScoreCard) {
+          const failureReason = getScoreCardFailureReason(lead);
+          const autoRejectDescription = `Auto-rejected: ${failureReason}`;
+
+          // Create activity for auto-rejection due to score card failure
+          const rejectionActivity = await Activity.create(
+            {
+              lead_id: leadId,
+              activity_status: "Not met criteria",
+              description: autoRejectDescription,
+              docs_collected: false,
+              created_by: userId,
+              follow_up: null,
+              lead_status: "Not met criteria",
+            },
+            { transaction }
+          );
+
+          // Update lead status to "Not Possible"
+          const updatePayload = {
+            lead_status: "Not met criteria",
+            last_updated_status: "Not met criteria",
+            sub_status: failureReason,
+            updatedAt: new Date().toISOString(),
+          };
+
+          await lead.update(updatePayload, { transaction });
+
+          // Create activity log
+          if (!from_activity_logs_page) {
+            const logData = createLogData(
+              ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+                prev_status,
+                "Not met criteria",
+                null,
+                failureReason
+              ),
+              ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+              userId,
+              leadId,
+              autoRejectDescription,
+              lead_name
+            );
+            await createActivityLog(logData, transaction);
+          }
+
+          await transaction.commit();
+
+          return ApiResponse(
+            res,
+            "success",
+            201,
+            "Lead auto-rejected: Does not meet score card criteria",
+            {
+              activityId: rejectionActivity.id,
+              description: rejectionActivity.description,
+              activity_status: rejectionActivity.activity_status,
+              docs_collected: rejectionActivity.docs_collected,
+              follow_up: rejectionActivity.follow_up,
+              createdAt: rejectionActivity.createdAt,
+              updatedAt: rejectionActivity.updatedAt,
+              lead_status: rejectionActivity.lead_status,
+              autoRejected: true,
+              reason: failureReason
+            },
+            null
+          );
+        }
+      }
+
+      // Create Activity for normal flow (when criteria passes or for other statuses)
       const activity = await Activity.create(
         {
           lead_id: leadId,
@@ -186,10 +332,10 @@ async function addActivity(req, res) {
       }
 
       // handle updating sub status
-      if(["Not Possible", "Not Interested"].includes(activity_status)){
-        updatePayload.sub_status = sub_status
-      }else {
-        updatePayload.sub_status = null
+      if (["Not Possible", "Not Interested"].includes(activity_status)) {
+        updatePayload.sub_status = sub_status;
+      } else {
+        updatePayload.sub_status = null;
       }
 
       await lead.update(updatePayload, { transaction });
@@ -222,7 +368,12 @@ async function addActivity(req, res) {
       } else {
         if (!from_activity_logs_page) {
           logData = createLogData(
-            ACTIVITY_LOGS.LEAD_STATUS_UPDATE(prev_status, activity_status, null, sub_status),
+            ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+              prev_status,
+              activity_status,
+              null,
+              sub_status
+            ),
             ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
             userId,
             leadId,
@@ -820,7 +971,7 @@ async function updateDocsCollectedByActivityId(req, res) {
       "Docs Collected field updated successfully!"
     );
   } catch (error) {
-    await transaction.rollback()
+    await transaction.rollback();
     return ApiResponse(
       res,
       "error",

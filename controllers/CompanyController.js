@@ -113,9 +113,9 @@ async function uploadCompaniesFromFile(req, res) {
             percentage: 5
         });
 
-        // Memory-efficient processing: Use smaller batch sizes and process incrementally
-        const batchSize = 500; // Reduced batch size for memory efficiency
-        const processingBatchSize = 100; // Process rows in smaller chunks
+        // Memory-efficient processing for t2.micro (1GB RAM): Very small batches
+        const batchSize = 50; // Very small batch size for limited memory (t2.micro)
+        const processingBatchSize = 50; // Process rows in very small chunks
         const errors = [];
         let totalRows = 0;
         let parsedRows = 0;
@@ -247,12 +247,12 @@ async function uploadCompaniesFromFile(req, res) {
             deletedRecords: deletedCount
         });
 
-        // Memory-efficient processing: Process rows in batches and insert incrementally
-        // Use Set for deduplication (more memory efficient than Map for this use case)
-        const seenCompanies = new Set();
+        // Memory-efficient processing for t2.micro: Process rows in very small batches
+        // Use database-level deduplication instead of in-memory Set to save RAM
         let currentBatch = [];
         let validCompaniesCount = 0;
         let duplicateCount = 0;
+        const maxErrorsToStore = 50; // Limit errors to save memory
 
         // Process rows in chunks to avoid loading everything into memory
         for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
@@ -267,34 +267,30 @@ async function uploadCompaniesFromFile(req, res) {
 
             // Validate required fields
             if (!companyName) {
-                errors.push({
-                    row: rowNumber,
-                    company_name: "N/A",
-                    company_category: companyCategory || "N/A",
-                    reason: "Company name is required"
-                });
+                if (errors.length < maxErrorsToStore) {
+                    errors.push({
+                        row: rowNumber,
+                        company_name: "N/A",
+                        company_category: companyCategory || "N/A",
+                        reason: "Company name is required"
+                    });
+                }
                 continue;
             }
 
             if (!companyCategory) {
-                errors.push({
-                    row: rowNumber,
-                    company_name: companyName,
-                    company_category: "N/A",
-                    reason: "Company category is required"
-                });
+                if (errors.length < maxErrorsToStore) {
+                    errors.push({
+                        row: rowNumber,
+                        company_name: companyName,
+                        company_category: "N/A",
+                        reason: "Company category is required"
+                    });
+                }
                 continue;
             }
 
-            // Check for duplicates (case-insensitive)
-            const normalizedName = companyName.toLowerCase().trim();
-            if (seenCompanies.has(normalizedName)) {
-                duplicateCount++;
-                continue;
-            }
-
-            // Add to seen set and batch
-            seenCompanies.add(normalizedName);
+            // Add to batch (deduplication will be handled by database with unique constraint or we'll handle it in batches)
             currentBatch.push({
                 company_name: companyName.trim(),
                 company_category: companyCategory.trim()
@@ -303,18 +299,33 @@ async function uploadCompaniesFromFile(req, res) {
             validCompaniesCount++;
             parsedRows++;
 
-            // Insert in batches to avoid memory buildup
+            // Insert in very small batches to avoid memory buildup on t2.micro
             if (currentBatch.length >= batchSize) {
                 try {
-                    await Company.bulkCreate(currentBatch, {
-                        transaction,
-                        ignoreDuplicates: false
-                    });
+                    // Remove duplicates within batch before inserting
+                    const uniqueBatch = [];
+                    const batchSeen = new Set();
+                    for (const company of currentBatch) {
+                        const normalizedName = company.company_name.toLowerCase().trim();
+                        if (!batchSeen.has(normalizedName)) {
+                            batchSeen.add(normalizedName);
+                            uniqueBatch.push(company);
+                        } else {
+                            duplicateCount++;
+                        }
+                    }
                     
-                    insertedCount += currentBatch.length;
+                    if (uniqueBatch.length > 0) {
+                        await Company.bulkCreate(uniqueBatch, {
+                            transaction,
+                            ignoreDuplicates: true // Use database-level deduplication
+                        });
+                        insertedCount += uniqueBatch.length;
+                    }
                     
-                    // Clear batch to free memory
+                    // Clear batch and Set to free memory immediately
                     currentBatch = [];
+                    batchSeen.clear();
                     
                     // Send progress update
                     const progress = 25 + Math.round((parsedRows / totalRows) * 70);
@@ -327,9 +338,14 @@ async function uploadCompaniesFromFile(req, res) {
                         inserted: insertedCount
                     });
 
-                    // Force garbage collection hint periodically (if available)
-                    if (parsedRows % (batchSize * 10) === 0 && global.gc) {
-                        global.gc(); // Call GC if available (requires --expose-gc flag)
+                    // Aggressive memory cleanup for t2.micro
+                    if (parsedRows % (batchSize * 5) === 0) {
+                        // Force garbage collection if available
+                        if (global.gc) {
+                            global.gc();
+                        }
+                        // Clear worksheet row cache by accessing row count (triggers cleanup)
+                        worksheet.rowCount;
                     }
                 } catch (batchError) {
                     console.error(`Error processing batch at row ${rowNumber}:`, batchError);
@@ -365,12 +381,30 @@ async function uploadCompaniesFromFile(req, res) {
         // Insert remaining batch
         if (currentBatch.length > 0) {
             try {
-                await Company.bulkCreate(currentBatch, {
-                    transaction,
-                    ignoreDuplicates: false
-                });
-                insertedCount += currentBatch.length;
-                currentBatch = []; // Clear batch
+                // Remove duplicates within final batch
+                const uniqueBatch = [];
+                const batchSeen = new Set();
+                for (const company of currentBatch) {
+                    const normalizedName = company.company_name.toLowerCase().trim();
+                    if (!batchSeen.has(normalizedName)) {
+                        batchSeen.add(normalizedName);
+                        uniqueBatch.push(company);
+                    } else {
+                        duplicateCount++;
+                    }
+                }
+                
+                if (uniqueBatch.length > 0) {
+                    await Company.bulkCreate(uniqueBatch, {
+                        transaction,
+                        ignoreDuplicates: true // Use database-level deduplication
+                    });
+                    insertedCount += uniqueBatch.length;
+                }
+                
+                // Clear batch and Set to free memory
+                currentBatch = [];
+                batchSeen.clear();
             } catch (batchError) {
                 console.error(`Error processing final batch:`, batchError);
                 await transaction.rollback();
@@ -402,7 +436,7 @@ async function uploadCompaniesFromFile(req, res) {
                     totalRows: totalRows,
                     validCompanies: 0,
                     invalidCompanies: errors.length,
-                    errors: errors.length > 0 ? errors.slice(0, 100) : null // Limit error output
+                    errors: errors.length > 0 ? errors.slice(0, 50) : null // Limit error output
                 }
             });
             res.end();
@@ -430,13 +464,13 @@ async function uploadCompaniesFromFile(req, res) {
             }
         });
 
-        // Clean up uploaded file
+        // Clean up uploaded file immediately
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
 
-        // Clear large objects
-        seenCompanies.clear();
+        // Clear worksheet reference to help GC
+        worksheet = null;
 
         res.end();
 

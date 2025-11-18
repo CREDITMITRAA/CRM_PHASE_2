@@ -69,6 +69,7 @@ async function uploadCompaniesFromFile(req, res) {
 
     const transaction = await sequelize.transaction();
     let filePath = null;
+    let workbook = null;
 
     // Helper function to send SSE progress updates
     const sendProgress = (data) => {
@@ -112,13 +113,17 @@ async function uploadCompaniesFromFile(req, res) {
             percentage: 5
         });
 
-        const results = [];
-        let processedCount = 0;
-        const batchSize = 1000;
+        // Memory-efficient processing: Use smaller batch sizes and process incrementally
+        const batchSize = 500; // Reduced batch size for memory efficiency
+        const processingBatchSize = 100; // Process rows in smaller chunks
         const errors = [];
+        let totalRows = 0;
+        let parsedRows = 0;
+        let insertedCount = 0;
+        let deletedCount = 0;
 
         // Process Excel file
-        const workbook = new ExcelJS.Workbook();
+        workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
         
         sendProgress({
@@ -129,11 +134,12 @@ async function uploadCompaniesFromFile(req, res) {
 
         const worksheet = workbook.getWorksheet(1);
         
-        if (!worksheet || worksheet.rowCount < 2) {
+        if (!worksheet) {
             await transaction.rollback();
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
+            workbook = null; // Clear reference
             sendProgress({
                 status: 'error',
                 message: 'Excel file is empty or has no data rows.',
@@ -155,7 +161,6 @@ async function uploadCompaniesFromFile(req, res) {
             headers[colNumber] = headerValue;
             
             // Match company name column - various formats
-            // Examples: "Company Name", "company_name", "CompanyName", "name", etc.
             if (companyNameIndex === -1) {
                 if (normalizedHeader === 'companyname' || 
                     normalizedHeader === 'company_name' ||
@@ -166,7 +171,6 @@ async function uploadCompaniesFromFile(req, res) {
             }
             
             // Match category column - various formats
-            // Examples: "Company Category", "company_category", "CompanyCategory", "category", etc.
             if (categoryIndex === -1) {
                 if (normalizedHeader === 'companycategory' || 
                     normalizedHeader === 'company_category' ||
@@ -189,6 +193,7 @@ async function uploadCompaniesFromFile(req, res) {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
+            workbook = null; // Clear reference
             const foundHeaders = Object.values(headers).join(', ');
             sendProgress({
                 status: 'error',
@@ -201,14 +206,55 @@ async function uploadCompaniesFromFile(req, res) {
 
         sendProgress({
             status: 'processing',
-            message: 'Headers validated. Parsing rows...',
+            message: 'Headers validated. Counting rows...',
             percentage: 15
         });
 
-        const totalRows = worksheet.rowCount - 1; // Exclude header
-        let parsedRows = 0;
+        // Count total rows efficiently (without loading all into memory)
+        totalRows = worksheet.rowCount - 1; // Exclude header
+        if (totalRows <= 0) {
+            await transaction.rollback();
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+            workbook = null; // Clear reference
+            sendProgress({
+                status: 'error',
+                message: 'Excel file has no data rows.',
+                percentage: 0
+            });
+            res.end();
+            return;
+        }
 
-        // Parse data rows
+        sendProgress({
+            status: 'processing',
+            message: `Found ${totalRows} rows. Deleting existing records...`,
+            percentage: 20
+        });
+
+        // Delete all existing companies before inserting new ones (within transaction)
+        deletedCount = await Company.destroy({
+            where: {},
+            transaction,
+            force: true // Hard delete
+        });
+
+        sendProgress({
+            status: 'processing',
+            message: `Deleted ${deletedCount} existing companies. Processing and inserting records...`,
+            percentage: 25,
+            deletedRecords: deletedCount
+        });
+
+        // Memory-efficient processing: Process rows in batches and insert incrementally
+        // Use Set for deduplication (more memory efficient than Map for this use case)
+        const seenCompanies = new Set();
+        let currentBatch = [];
+        let validCompaniesCount = 0;
+        let duplicateCount = 0;
+
+        // Process rows in chunks to avoid loading everything into memory
         for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
             const row = worksheet.getRow(rowNumber);
             const companyName = row.getCell(companyNameIndex).value?.toString().trim();
@@ -240,124 +286,101 @@ async function uploadCompaniesFromFile(req, res) {
                 continue;
             }
 
-            results.push({
-                company_name: companyName,
-                company_category: companyCategory
+            // Check for duplicates (case-insensitive)
+            const normalizedName = companyName.toLowerCase().trim();
+            if (seenCompanies.has(normalizedName)) {
+                duplicateCount++;
+                continue;
+            }
+
+            // Add to seen set and batch
+            seenCompanies.add(normalizedName);
+            currentBatch.push({
+                company_name: companyName.trim(),
+                company_category: companyCategory.trim()
             });
 
+            validCompaniesCount++;
             parsedRows++;
-            
-            // Send progress every 100 rows
-            if (parsedRows % 100 === 0) {
-                const parsePercentage = 15 + Math.round((parsedRows / totalRows) * 20);
-                sendProgress({
-                    status: 'processing',
-                    message: `Parsing rows: ${parsedRows}/${totalRows}`,
-                    percentage: parsePercentage,
-                    parsedRows: parsedRows,
-                    totalRows: totalRows
-                });
-            }
-        }
 
-        if (results.length === 0) {
-            await transaction.rollback();
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-            sendProgress({
-                status: 'error',
-                message: 'No valid companies found in the file.',
-                percentage: 0,
-                data: {
-                    totalRows: results.length + errors.length,
-                    validCompanies: 0,
-                    invalidCompanies: errors.length,
-                    errors: errors
+            // Insert in batches to avoid memory buildup
+            if (currentBatch.length >= batchSize) {
+                try {
+                    await Company.bulkCreate(currentBatch, {
+                        transaction,
+                        ignoreDuplicates: false
+                    });
+                    
+                    insertedCount += currentBatch.length;
+                    
+                    // Clear batch to free memory
+                    currentBatch = [];
+                    
+                    // Send progress update
+                    const progress = 25 + Math.round((parsedRows / totalRows) * 70);
+                    sendProgress({
+                        status: 'processing',
+                        message: `Processing: ${parsedRows}/${totalRows} rows (${insertedCount} inserted)`,
+                        percentage: progress,
+                        parsedRows: parsedRows,
+                        totalRows: totalRows,
+                        inserted: insertedCount
+                    });
+
+                    // Force garbage collection hint periodically (if available)
+                    if (parsedRows % (batchSize * 10) === 0 && global.gc) {
+                        global.gc(); // Call GC if available (requires --expose-gc flag)
+                    }
+                } catch (batchError) {
+                    console.error(`Error processing batch at row ${rowNumber}:`, batchError);
+                    await transaction.rollback();
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                    workbook = null; // Clear reference
+                    sendProgress({
+                        status: 'error',
+                        message: `Failed to insert batch at row ${rowNumber}: ${batchError.message}`,
+                        percentage: 0
+                    });
+                    res.end();
+                    return;
                 }
-            });
-            res.end();
-            return;
-        }
+            }
 
-        sendProgress({
-            status: 'processing',
-            message: `Parsed ${results.length} companies. Removing duplicates...`,
-            percentage: 40
-        });
-
-        // Remove duplicates (case-insensitive) - keep last occurrence
-        const companiesMap = new Map();
-        results.forEach(company => {
-            const normalizedName = company.company_name.toLowerCase().trim();
-            companiesMap.set(normalizedName, {
-                company_name: company.company_name.trim(),
-                company_category: company.company_category.trim()
-            });
-        });
-
-        const uniqueCompanies = Array.from(companiesMap.values());
-
-        sendProgress({
-            status: 'processing',
-            message: `Found ${uniqueCompanies.length} unique companies. Deleting existing records...`,
-            percentage: 45
-        });
-
-        // Delete all existing companies before inserting new ones (within transaction)
-        const deletedCount = await Company.destroy({
-            where: {},
-            transaction,
-            force: true // Hard delete
-        });
-
-        sendProgress({
-            status: 'processing',
-            message: `Deleted ${deletedCount} existing companies. Inserting new records...`,
-            percentage: 50,
-            deletedRecords: deletedCount
-        });
-
-        let insertedCount = 0;
-        const totalBatches = Math.ceil(uniqueCompanies.length / batchSize);
-
-        // Process in batches
-        for (let i = 0; i < uniqueCompanies.length; i += batchSize) {
-            const batch = uniqueCompanies.slice(i, i + batchSize);
-            const currentBatch = Math.floor(i / batchSize) + 1;
-            
-            try {
-                // Use bulkCreate for better performance
-                await Company.bulkCreate(batch, {
-                    transaction,
-                    ignoreDuplicates: false // No need to ignore since we deleted all
-                });
-                
-                processedCount += batch.length;
-                insertedCount += batch.length;
-                
-                // Calculate progress percentage (50% to 95% for batch processing)
-                const batchProgress = 50 + Math.round((processedCount / uniqueCompanies.length) * 45);
-                
+            // Send progress every processingBatchSize rows
+            if (parsedRows % processingBatchSize === 0) {
+                const progress = 25 + Math.round((parsedRows / totalRows) * 70);
                 sendProgress({
                     status: 'processing',
-                    message: `Processing batch ${currentBatch}/${totalBatches}: ${processedCount}/${uniqueCompanies.length} records`,
-                    percentage: batchProgress,
-                    currentBatch: currentBatch,
-                    totalBatches: totalBatches,
-                    processed: processedCount,
-                    total: uniqueCompanies.length,
+                    message: `Processing: ${parsedRows}/${totalRows} rows`,
+                    percentage: progress,
+                    parsedRows: parsedRows,
+                    totalRows: totalRows,
                     inserted: insertedCount
                 });
+            }
+        }
+
+        // Insert remaining batch
+        if (currentBatch.length > 0) {
+            try {
+                await Company.bulkCreate(currentBatch, {
+                    transaction,
+                    ignoreDuplicates: false
+                });
+                insertedCount += currentBatch.length;
+                currentBatch = []; // Clear batch
             } catch (batchError) {
-                console.error(`Error processing batch starting at record ${i}:`, batchError);
+                console.error(`Error processing final batch:`, batchError);
                 await transaction.rollback();
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
                 }
+                workbook = null; // Clear reference
                 sendProgress({
                     status: 'error',
-                    message: `Failed to insert batch starting at record ${i}: ${batchError.message}`,
+                    message: `Failed to insert final batch: ${batchError.message}`,
                     percentage: 0
                 });
                 res.end();
@@ -365,9 +388,33 @@ async function uploadCompaniesFromFile(req, res) {
             }
         }
 
+        if (insertedCount === 0) {
+            await transaction.rollback();
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+            workbook = null; // Clear reference
+            sendProgress({
+                status: 'error',
+                message: 'No valid companies found in the file.',
+                percentage: 0,
+                data: {
+                    totalRows: totalRows,
+                    validCompanies: 0,
+                    invalidCompanies: errors.length,
+                    errors: errors.length > 0 ? errors.slice(0, 100) : null // Limit error output
+                }
+            });
+            res.end();
+            return;
+        }
+
         // Only commit if all batches were processed successfully
         await transaction.commit();
         console.log(`Transaction committed successfully. Replaced ${deletedCount} old records with ${insertedCount} new records.`);
+
+        // Clear workbook reference to free memory
+        workbook = null;
 
         sendProgress({
             status: 'success',
@@ -375,11 +422,11 @@ async function uploadCompaniesFromFile(req, res) {
             percentage: 100,
             data: {
                 deletedRecords: deletedCount,
-                totalRecords: results.length,
-                processedRecords: processedCount,
+                totalRows: totalRows,
+                processedRecords: parsedRows,
                 insertedRecords: insertedCount,
-                duplicateRecords: uniqueCompanies.length - insertedCount,
-                errors: errors.length > 0 ? errors : null
+                duplicateRecords: duplicateCount,
+                errors: errors.length > 0 ? errors.slice(0, 100) : null // Limit error output
             }
         });
 
@@ -387,6 +434,9 @@ async function uploadCompaniesFromFile(req, res) {
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
+
+        // Clear large objects
+        seenCompanies.clear();
 
         res.end();
 
@@ -397,6 +447,9 @@ async function uploadCompaniesFromFile(req, res) {
         if (filePath && fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
+
+        // Clear workbook reference
+        workbook = null;
 
         sendProgress({
             status: 'error',

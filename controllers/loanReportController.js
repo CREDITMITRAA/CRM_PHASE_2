@@ -471,6 +471,11 @@ async function editLoanReport(req, res) {
     const isDisputeRefNoChanging = loanReportFromDB.dispute_ref_no !== dispute_ref_no;
     const isDisputeFieldChanging = isDisputeStatusChanging || isDisputeDateChanging || isDisputeRefNoChanging;
 
+    // Reset dispute_ref_no if dispute status is changed to something other than "Dispute Updated"
+    if (isDisputeStatusChanging && dispute_status !== "Dispute Updated") {
+      dispute_ref_no = null;
+    }
+
     // 1. Reset dispute fields if loan status changed to/from Closed or closing date changed
     if (
       loanReportFromDB.loan_status !== loan_status ||

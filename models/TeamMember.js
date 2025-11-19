@@ -26,11 +26,5 @@ module.exports = (sequelize) => {
   }, { 
     timestamps: true,
     tableName: 'TeamMembers',
-    indexes: [
-      {
-        unique: true,
-        fields: ['team_id', 'user_id']
-      }
-    ]
   });
 };

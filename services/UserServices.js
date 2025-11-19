@@ -30,7 +30,43 @@ async function getUserByUserId(userId, transaction=null){
     return user
 }
 
+async function checkUsersExist(userIds, transaction = null){
+    // validate incoming input
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0){
+        throw new Error("User IDs array is required and cannot be empty")
+    }
+
+    // validate that all IDs are numbers
+    const invalidIds = userIds.filter(id => isNaN(parseInt(id)) || parseInt(id) <= 0)
+    if(invalidIds.length > 0){
+        throw new Error(`Invalid user IDs provided: ${invalidIds.join(', ')}`)
+    }
+
+    // find all users with given user ids
+    const users = await User.findAll({
+        where: {
+            id: userIds
+        },
+        attributes: ["id", "name", "status", "role_id"],
+        raw: true,
+        ...(transaction && {transaction})
+    })
+
+    // check if all users are available
+    const foundUserIds = users.map(user => user.id)
+    const missingUserIds = userIds.filter(id => !foundUserIds.includes(parseInt(id)))
+
+    if(missingUserIds.length > 0){
+        const missingUserIdsString = missingUserIds.join(', ')
+        throw new Error(`Users not found with IDs: ${missingUserIdsString}`)
+    }
+
+    return users
+
+}
+
 module.exports = {
     getUserByPhone,
-    getUserByUserId
+    getUserByUserId,
+    checkUsersExist
 }

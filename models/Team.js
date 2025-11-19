@@ -11,7 +11,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING, 
       allowNull: false 
     },
-    team_leader_id: {
+    created_by: {
       type: DataTypes.INTEGER,
       references: {
         model: 'Users',
@@ -19,6 +19,7 @@ module.exports = (sequelize) => {
       },
       allowNull: false
     },
+    team_owner_id: { type: DataTypes.INTEGER,  allowNull: false},
     status: { 
       type: DataTypes.ENUM('active', 'inactive'), 
       defaultValue: 'active' 

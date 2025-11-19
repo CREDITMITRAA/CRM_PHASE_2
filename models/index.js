@@ -118,9 +118,14 @@ PhoneNumber.belongsTo(User, {
 
 // Team associations
 Team.belongsTo(User, {
-  foreignKey: 'team_leader_id',
-  as: 'teamLeader'
+  foreignKey: 'created_by',
+  as: 'teamCreator'
 });
+
+Team.belongsTo(User, {
+  foreignKey: 'team_owner_id',
+  as: 'teamOwner'
+})
 
 Team.hasMany(TeamMember, {
   foreignKey: 'team_id',
@@ -140,7 +145,7 @@ TeamMember.belongsTo(User, {
 
 // User associations (add these to your existing User model setup)
 User.hasMany(Team, {
-  foreignKey: 'team_leader_id',
+  foreignKey: 'created_by',
   as: 'ledTeams'
 });
 

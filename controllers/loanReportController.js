@@ -468,13 +468,15 @@ async function editLoanReport(req, res) {
     const isDisputeStatusChanging = loanReportFromDB.dispute_status !== dispute_status;
     const isDisputeDateChanging = inputDisputeDate && dbDisputeDate && 
       inputDisputeDate.toISOString() !== dbDisputeDate.toISOString();
-    const isDisputeRefNoChanging = loanReportFromDB.dispute_ref_no !== dispute_ref_no;
-    const isDisputeFieldChanging = isDisputeStatusChanging || isDisputeDateChanging || isDisputeRefNoChanging;
-
+    
     // Reset dispute_ref_no if dispute status is changed to something other than "Dispute Updated"
     if (isDisputeStatusChanging && dispute_status !== "Dispute Updated") {
       dispute_ref_no = null;
     }
+    
+    // Now check if dispute_ref_no is changing (after potential null assignment)
+    const isDisputeRefNoChanging = loanReportFromDB.dispute_ref_no !== dispute_ref_no;
+    const isDisputeFieldChanging = isDisputeStatusChanging || isDisputeDateChanging || isDisputeRefNoChanging;
 
     // 1. Reset dispute fields if loan status changed to/from Closed or closing date changed
     if (
@@ -616,7 +618,7 @@ async function editLoanReport(req, res) {
         (inputClosingDate && dbClosingDate.toISOString() !== inputClosingDate.toISOString())) {
       updateData.dispute_status = isLoanNotClosed ? null : dispute_status;
       updateData.dispute_date = isLoanNotClosed ? null : dispute_date;
-      updateData.dispute_ref_no = isLoanNotClosed ? null : dispute_ref_no;
+      updateData.dispute_ref_no = isLoanNotClosed ? null : dispute_ref_no; // This will be null if status changed away from "Dispute Updated"
     } else {
       // Preserve existing dispute fields if not being changed
       updateData.dispute_status = loanReportFromDB.dispute_status;
@@ -673,7 +675,7 @@ async function editLoanReport(req, res) {
       updatedCount > 0
         ? "Loan report updated successfully!"
         : "No changes made.",
-      { ...req.body }
+      { ...updateData } // Return the actual updateData, not req.body
     );
   } catch (error) {
     console.log("error in edit loan report api = ", error);

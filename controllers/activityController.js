@@ -17,7 +17,7 @@ const {
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
 const UserMetricsServices = require("../services/UserMetricsServices");
-const { getMissingMandatoryFields, runFirstLevelScoreCardCriteria, getScoreCardFailureReason } = require("../services/activityServices");
+const RuleEngineServices = require("../services/RuleEngineServices")
 
 async function addActivity(req, res) {
   const transaction = await sequelize.transaction();
@@ -122,7 +122,7 @@ async function addActivity(req, res) {
 
       // Check for mandatory fields when activity_status is "Verification 1"
       if (activity_status === "Verification 1") {
-        const missingFields = getMissingMandatoryFields(lead);
+        const missingFields = RuleEngineServices.getMissingMandatoryFields(lead);
         
         if (missingFields.length > 0) {
           const missingFieldsMessage = `Missing mandatory fields for Verification 1: ${missingFields.join(', ')}`;
@@ -195,10 +195,10 @@ async function addActivity(req, res) {
         }
 
         // If all mandatory fields are present, then check score card criteria
-        const passesScoreCard = runFirstLevelScoreCardCriteria(lead);
+        const passesScoreCard = RuleEngineServices.runFirstLevelScoreCardCriteria(lead);
         
         if (!passesScoreCard) {
-          const failureReason = getScoreCardFailureReason(lead);
+          const failureReason = RuleEngineServices.getScoreCardFailureReason(lead);
           const autoRejectDescription = `Auto-rejected: ${failureReason}`;
 
           // Create activity for auto-rejection due to score card failure

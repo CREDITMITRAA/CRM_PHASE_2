@@ -393,6 +393,7 @@ async function addLoanReport(req, res) {
 
 async function editLoanReport(req, res) {
   const transaction = await sequelize.transaction();
+
   try {
     let {
       id,
@@ -411,7 +412,8 @@ async function editLoanReport(req, res) {
       dispute_status,
       dispute_date,
       closing_document_url,
-      lead_status
+      lead_status,
+      dispute_ref_no
     } = req.body;
 
     // Validate required fields
@@ -462,6 +464,13 @@ async function editLoanReport(req, res) {
     const isLoanClosed = loan_status === "Closed";
     const isLoanNotClosed = !isLoanClosed || loan_status === "Others";
 
+    // Check if dispute fields are being changed
+    const isDisputeStatusChanging = loanReportFromDB.dispute_status !== dispute_status;
+    const isDisputeDateChanging = inputDisputeDate && dbDisputeDate && 
+      inputDisputeDate.toISOString() !== dbDisputeDate.toISOString();
+    const isDisputeRefNoChanging = loanReportFromDB.dispute_ref_no !== dispute_ref_no;
+    const isDisputeFieldChanging = isDisputeStatusChanging || isDisputeDateChanging || isDisputeRefNoChanging;
+
     // 1. Reset dispute fields if loan status changed to/from Closed or closing date changed
     if (
       loanReportFromDB.loan_status !== loan_status ||
@@ -470,18 +479,17 @@ async function editLoanReport(req, res) {
     ) {
       dispute_date = null;
       dispute_status = null;
-
+      dispute_ref_no = null;
       // If we're resetting dispute fields, update them in the DB
-      if (dispute_date === null || dispute_status === null) {
-        await LoanReport.update(
-          { dispute_date: null, dispute_status: null },
-          { where: { id, lead_id }, transaction }
-        );
-      }
+      await LoanReport.update(
+        { dispute_date: null, dispute_status: null, dispute_ref_no: null },
+        { where: { id, lead_id }, transaction }
+      );
     }
 
-    // 2. for All dispute operations, require loan to be closed (not "Others" or "Not Closing")
-    if (isLoanNotClosed && (dispute_status || dispute_date)) {
+    // 2. All dispute operations require loan to be closed (not "Others" or "Not Closing")
+    // Only validate if dispute fields are actually being changed
+    if (isDisputeFieldChanging && isLoanNotClosed && (dispute_status || dispute_date)) {
       await transaction.rollback();
       return ApiResponse(
         res,
@@ -491,12 +499,13 @@ async function editLoanReport(req, res) {
       );
     }
 
-    // 3. Dispute Raised validations (only if loan is closed)
-    if (isLoanClosed && dispute_status === "Dispute Raised") {
+    // 3. Dispute Raised validations (only if loan is closed AND dispute status is being changed)
+    if (isLoanClosed && dispute_status === "Dispute Raised" && isDisputeStatusChanging) {
       if (!inputDisputeDate) {
         await transaction.rollback();
         return ApiResponse(res, "ERROR", 400, "Dispute date is required!");
       }
+
       if (inputDisputeDate <= dbClosingDate) {
         await transaction.rollback();
         return ApiResponse(
@@ -508,8 +517,8 @@ async function editLoanReport(req, res) {
       }
     }
 
-    // 4. Dispute Updated validations (only if loan is closed)
-    else if (isLoanClosed && dispute_status === "Dispute Updated") {
+    // 4. Dispute Updated validations (only if loan is closed AND dispute status is being changed)
+    else if (isLoanClosed && dispute_status === "Dispute Updated" && isDisputeStatusChanging) {
       if (loanReportFromDB.dispute_status !== "Dispute Raised") {
         await transaction.rollback();
         return ApiResponse(
@@ -519,6 +528,7 @@ async function editLoanReport(req, res) {
           "Must raise dispute before updating!"
         );
       }
+
       if (!inputDisputeDate) {
         await transaction.rollback();
         return ApiResponse(
@@ -528,6 +538,7 @@ async function editLoanReport(req, res) {
           "Updated dispute date is required!"
         );
       }
+
       if (inputDisputeDate <= dbDisputeDate) {
         await transaction.rollback();
         return ApiResponse(
@@ -539,33 +550,77 @@ async function editLoanReport(req, res) {
       }
     }
 
+    // If dispute date is being changed (but status is not), validate it
+    if (isLoanClosed && isDisputeDateChanging && !isDisputeStatusChanging) {
+      if (!inputDisputeDate) {
+        await transaction.rollback();
+        return ApiResponse(res, "ERROR", 400, "Dispute date is required!");
+      }
+
+      if (loanReportFromDB.dispute_status === "Dispute Raised") {
+        if (inputDisputeDate <= dbClosingDate) {
+          await transaction.rollback();
+          return ApiResponse(
+            res,
+            "ERROR",
+            400,
+            "Dispute date must be after closing date!"
+          );
+        }
+      } else if (loanReportFromDB.dispute_status === "Dispute Updated") {
+        if (inputDisputeDate <= dbDisputeDate) {
+          await transaction.rollback();
+          return ApiResponse(
+            res,
+            "ERROR",
+            400,
+            "Updated dispute date must be after previous dispute date!"
+          );
+        }
+      }
+    }
+
     // update lead status code
     let shouldUpdateLeadStatus = false
     if(
-      lead_status === ALL_DISPUTES_UPDATED && ( loan_status !== 'Closed' || dispute_status !== DISPUTE_UPDATED ) &&
+      lead_status === ALL_DISPUTES_UPDATED && ( loan_status !== 'Closed' || dispute_status !== DISPUTE_UPDATED ) && 
       loanReportFromDB.dispute_status === DISPUTE_UPDATED
     ){
       shouldUpdateLeadStatus = true
     }
 
-    // Update the loan report
+    // Only update changed fields - preserve existing dispute fields if not being changed
+    const updateData = {
+      loan_amount,
+      bank_name,
+      loan_type,
+      emi,
+      outstanding,
+      updated_by,
+      lead_name,
+      emi_date,
+      loan_disbursal_date,
+      loan_status,
+      closing_date,
+      closing_document_url,
+    };
+
+    // Only include dispute fields if they're being changed or if loan status/closing date changed
+    if (isDisputeFieldChanging || 
+        loanReportFromDB.loan_status !== loan_status ||
+        (inputClosingDate && dbClosingDate.toISOString() !== inputClosingDate.toISOString())) {
+      updateData.dispute_status = isLoanNotClosed ? null : dispute_status;
+      updateData.dispute_date = isLoanNotClosed ? null : dispute_date;
+      updateData.dispute_ref_no = isLoanNotClosed ? null : dispute_ref_no;
+    } else {
+      // Preserve existing dispute fields if not being changed
+      updateData.dispute_status = loanReportFromDB.dispute_status;
+      updateData.dispute_date = loanReportFromDB.dispute_date;
+      updateData.dispute_ref_no = loanReportFromDB.dispute_ref_no;
+    }
+
     const [updatedCount] = await LoanReport.update(
-      {
-        loan_amount,
-        bank_name,
-        loan_type,
-        emi,
-        outstanding,
-        updated_by,
-        lead_name,
-        emi_date,
-        loan_disbursal_date,
-        loan_status,
-        closing_date,
-        closing_document_url,
-        dispute_status: isLoanNotClosed ? null : dispute_status, // Clear dispute if not closed
-        dispute_date: isLoanNotClosed ? null : dispute_date, // Clear dispute if not closed
-      },
+      updateData,
       { where: { id, lead_id }, transaction }
     );
 
@@ -588,7 +643,7 @@ async function editLoanReport(req, res) {
 
     const changeLog = generateLoanOrCreditReportChangeLog(
       loanReportFromDB,
-      req.body,
+      updateData,
       "LOAN"
     );
 

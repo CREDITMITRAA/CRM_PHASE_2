@@ -8,7 +8,7 @@ module.exports = (sequelize) => {
     email: { type: DataTypes.STRING },
     phone: { type: DataTypes.STRING(15), unique:true},
     city: { type: DataTypes.STRING },
-    company: { type: DataTypes.STRING },
+    company: { type: DataTypes.TEXT },
     lead_source: { type: DataTypes.STRING },
     company_category_id: { type: DataTypes.INTEGER },
     company_category: { type: DataTypes.STRING },

@@ -28,6 +28,7 @@ const FacebookWebhookRoutes = require("./facebookWebhookRoutes")
 const FcmTokenRoutes = require("./FcmTokenRoutes")
 const CompanyRoutes = require("./CompanyRoutes")
 const RuleEngineRoutes = require("./RuleEngineRoutes")
+const AppCodeRoutes = require("./AppCodeRoutes")
 // Add more routes as needed...
 
 // Set up routes
@@ -57,6 +58,7 @@ router.use('/webhook', FacebookWebhookRoutes)
 router.use('/fcm', FcmTokenRoutes)
 router.use('/companies', CompanyRoutes)
 router.use('/rule-engine', RuleEngineRoutes)
+router.use('/app-code', AppCodeRoutes)
 // Add more routes with appropriate paths...
 
 // Export the router

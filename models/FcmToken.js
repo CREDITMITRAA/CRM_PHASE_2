@@ -15,6 +15,18 @@ module.exports = (sequelize) => {
         allowNull: false,
         unique: true
       },
+      appCode: { 
+        type: DataTypes.STRING(6), 
+        allowNull: true 
+      },
+      appCodeExpiresAt: { 
+        type: DataTypes.DATE, 
+        allowNull: true 
+      },
+      appCodeAttempts: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0
+      }
     },
     { timestamps: true }
   );

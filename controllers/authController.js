@@ -1,21 +1,25 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Role } = require('../models');  // Assuming your User model is in the 'models' folder
+const { User, Role, sequelize } = require('../models');  // Assuming your User model is in the 'models' folder
 const { ApiResponse } = require('../utilities/api-responses/ApiResponse');
+const AppCodeServices = require("../services/AppCodeServices")
 
 async function login(req, res) {
+  let otpTransaction;
+  let loginTransaction;
+  
   try {
-    const { email, password } = req.body;
+    const { email, password, appCode } = req.body;
 
-    // Validation: Ensure email and password are provided
-    if (!email || !password) {
-      return ApiResponse(res, 'error', 400, "Missing required fields!");
+    // Validation: Ensure all required fields are provided
+    if (!email || !password || !appCode) {
+      return ApiResponse(res, 'error', 400, "Email, password and app code are required!");
     }
 
-    // Check if the user exists with the given email
+    // Check if the user exists with the given email (no transaction needed for read)
     const user = await User.findOne({ 
-      where: { email, status:'active' },
-      include: { model: Role, as: 'Role' } 
+      where: { email, status: 'active' },
+      include: { model: Role, as: 'Role' }
     });
 
     if (!user) {
@@ -29,6 +33,22 @@ async function login(req, res) {
       return ApiResponse(res, 'error', 400, "Invalid Credentials!");
     }
 
+    // Verify App Code with separate transaction
+    otpTransaction = await sequelize.transaction();
+    try {
+      await AppCodeServices.verifyCode(user.id, appCode, otpTransaction);
+      await otpTransaction.commit();
+    } catch (otpError) {
+      // If OTP fails, commit the transaction to save the attempt count
+      if (otpTransaction && !otpTransaction.finished) {
+        await otpTransaction.commit();
+      }
+      throw otpError; // Re-throw to handle in outer catch
+    }
+
+    // Now proceed with login (new transaction for user update)
+    loginTransaction = await sequelize.transaction();
+    
     // Get the previous last_login_at before updating
     const previousLastLogin = user.last_login_at;
     const currentTime = new Date();
@@ -48,14 +68,14 @@ async function login(req, res) {
         lastLoginAgo = "less than an hour ago";
       }
     } else {
-      lastLoginAgo = "first login"; // If no previous login exists
+      lastLoginAgo = "first login";
     }
 
     // Update user's login status and last login time
     await user.update({
       login_status: 'logged_in',
       last_login_at: currentTime
-    });
+    }, { transaction: loginTransaction });
 
     const roleName = user.Role ? user.Role.role_name : null;
     const userData = {
@@ -67,8 +87,8 @@ async function login(req, res) {
       designation: user.designation ? user.designation : null,
       profile_image_url: user.profile_image_url ? user.profile_image_url : null,
       employee_id: user.employee_id,
-      last_login_at: currentTime, // New last_login_at
-      last_login_ago: lastLoginAgo, // Time since previous login (e.g., "5 days ago")
+      last_login_at: currentTime,
+      last_login_ago: lastLoginAgo,
       gender: user.gender,
       address: user.address
     };
@@ -78,14 +98,36 @@ async function login(req, res) {
       expiresIn: process.env.JWT_EXPIRY,
     });
 
+    await loginTransaction.commit();
+
     // Send the JWT token in the response
     return res.status(200).json({ 
+      success: true,
+      message: "Login successful",
       token,
-      last_login_ago: lastLoginAgo // Optional: Also send it directly in response
+      user: userData,
+      last_login_ago: lastLoginAgo
     });
+
   } catch (error) {
+    // Only rollback loginTransaction if it exists and isn't finished
+    if (loginTransaction && !loginTransaction.finished) {
+      await loginTransaction.rollback();
+    }
+    
     console.error('Error during login:', error);
-    return ApiResponse(res, 'error', 500, error?.message || 'Failed to login!', null, error, null);
+    
+    // Handle specific OTP errors with appropriate status codes
+    let statusCode = 500;
+    if (error.message.includes('App code not found') || 
+        error.message.includes('App code expired') ||
+        error.message.includes('Invalid app code') ||
+        error.message.includes('Too many failed attempts, Generate New Code ') ||
+        error.message.includes('Fcm token record not found')) {
+      statusCode = 400;
+    }
+    
+    return ApiResponse(res, 'error', statusCode, error.message);
   }
 }
 

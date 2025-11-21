@@ -57,6 +57,8 @@ module.exports = (sequelize) => {
     required_loan_amount: { type: DataTypes.TEXT },
     start_login_date: {type: DataTypes.DATE},
     pan: {type: DataTypes.STRING},
+    is_eligibility_criteria_checked: { type: DataTypes.BOOLEAN, defaultValue: false },
+    date_of_birth: { type: DataTypes.DATE, allowNull: true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

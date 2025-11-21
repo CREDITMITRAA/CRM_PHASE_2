@@ -2,6 +2,7 @@ const { sequelize } = require("../models")
 const { createLogData, createActivityLog } = require("../services/ActivityLogServices")
 const RuleEngineServices = require("../services/RuleEngineServices")
 const LeadServices = require("../services/leadServices")
+const ActivityLogServices = require("../services/ActivityLogServices")
 const { ACTIVITY_LOGS, ACTIVITY_TYPES } = require("../utilities/ActivityLogConstants")
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse")
 
@@ -21,6 +22,25 @@ async function runRuleEngine(req, res) {
             return ApiResponse(res, "ERROR", 400, "Lead not found !")
         }
 
+        // Get the latest status from activity logs using service method
+        const latestActivityLog = await ActivityLogServices.getRecentActivityLogByLeadIdAndActivityType(
+            leadId, 
+            ACTIVITY_TYPES.LEAD_STATUS_UPDATE
+        );
+
+        let previousStatus = lead.lead_status; // Default to current status
+
+        // If we found an activity log, extract the previous status from the description
+        if (latestActivityLog) {
+            // Parse the activity description to get previous status
+            // Example: "Lead status updated from Ineligible to Not met criteria - Does not meet score card criteria"
+            const activityDesc = latestActivityLog.activity_desc;
+            const fromMatch = activityDesc.match(/from (.+?) to/);
+            if (fromMatch) {
+                previousStatus = fromMatch[1].trim();
+            }
+        }
+
         // check for required fields to run rule engine
         const missingFields = RuleEngineServices.getMissingMandatoryFields(lead)
         if (missingFields.length > 0) {
@@ -35,11 +55,11 @@ async function runRuleEngine(req, res) {
         if (!passesScoreCard) {
             const failureReason = RuleEngineServices.getScoreCardFailureReason(lead)
             const autoRejectDescription = `Auto-rejected: ${failureReason}`
-            const prev_status = lead.lead_status
 
             const updatePayload = {
                 lead_status: "Not met criteria",
                 last_updated_status: "Not met criteria",
+                is_eligibility_criteria_checked: true,
                 sub_status: failureReason,
                 updatedAt: new Date().toISOString()
             }
@@ -49,7 +69,7 @@ async function runRuleEngine(req, res) {
             // create activity log
             const logData = createLogData(
                 ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
-                    prev_status,
+                    previousStatus, // Use the status from activity log
                     "Not met criteria",
                     null,
                     failureReason
@@ -62,15 +82,14 @@ async function runRuleEngine(req, res) {
             )
             await createActivityLog(logData, transaction)
 
-            // Use the updated lead instance (no need for extra query)
-            // Reload to get the latest data if needed, but update() usually updates the instance
+            // Use the updated lead instance
             await lead.reload({ transaction })
 
             await transaction.commit()
 
             return ApiResponse(
                 res,
-                "ERROR", // You might want to use "SUCCESS" with a different status code for business logic failures
+                "ERROR",
                 400,
                 autoRejectDescription,
                 {
@@ -81,9 +100,41 @@ async function runRuleEngine(req, res) {
             )
         }
 
+        // When criteria matches - update lead status to previous status from activity log
+        const successDescription = `Meets score card criteria - Status auto updated to ${previousStatus}`
+        
+        // Update lead with previous status from activity log
+        const updatePayload = {
+            lead_status: previousStatus, // Use previous status from activity log
+            last_updated_status: previousStatus,
+            is_eligibility_criteria_checked: true,
+            sub_status: null,
+            updatedAt: new Date().toISOString()
+        }
+
+        const currentStatusBeforeUpdate = lead.lead_status;
+
+        await lead.update(updatePayload, { transaction })
+        
+        // create activity log for successful criteria match
+        const logData = createLogData(
+            ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+                currentStatusBeforeUpdate, // Current status before the update
+                previousStatus, // New status (from activity log)
+                null
+            ),
+            ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+            userId,
+            leadId,
+            successDescription,
+            lead.name
+        )
+        await createActivityLog(logData, transaction)
+
+        await lead.reload({ transaction })
         await transaction.commit()
 
-        return ApiResponse(res, "SUCCESS", 200, "Meets score card criteria", {
+        return ApiResponse(res, "SUCCESS", 200, successDescription, {
             lead: lead.get({ plain: true }),
             meetsCriteria: true
         })

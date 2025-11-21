@@ -1,10 +1,12 @@
+// AppCodeServices - No changes needed, but included for reference
+// The verifyCode function works as-is with the new login flow
+
 const { FcmToken } = require("../models")
 
 async function generateCode(userId, transaction) {
     if (!transaction) {
         throw new Error("Transaction is required")
     }
-
     // First, check if a record exists for this user
     const existingRecord = await FcmToken.findOne({
         where: { userId },
@@ -26,7 +28,6 @@ async function generateCode(userId, transaction) {
     }, { transaction })
 
     console.log(`App Code for user ${userId}: ${appCode}`)
-
     return {
         appCode,
         expiresAt: appCodeExpiresAt
@@ -76,7 +77,7 @@ async function verifyCode(userId, enteredAppCode, transaction){
             appCodeExpiresAt: null,
             appCodeAttempts: 0
         }, { transaction })
-        throw new Error('Too many failed attempts !')
+        throw new Error('Too many failed attempts, Generate New Code !')
     }
 
     if (record.appCode !== enteredAppCode) {
@@ -104,7 +105,6 @@ async function verifyCode(userId, enteredAppCode, transaction){
     }
 
     console.log(`✅ [SUCCESS] Code verified for user ${userId}`);
-
     await record.update({
         appCode: null,
         appCodeExpiresAt: null,

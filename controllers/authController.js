@@ -7,13 +7,13 @@ const AppCodeServices = require("../services/AppCodeServices")
 async function login(req, res) {
   let otpTransaction;
   let loginTransaction;
-  
+
   try {
     const { email, password, appCode } = req.body;
 
-    // Validation: Ensure all required fields are provided
-    if (!email || !password || !appCode) {
-      return ApiResponse(res, 'error', 400, "Email, password and app code are required!");
+    // Validation: Ensure email and password are provided
+    if (!email || !password) {
+      return ApiResponse(res, 'error', 400, "Email and password are required!");
     }
 
     // Check if the user exists with the given email (no transaction needed for read)
@@ -28,22 +28,54 @@ async function login(req, res) {
 
     // Compare the provided password with the hashed password in the database
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
       return ApiResponse(res, 'error', 400, "Invalid Credentials!");
     }
 
-    // Verify App Code with separate transaction
-    otpTransaction = await sequelize.transaction();
-    try {
-      await AppCodeServices.verifyCode(user.id, appCode, otpTransaction);
-      await otpTransaction.commit();
-    } catch (otpError) {
-      // If OTP fails, commit the transaction to save the attempt count
-      if (otpTransaction && !otpTransaction.finished) {
+    // Get user role
+    const roleName = user.Role ? user.Role.role_name : null;
+    const isAdmin = roleName === 'ROLE_ADMIN';
+
+    // If user is not admin, appCode is required
+    if (!isAdmin && !appCode) {
+      // Return user info (without token) to indicate app code is required
+      const userData = {
+        id: user.id,
+        email: user.email,
+        name: user.name ? user.name : null,
+        role: roleName,
+        department: user.department ? user.department : null,
+        designation: user.designation ? user.designation : null,
+        profile_image_url: user.profile_image_url ? user.profile_image_url : null,
+        employee_id: user.employee_id,
+        gender: user.gender,
+        address: user.address
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: "App code required",
+        requiresAppCode: true,
+        user: userData
+      });
+    }
+
+    // If user is admin, proceed without app code verification
+    // If user is not admin, verify app code
+    if (!isAdmin) {
+      // Verify App Code with separate transaction
+      otpTransaction = await sequelize.transaction();
+
+      try {
+        await AppCodeServices.verifyCode(user.id, appCode, otpTransaction);
         await otpTransaction.commit();
+      } catch (otpError) {
+        // If OTP fails, commit the transaction to save the attempt count
+        if (otpTransaction && !otpTransaction.finished) {
+          await otpTransaction.commit();
+        }
+        throw otpError; // Re-throw to handle in outer catch
       }
-      throw otpError; // Re-throw to handle in outer catch
     }
 
     // Now proceed with login (new transaction for user update)
@@ -77,7 +109,6 @@ async function login(req, res) {
       last_login_at: currentTime
     }, { transaction: loginTransaction });
 
-    const roleName = user.Role ? user.Role.role_name : null;
     const userData = {
       id: user.id,
       email: user.email,

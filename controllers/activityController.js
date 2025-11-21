@@ -121,151 +121,151 @@ async function addActivity(req, res) {
       }
 
       // Check for mandatory fields when activity_status is "Verification 1"
-      if (activity_status === "Verification 1") {
-        const missingFields = RuleEngineServices.getMissingMandatoryFields(lead);
+      // if (activity_status === "Verification 1") {
+      //   const missingFields = RuleEngineServices.getMissingMandatoryFields(lead);
         
-        if (missingFields.length > 0) {
-          const missingFieldsMessage = `Missing mandatory fields for Verification 1: ${missingFields.join(', ')}`;
-          const autoRejectDescription = `Auto-rejected: ${missingFieldsMessage}`;
+      //   if (missingFields.length > 0) {
+      //     const missingFieldsMessage = `Missing mandatory fields for Verification 1: ${missingFields.join(', ')}`;
+      //     const autoRejectDescription = `Auto-rejected: ${missingFieldsMessage}`;
 
-          // Create activity for auto-rejection due to missing fields
-          const rejectionActivity = await Activity.create(
-            {
-              lead_id: leadId,
-              activity_status: "Not Possible",
-              description: autoRejectDescription,
-              docs_collected: false,
-              created_by: userId,
-              follow_up: null,
-              lead_status: "Not Possible",
-            },
-            { transaction }
-          );
+      //     // Create activity for auto-rejection due to missing fields
+      //     const rejectionActivity = await Activity.create(
+      //       {
+      //         lead_id: leadId,
+      //         activity_status: "Not Possible",
+      //         description: autoRejectDescription,
+      //         docs_collected: false,
+      //         created_by: userId,
+      //         follow_up: null,
+      //         lead_status: "Not Possible",
+      //       },
+      //       { transaction }
+      //     );
 
-          // Update lead status to "Not Possible"
-          const updatePayload = {
-            lead_status: "Not Possible",
-            last_updated_status: "Not Possible",
-            sub_status: "Missing Mandatory Fields",
-            updatedAt: new Date().toISOString(),
-          };
+      //     // Update lead status to "Not Possible"
+      //     const updatePayload = {
+      //       lead_status: "Not Possible",
+      //       last_updated_status: "Not Possible",
+      //       sub_status: "Missing Mandatory Fields",
+      //       updatedAt: new Date().toISOString(),
+      //     };
 
-          await lead.update(updatePayload, { transaction });
+      //     await lead.update(updatePayload, { transaction });
 
-          // Create activity log
-          if (!from_activity_logs_page) {
-            const logData = createLogData(
-              ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
-                prev_status,
-                "Not Possible",
-                null,
-                "Missing Mandatory Fields"
-              ),
-              ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
-              userId,
-              leadId,
-              autoRejectDescription,
-              lead_name
-            );
-            await createActivityLog(logData, transaction);
-          }
+      //     // Create activity log
+      //     if (!from_activity_logs_page) {
+      //       const logData = createLogData(
+      //         ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+      //           prev_status,
+      //           "Not Possible",
+      //           null,
+      //           "Missing Mandatory Fields"
+      //         ),
+      //         ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+      //         userId,
+      //         leadId,
+      //         autoRejectDescription,
+      //         lead_name
+      //       );
+      //       await createActivityLog(logData, transaction);
+      //     }
 
-          await transaction.commit();
+      //     await transaction.commit();
 
-          return ApiResponse(
-            res,
-            "success",
-            201,
-            "Lead auto-rejected: Missing mandatory fields for Verification 1",
-            {
-              activityId: rejectionActivity.id,
-              description: rejectionActivity.description,
-              activity_status: rejectionActivity.activity_status,
-              docs_collected: rejectionActivity.docs_collected,
-              follow_up: rejectionActivity.follow_up,
-              createdAt: rejectionActivity.createdAt,
-              updatedAt: rejectionActivity.updatedAt,
-              lead_status: rejectionActivity.lead_status,
-              autoRejected: true,
-              missingFields: missingFields,
-              reason: missingFieldsMessage
-            },
-            null
-          );
-        }
+      //     return ApiResponse(
+      //       res,
+      //       "success",
+      //       201,
+      //       "Lead auto-rejected: Missing mandatory fields for Verification 1",
+      //       {
+      //         activityId: rejectionActivity.id,
+      //         description: rejectionActivity.description,
+      //         activity_status: rejectionActivity.activity_status,
+      //         docs_collected: rejectionActivity.docs_collected,
+      //         follow_up: rejectionActivity.follow_up,
+      //         createdAt: rejectionActivity.createdAt,
+      //         updatedAt: rejectionActivity.updatedAt,
+      //         lead_status: rejectionActivity.lead_status,
+      //         autoRejected: true,
+      //         missingFields: missingFields,
+      //         reason: missingFieldsMessage
+      //       },
+      //       null
+      //     );
+      //   }
 
-        // If all mandatory fields are present, then check score card criteria
-        const passesScoreCard = RuleEngineServices.runFirstLevelScoreCardCriteria(lead);
+      //   // If all mandatory fields are present, then check score card criteria
+      //   const passesScoreCard = RuleEngineServices.runFirstLevelScoreCardCriteria(lead);
         
-        if (!passesScoreCard) {
-          const failureReason = RuleEngineServices.getScoreCardFailureReason(lead);
-          const autoRejectDescription = `Auto-rejected: ${failureReason}`;
+      //   if (!passesScoreCard) {
+      //     const failureReason = RuleEngineServices.getScoreCardFailureReason(lead);
+      //     const autoRejectDescription = `Auto-rejected: ${failureReason}`;
 
-          // Create activity for auto-rejection due to score card failure
-          const rejectionActivity = await Activity.create(
-            {
-              lead_id: leadId,
-              activity_status: "Not met criteria",
-              description: autoRejectDescription,
-              docs_collected: false,
-              created_by: userId,
-              follow_up: null,
-              lead_status: "Not met criteria",
-            },
-            { transaction }
-          );
+      //     // Create activity for auto-rejection due to score card failure
+      //     const rejectionActivity = await Activity.create(
+      //       {
+      //         lead_id: leadId,
+      //         activity_status: "Not met criteria",
+      //         description: autoRejectDescription,
+      //         docs_collected: false,
+      //         created_by: userId,
+      //         follow_up: null,
+      //         lead_status: "Not met criteria",
+      //       },
+      //       { transaction }
+      //     );
 
-          // Update lead status to "Not Possible"
-          const updatePayload = {
-            lead_status: "Not met criteria",
-            last_updated_status: "Not met criteria",
-            sub_status: failureReason,
-            updatedAt: new Date().toISOString(),
-          };
+      //     // Update lead status to "Not Possible"
+      //     const updatePayload = {
+      //       lead_status: "Not met criteria",
+      //       last_updated_status: "Not met criteria",
+      //       sub_status: failureReason,
+      //       updatedAt: new Date().toISOString(),
+      //     };
 
-          await lead.update(updatePayload, { transaction });
+      //     await lead.update(updatePayload, { transaction });
 
-          // Create activity log
-          if (!from_activity_logs_page) {
-            const logData = createLogData(
-              ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
-                prev_status,
-                "Not met criteria",
-                null,
-                failureReason
-              ),
-              ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
-              userId,
-              leadId,
-              autoRejectDescription,
-              lead_name
-            );
-            await createActivityLog(logData, transaction);
-          }
+      //     // Create activity log
+      //     if (!from_activity_logs_page) {
+      //       const logData = createLogData(
+      //         ACTIVITY_LOGS.LEAD_STATUS_UPDATE(
+      //           prev_status,
+      //           "Not met criteria",
+      //           null,
+      //           failureReason
+      //         ),
+      //         ACTIVITY_TYPES.LEAD_STATUS_UPDATE,
+      //         userId,
+      //         leadId,
+      //         autoRejectDescription,
+      //         lead_name
+      //       );
+      //       await createActivityLog(logData, transaction);
+      //     }
 
-          await transaction.commit();
+      //     await transaction.commit();
 
-          return ApiResponse(
-            res,
-            "success",
-            201,
-            "Lead auto-rejected: Does not meet score card criteria",
-            {
-              activityId: rejectionActivity.id,
-              description: rejectionActivity.description,
-              activity_status: rejectionActivity.activity_status,
-              docs_collected: rejectionActivity.docs_collected,
-              follow_up: rejectionActivity.follow_up,
-              createdAt: rejectionActivity.createdAt,
-              updatedAt: rejectionActivity.updatedAt,
-              lead_status: rejectionActivity.lead_status,
-              autoRejected: true,
-              reason: failureReason
-            },
-            null
-          );
-        }
-      }
+      //     return ApiResponse(
+      //       res,
+      //       "success",
+      //       201,
+      //       "Lead auto-rejected: Does not meet score card criteria",
+      //       {
+      //         activityId: rejectionActivity.id,
+      //         description: rejectionActivity.description,
+      //         activity_status: rejectionActivity.activity_status,
+      //         docs_collected: rejectionActivity.docs_collected,
+      //         follow_up: rejectionActivity.follow_up,
+      //         createdAt: rejectionActivity.createdAt,
+      //         updatedAt: rejectionActivity.updatedAt,
+      //         lead_status: rejectionActivity.lead_status,
+      //         autoRejected: true,
+      //         reason: failureReason
+      //       },
+      //       null
+      //     );
+      //   }
+      // }
 
       // Create Activity for normal flow (when criteria passes or for other statuses)
       const activity = await Activity.create(

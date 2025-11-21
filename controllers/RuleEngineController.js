@@ -28,7 +28,7 @@ async function runRuleEngine(req, res) {
             ACTIVITY_TYPES.LEAD_STATUS_UPDATE
         );
 
-        let previousStatus = lead.lead_status; // Default to current status
+        let previousStatus = "Not Contacted"; // Default to current status
 
         // If we found an activity log, extract the previous status from the description
         if (latestActivityLog) {

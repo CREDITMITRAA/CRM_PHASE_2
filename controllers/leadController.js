@@ -2489,14 +2489,11 @@ async function updateLeadDetails(req, res) {
       req.body.alternate_phones = [...new Set(cleanedPhones)];
     }
 
-    // Check if eligibility criteria fields are being updated
-    const eligibilityFields = ['date_of_birth', 'company', 'company_category', 'city', 'salary', 'income_type', 'pan'];
-    const updatedEligibilityFields = eligibilityFields.filter(field => field in req.body);
-    const hasEligibilityUpdate = updatedEligibilityFields.length > 0;
-    
-    // If eligibility criteria fields are being updated, set is_eligibility_criteria_checked to false
-    if (hasEligibilityUpdate) {
-      req.body.is_eligibility_criteria_checked = false;
+    // check if eligibility criteria fields are being updated
+    const eligibilityFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan', 'date_of_birth']
+    const hasEligibilityUpdate = eligibilityFields.some(field => field in req.body)
+    if(hasEligibilityUpdate){
+      req.body.is_eligibility_criteria_checked = false
     }
 
     const [updatedRowCount] = await Lead.update(req.body, {
@@ -2517,40 +2514,35 @@ async function updateLeadDetails(req, res) {
     });
 
     let logMessages = [];
-    let fieldChanges = [];
+    let eligibilityUpdated = true
 
-    // Track regular field changes
     for (const key in req.body) {
-      // Skip eligibility criteria check field for now
       if (key === 'is_eligibility_criteria_checked') continue;
-      
+
       const prevValue = prev_lead_data[key];
       const newValue = updatedLead[key];
 
       if (JSON.stringify(prevValue) !== JSON.stringify(newValue)) {
         if (key === "date_of_birth") {
+          // Format both previous and new values properly
           const prevFormatted = prevValue ? moment(prevValue).format('DD-MMM-YYYY') : 'null';
           const newFormatted = newValue ? moment(newValue).format('DD-MMM-YYYY') : 'null';
-          fieldChanges.push(`${key} changed from '${prevFormatted}' to '${newFormatted}'`);
+          logMessages.push(`${key} changed from '${prevFormatted}' to '${newFormatted}'`);
         } else {
-          fieldChanges.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+          logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
         }
       }
     }
 
-    // Add field changes to log messages
-    if (fieldChanges.length > 0) {
-      logMessages.push(fieldChanges.join(', '));
-    }
-
-    // Add single eligibility criteria message if applicable
-    if (hasEligibilityUpdate) {
-      logMessages.push(`Eligibility criteria reset to pending (${updatedEligibilityFields.length} fields updated: ${updatedEligibilityFields.join(', ')})`);
+    // add eligibility updates message if applicablle
+    if(eligibilityUpdated && hasEligibilityUpdate){
+      const updatedEligibilityFields = eligibilityFields.filter(field => field in req.body)
+      logMessages.push(`Eligibility criteria checked due to update in: ${updatedEligibilityFields.join(', ')}`);
     }
 
     if (logMessages.length > 0) {
       let logData = createLogData(
-        `Lead details updated: ${logMessages.join('; ')}`,
+        `Lead details updated: ${logMessages.join(", ")}`,
         ACTIVITY_TYPES.LEAD_UPDATE,
         user_id,
         id,

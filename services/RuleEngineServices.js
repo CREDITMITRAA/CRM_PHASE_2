@@ -3,9 +3,9 @@ function runFirstLevelScoreCardCriteria(lead) {
   const companyCategory = lead.company_category;
   
   // 1. Age criteria - 21 to 55 years
-  if (!meetsAgeCriteria(lead.date_of_birth)) {
-    return false;
-  }
+  // if (!meetsAgeCriteria(lead.date_of_birth)) {
+  //   return false;
+  // }
   
   // 2. Salary above 25,000 (Super CATA, CATA & CATB)
   if (["Super CAT", "CAT A", "CAT B"].includes(companyCategory)) {
@@ -30,9 +30,9 @@ function getScoreCardFailureReason(lead) {
   const companyCategory = lead.company_category;
   
   // Check age criteria first
-  if (!meetsAgeCriteria(lead.date_of_birth)) {
-    return getAgeFailureReason(lead.date_of_birth);
-  }
+  // if (!meetsAgeCriteria(lead.date_of_birth)) {
+  //   return getAgeFailureReason(lead.date_of_birth);
+  // }
   
   if (!companyCategory) {
     return "Company category not specified";
@@ -56,7 +56,7 @@ function getScoreCardFailureReason(lead) {
 }
 
 function getMissingMandatoryFields(lead) {
-  const mandatoryFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan', 'date_of_birth'];
+  const mandatoryFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan'];
   const missingFields = [];
   
   mandatoryFields.forEach(field => {

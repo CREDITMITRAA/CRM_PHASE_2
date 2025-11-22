@@ -24,7 +24,7 @@ const FcmToken = require("./FcmToken")(sequelize)
 const Team = require("./Team")(sequelize)
 const TeamMember = require("./TeamMember")(sequelize)
 const RoleTeamRule = require("./RoleTeamRule")(sequelize)
-const UserRole = require("./userRole")(sequelize)
+const UserRole = require("./UserRole")(sequelize)
 const Company = require("./company")(sequelize)
 
 // Define Relationships

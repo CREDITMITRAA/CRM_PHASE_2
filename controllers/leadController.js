@@ -2490,7 +2490,7 @@ async function updateLeadDetails(req, res) {
     }
 
     // check if eligibility criteria fields are being updated
-    const eligibilityFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan', 'date_of_birth']
+    const eligibilityFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan']
     const hasEligibilityUpdate = eligibilityFields.some(field => field in req.body)
     if(hasEligibilityUpdate){
       req.body.is_eligibility_criteria_checked = false

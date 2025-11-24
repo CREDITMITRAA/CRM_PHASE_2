@@ -11,6 +11,7 @@ const {
   WalkIn,
   CreditReport,
   LoanReport,
+  ReportRuleEngineResult,
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const LeadServices = require("../services/leadServices");
@@ -2534,10 +2535,10 @@ async function updateLeadDetails(req, res) {
       }
     }
 
-    // add eligibility updates message if applicablle
+    // add eligibility updates message if applicable
     if(eligibilityUpdated && hasEligibilityUpdate){
       const updatedEligibilityFields = eligibilityFields.filter(field => field in req.body)
-      logMessages.push(`Eligibility criteria checked due to update in: ${updatedEligibilityFields.join(', ')}`);
+      logMessages.push(`Eligibility criteria check reset (needs recheck) due to update in: ${updatedEligibilityFields.join(', ')}`);
     }
 
     if (logMessages.length > 0) {
@@ -3259,12 +3260,30 @@ async function getCrifReportByCustomerIdOrPhone(req, res) {
         { where: { id: lead_id } }
       );
 
+      // Fetch report rule engine results for this lead
+      const reportRuleEngineResults = await ReportRuleEngineResult.findAll({
+        where: {
+          lead_id: parseInt(lead_id),
+          record_status: 'active'
+        },
+        order: [['updatedAt', 'DESC']]
+      });
+
+      // Add rule engine results to response data without affecting existing structure
+      const responseData = {
+        ...response.data,
+        data: {
+          ...(response.data.data || {}),
+          ruleEngineResults: reportRuleEngineResults.map(r => r.get({ plain: true }))
+        }
+      };
+
       return ApiResponse(
         res,
         "SUCCESS",
         200,
         "Report fetched and lead updated successfully.",
-        response.data
+        responseData
       );
     } else {
       // Backend returned handled error (e.g. 400, 404, etc.)
@@ -3908,7 +3927,25 @@ async function getCibilReport(req,res){
     )
 
     if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
-      return ApiResponse(res, "SUCCESS", 200, "asda", response.data.data)
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
     }else {
       return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch cibil report")
     }
@@ -3997,7 +4034,25 @@ async function getExperianReport(req,res){
     )
 
     if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
-      return ApiResponse(res, "SUCCESS", 200, "asda", response.data.data)
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
     }else {
       return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch experian report")
     }
@@ -4086,7 +4141,25 @@ async function getCrifParsedReport(req,res){
     )
 
     if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
-      return ApiResponse(res, "SUCCESS", 200, "asda", response.data.data)
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
     }else {
       return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch crif parsed report")
     }

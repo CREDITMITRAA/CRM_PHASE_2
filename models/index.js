@@ -26,6 +26,7 @@ const TeamMember = require("./TeamMember")(sequelize)
 const RoleTeamRule = require("./RoleTeamRule")(sequelize)
 const UserRole = require("./UserRole")(sequelize)
 const Company = require("./company")(sequelize)
+const ReportRuleEngineResult = require("./ReportRuleEngineResult")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -54,6 +55,8 @@ UserSession.belongsTo(User, { foreignKey: "user_id" });
 
 LoanReport.belongsTo(Lead, { foreignKey: "lead_id" });
 CreditReport.belongsTo(Lead, { foreignKey: "lead_id" });
+Lead.hasMany(ReportRuleEngineResult, { foreignKey: "lead_id", as: "ReportRuleEngineResults" });
+ReportRuleEngineResult.belongsTo(Lead, { foreignKey: "lead_id", as: "Lead" });
 
 Activity.hasMany(LeadAssignment, {
   foreignKey: "lead_id",
@@ -204,5 +207,6 @@ module.exports = {
   TeamMember,
   RoleTeamRule,
   UserRole,
-  Company
+  Company,
+  ReportRuleEngineResult
 };

@@ -104,16 +104,19 @@ function generateLoanOrCreditReportChangeLog(oldData, newData, reportType) {
           "loan_disbursal_date",
           "loan_status",
           "closing_date",
+          "closing_document_url",
           "dispute_status",
           "dispute_date"
         ]
       : [
           "credit_card_name",
           "total_outstanding",
+          "card_limit",
           "loan_status",
           "closing_date",
           "dispute_status",
-          "dispute_date"
+          "dispute_date",
+          "closing_document_url"
         ];
 
   const formatDate = (value) => {
@@ -174,12 +177,18 @@ async function generatePartnerCode(type) {
 
 function generateLoginDetailChangeLog(oldData, newData) {
   const fieldsToCheck = [
-    "bank_name",
-    "application_number",
-    "login_date",
-    "disbursal_date",
-    "dsa_name",
-    "login_status"
+        "bank_name",
+        "dsa_name",
+        "application_number",
+        "login_date",
+        "scheme",
+        "login_amount",
+        "login_status",
+        "sanction_date",
+        "sanction_amount",
+        "disbursal_date",
+        "disbursal_amount",
+        "note",
   ];
 
   const changes = fieldsToCheck
@@ -200,5 +209,5 @@ module.exports = {
   generateLoanOrCreditReportChangeLog,
   generateApiCredentials,
   generatePartnerCode,
-  generateLoginDetailChangeLog
+  generateLoginDetailChangeLog,
 };

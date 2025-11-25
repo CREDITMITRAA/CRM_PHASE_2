@@ -8,7 +8,7 @@ module.exports = {
       const roles = await Role.findAll();
       ApiResponse(res, 'success', 200, 'Roles fetched successfully', roles);
     } catch (err) {
-      ApiResponse(res, 'error', 500, 'Failed to fetch roles', null, err);
+      ApiResponse(res, 'error', 500, err?.message || 'Failed to fetch roles', null, err);
     }
   },
 
@@ -17,7 +17,7 @@ module.exports = {
       const role = await Role.create(req.body);
       ApiResponse(res, 'success', 201, 'Role created successfully', role);
     } catch (err) {
-      ApiResponse(res, 'error', 500, 'Failed to create role', null, {
+      ApiResponse(res, 'error', 500, err?.message || 'Failed to create role', null, {
         message: err.message,
       });
     }
@@ -32,7 +32,7 @@ module.exports = {
       await role.update(req.body);
       ApiResponse(res, 'success', 200, 'Role updated successfully', role);
     } catch (err) {
-      ApiResponse(res, 'error', 500, 'Failed to update role', null, {
+      ApiResponse(res, 'error', 500, err?.message || 'Failed to update role', null, {
         message: err.message,
       });
     }
@@ -47,7 +47,7 @@ module.exports = {
       await role.destroy();
       ApiResponse(res, 'success', 200, 'Role deleted successfully');
     } catch (err) {
-      ApiResponse(res, 'error', 500, 'Failed to delete role', null, {
+      ApiResponse(res, 'error', 500, err?.message || 'Failed to delete role', null, {
         message: err.message,
       });
     }
@@ -69,7 +69,7 @@ module.exports = {
       return ApiResponse(res, 'success', 200, 'Role fetched successfully!',)
     } catch (error) {
       console.error('Error retrieving role:', error);
-      return ApiResponse(res, 'error', 500, 'Failed to fetch role !')
+      return ApiResponse(res, 'error', 500, error?.message || 'Failed to fetch role !')
     }
   }
 };

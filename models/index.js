@@ -19,6 +19,14 @@ const UserMetrics = require('./UserMetrics')(sequelize)
 const ProfileImageUrl = require('./ProfileImageUrl')(sequelize)
 const LeadPartner = require('./LeadPartner')(sequelize)
 const LoginDetail = require('./LoginDetail')(sequelize)
+const PhoneNumber = require('./PhoneNumber')(sequelize)
+const FcmToken = require("./FcmToken")(sequelize)
+const Team = require("./Team")(sequelize)
+const TeamMember = require("./TeamMember")(sequelize)
+const RoleTeamRule = require("./RoleTeamRule")(sequelize)
+const UserRole = require("./UserRole")(sequelize)
+const Company = require("./company")(sequelize)
+const ReportRuleEngineResult = require("./ReportRuleEngineResult")(sequelize)
 
 // Define Relationships
 // User.belongsToMany(Role, { through: UserRole });
@@ -47,6 +55,8 @@ UserSession.belongsTo(User, { foreignKey: "user_id" });
 
 LoanReport.belongsTo(Lead, { foreignKey: "lead_id" });
 CreditReport.belongsTo(Lead, { foreignKey: "lead_id" });
+Lead.hasMany(ReportRuleEngineResult, { foreignKey: "lead_id", as: "ReportRuleEngineResults" });
+ReportRuleEngineResult.belongsTo(Lead, { foreignKey: "lead_id", as: "Lead" });
 
 Activity.hasMany(LeadAssignment, {
   foreignKey: "lead_id",
@@ -79,10 +89,95 @@ Lead.hasMany(LoginDetail, {
   as: 'loginDetails'
 })
 
+Lead.hasMany(LoginDetail, {
+  foreignKey: 'lead_id',
+  as: 'firstLogin', // specifically for the first login
+  scope: {
+    // You can add additional filters here if needed
+  }
+});
+
 LoginDetail.belongsTo(Lead, {
   foreignKey: 'lead_id',
   as: 'lead'
 })
+
+Notification.belongsTo(User, { 
+    foreignKey: 'employee_id', // Notification.employee_id
+    targetKey: 'id',           // User.id (primary key)
+    as: 'AssignedToUser'
+});
+
+User.hasMany(PhoneNumber, {
+  foreignKey: 'user_id',
+  as: 'phones',
+  onDelete: 'CASCADE'
+})
+
+PhoneNumber.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+})
+
+// Team associations
+Team.belongsTo(User, {
+  foreignKey: 'created_by',
+  as: 'teamCreator'
+});
+
+Team.belongsTo(User, {
+  foreignKey: 'team_owner_id',
+  as: 'teamOwner'
+})
+
+Team.hasMany(TeamMember, {
+  foreignKey: 'team_id',
+  as: 'teamMembers'
+});
+
+// TeamMember associations
+TeamMember.belongsTo(Team, {
+  foreignKey: 'team_id',
+  as: 'team'
+});
+
+TeamMember.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
+// User associations (add these to your existing User model setup)
+User.hasMany(Team, {
+  foreignKey: 'created_by',
+  as: 'ledTeams'
+});
+
+User.hasMany(TeamMember, {
+  foreignKey: 'user_id',
+  as: 'teamMemberships'
+});
+
+// UserRole associations
+UserRole.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user'
+});
+
+UserRole.belongsTo(Role, {
+  foreignKey: 'role_id',
+  as: 'role'
+});
+
+// RoleTeamRule associations
+RoleTeamRule.belongsTo(Role, {
+  foreignKey: 'creator_role_id',
+  as: 'creatorRole'
+});
+
+RoleTeamRule.belongsTo(Role, {
+  foreignKey: 'allowed_member_id',
+  as: 'allowedMemberRole'
+});
 
 module.exports = {
   sequelize,
@@ -105,5 +200,13 @@ module.exports = {
   UserMetrics,
   ProfileImageUrl,
   LeadPartner,
-  LoginDetail
+  LoginDetail,
+  PhoneNumber,
+  FcmToken,
+  Team,
+  TeamMember,
+  RoleTeamRule,
+  UserRole,
+  Company,
+  ReportRuleEngineResult
 };

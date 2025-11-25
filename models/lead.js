@@ -8,9 +8,10 @@ module.exports = (sequelize) => {
     email: { type: DataTypes.STRING },
     phone: { type: DataTypes.STRING(15), unique:true},
     city: { type: DataTypes.STRING },
-    company: { type: DataTypes.STRING },
+    company: { type: DataTypes.TEXT },
     lead_source: { type: DataTypes.STRING },
     company_category_id: { type: DataTypes.INTEGER },
+    company_category: { type: DataTypes.STRING },
     salary: { type: DataTypes.DECIMAL(10, 2) },
     address: { type: DataTypes.TEXT },
     gender: { type: DataTypes.ENUM('male', 'female', 'transgender', 'others'),allowNull:true },
@@ -19,7 +20,8 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM(...VERIFICATION_STATUSES), // Spread the array values into the ENUM type
       defaultValue: 'Under Review' // Set a default value
     },
-    lead_status: { type: DataTypes.ENUM(...LEAD_STATUSES), defaultValue: 'Not Contacted' },
+    lead_status: { type: DataTypes.STRING, defaultValue: 'Not Contacted' },
+    sub_status: {type: DataTypes.STRING, allowNull:true },
     application_status : { type: DataTypes.ENUM(...APPLICATION_STATUSES) },
     is_rejected: { type: DataTypes.BOOLEAN, defaultValue: false },
     rejection_reason: { type: DataTypes.TEXT },
@@ -48,6 +50,15 @@ module.exports = (sequelize) => {
     prev_utm_sources: { type: DataTypes.JSON, defaultValue: [], allowNull: true },
     preferred_bank_name: { type: DataTypes.STRING },
     income_type: { type: DataTypes.STRING },
+    customer_id: { type: DataTypes.INTEGER },
+    fb_leadgen_id: { type: DataTypes.STRING },
+    fb_form_id: { type: DataTypes.STRING },
+    fb_ad_id: { type: DataTypes.STRING },
+    required_loan_amount: { type: DataTypes.TEXT },
+    start_login_date: {type: DataTypes.DATE},
+    pan: {type: DataTypes.STRING},
+    is_eligibility_criteria_checked: { type: DataTypes.BOOLEAN, defaultValue: false },
+    date_of_birth: { type: DataTypes.DATE, allowNull: true },
     status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
   }, { timestamps: true });
 };

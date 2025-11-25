@@ -1,5 +1,5 @@
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { ActivityLog, sequelize, Lead } = require("../models");
+const { ActivityLog, sequelize, Lead, User, Role } = require("../models");
 const moment = require("moment-timezone");
 const { Op } = require("sequelize");
 const {
@@ -10,17 +10,20 @@ const {
   ACTIVITY_LOGS,
   ACTIVITY_TYPES,
 } = require("../utilities/ActivityLogConstants");
+const { ROLE_ADMIN } = require("../utilities/constants");
+const { getPresignedUrlFromFullUrl } = require("../config/awsS3PresignedUrlConfig");
 
 async function getActivityLogs(req, res) {
   try {
     let {
       lead_id,
       page = 1,
-      pageSize = 10,
+      pageSize = 20,
       created_by,
       createdAt,
       lead_name,
       from_dashboard,
+      user_id
     } = req.query;
     const pageNumber = parseInt(page, 10);
     pageSize = parseInt(pageSize, 10);
@@ -61,6 +64,27 @@ async function getActivityLogs(req, res) {
         whereConditions.createdAt = {
           [Op.between]: [startOfDayUTC, endOfDayUTC],
         };
+      }
+    }
+
+    if(user_id){
+      const user = await User.findByPk(user_id, {
+        include: {
+          model: Role,
+          as: "Role",
+          attributes: ["role_name"],
+          raw: true
+        }
+      })
+
+      if(!user){
+        return ApiResponse(res, "ERROR", 404, "User not found !")
+      }
+
+      const roleName = user.Role.get("role_name")
+      
+      if(roleName !== ROLE_ADMIN){
+        whereConditions.activity_type = { [Op.ne]: ACTIVITY_TYPES.CALL_LOG_ADDED}
       }
     }
 
@@ -147,36 +171,66 @@ async function getActivityLogs(req, res) {
     }
 
     if (result.rows.length > 0) {
-  // Get all unique lead IDs
-  const leadIds = [...new Set(
-    result.rows
-      .map(row => row.lead_id || row.get?.('lead_id')) // Handle both raw and model instances
-      .filter(id => id)
-  )];
+      // Get all unique lead IDs
+      const leadIds = [...new Set(
+        result.rows
+          .map(row => row.lead_id || row.get?.('lead_id')) // Handle both raw and model instances
+          .filter(id => id)
+      )];
 
-  // Fetch all lead buckets at once
-  const leads = await Lead.findAll({
-    where: { id: leadIds },
-    attributes: ['id', 'lead_bucket'],
-    raw: true
-  });
+      // Fetch all lead buckets at once
+      const leads = await Lead.findAll({
+        where: { id: leadIds },
+        attributes: ['id', 'lead_bucket'],
+        raw: true
+      });
 
-  // Create a mapping of lead_id to lead_bucket
-  const leadBucketMap = leads.reduce((map, lead) => {
-    map[lead.id] = lead.lead_bucket;
-    return map;
-  }, {});
+      // Create a mapping of lead_id to lead_bucket
+      const leadBucketMap = leads.reduce((map, lead) => {
+        map[lead.id] = lead.lead_bucket;
+        return map;
+      }, {});
 
-  // Assign lead_bucket to each row
-  result.rows = result.rows.map(row => {
-    // Handle both raw results and model instances
-    const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
-    return {
-      ...rowData,
-      lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
-    };
-  });
-}
+      // Process each row to add lead_bucket and replace File URLs with presigned URLs
+      result.rows = await Promise.all(
+        result.rows.map(async (row) => {
+          // Handle both raw results and model instances
+          const rowData = typeof row.get === 'function' ? row.get({ plain: true }) : row;
+          
+          // Create a clean processed row with only existing fields
+          const processedRow = {
+            ...rowData,
+            lead_bucket: rowData.lead_id ? leadBucketMap[rowData.lead_id] : null
+          };
+
+          // Remove any extra fields that might have been added
+          delete processedRow.recording_presigned_url;
+          delete processedRow.recording_original_url;
+
+          // Replace File URL with presigned URL for CALL_LOG_ADDED activities
+          if (rowData.activity_type === "CALL_LOG_ADDED" && rowData.activity_desc) {
+            const audioUrlMatch = rowData.activity_desc.match(/File:\s*(https?:\/\/[^\s,]+)/);
+            if (audioUrlMatch && audioUrlMatch[1]) {
+              try {
+                const presignedUrl = await getPresignedUrlFromFullUrl(audioUrlMatch[1]);
+                if (presignedUrl) {
+                  // Replace the original URL with presigned URL in activity_desc
+                  processedRow.activity_desc = rowData.activity_desc.replace(
+                    audioUrlMatch[1], 
+                    presignedUrl
+                  );
+                }
+              } catch (error) {
+                console.error('Error generating presigned URL for activity log:', error);
+                // Keep original activity_desc if presigned URL generation fails
+              }
+            }
+          }
+
+          return processedRow;
+        })
+      );
+    }
 
     return ApiResponse(
       res,
@@ -192,7 +246,7 @@ async function getActivityLogs(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch activity logs !",
+      error?.message || "Failed to fetch activity logs !",
       null,
       error,
       null
@@ -227,7 +281,7 @@ async function addActivityLogNote(req, res) {
       res,
       "error",
       500,
-      "Failed to add activity log note !",
+      error?.message || "Failed to add activity log note !",
       null,
       error,
       null
@@ -235,7 +289,67 @@ async function addActivityLogNote(req, res) {
   }
 }
 
+async function getLeadBasicDetailsChangeHistory(req, res) {
+  try {
+    let { lead_id } = req.query
+
+    if (!lead_id) {
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !");
+    }
+
+    lead_id = Number(lead_id)
+
+    const logs = await ActivityLog.findAll({
+      where: { lead_id: lead_id, status: "active", activity_type: ACTIVITY_TYPES.LEAD_UPDATE },
+      attributes: ["id", "created_by", "activity_desc", "lead_id", "createdAt"],
+      order: [["createdAt", "ASC"]],
+      raw: true
+    });
+
+    const historyMap = {};
+
+    logs.forEach(log => {
+      const regex = /(\w+)\s+changed from '([^']*)'\s+to\s+'([^']*)'/g;
+      let match;
+      while ((match = regex.exec(log.activity_desc)) !== null) {
+        const fieldName = match[1];
+        const fromVal = match[2];
+        const toVal = match[3];
+
+        if (!historyMap[fieldName]) {
+          historyMap[fieldName] = [];
+        }
+
+        historyMap[fieldName].push({
+          from: fromVal === "null" ? null : fromVal,
+          to: toVal === "null" ? null : toVal,
+          date_of_change: log.createdAt,
+          updated_by: String(log.created_by)
+        });
+      }
+    });
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Change history fetched successfully",
+      historyMap
+    );
+  } catch (error) {
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch lead basic details change history !",
+      null,
+      error
+    );
+  }
+}
+
 module.exports = {
   getActivityLogs,
   addActivityLogNote,
+  getLeadBasicDetailsChangeHistory
 };

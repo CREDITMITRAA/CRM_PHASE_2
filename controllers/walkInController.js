@@ -23,6 +23,7 @@ async function scheduleWalkIn(req, res) {
     } = req.body;
 
     if (!lead_id || !walk_in_date_time || !created_by) {
+      await transaction.rollback()
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -79,7 +80,7 @@ async function scheduleWalkIn(req, res) {
   } catch (error) {
     if (transaction) await transaction.rollback();
     console.log(error);
-    return ApiResponse(res,"error",500,"Failed to schedule a walk in !",null,error,null);
+    return ApiResponse(res,"error",500, error?.message || "Failed to schedule a walk in !",null,error,null);
   }
 }
 
@@ -276,7 +277,7 @@ async function getWalkIns(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch walk-ins!",
+      error?.message || "Failed to fetch walk-ins!",
       null,
       error,
       null
@@ -380,7 +381,7 @@ async function updateWalkInStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update walk-in status!",
+      error?.message || "Failed to update walk-in status!",
       null,
       error
     );
@@ -459,7 +460,7 @@ async function rescheduleWalkIn(req, res) {
   } catch (error) {
       if (transaction) await transaction.rollback(); // Rollback on error
       console.error(error);
-      return ApiResponse(res, "error", 500, "Failed to reschedule walk-in!", null, error);
+      return ApiResponse(res, "error", 500, error?.message || "Failed to reschedule walk-in!", null, error);
   }
 }
 
@@ -533,7 +534,7 @@ async function getWalkInsCount(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch Walk-Ins Count!",
+      error?.message || "Failed to fetch Walk-Ins Count!",
       null,
       error
     );
@@ -560,7 +561,7 @@ async function getWalkInsByLeadId(req,res){
 
     return ApiResponse(res, 'success', 200, "Query Successful", walkIns)
   } catch (error) {
-    return ApiResponse(res, 'error', 500, "Failed to fetch Walk-Ins for given lead id !", null, error, null)
+    return ApiResponse(res, 'error', 500, error?.message || "Failed to fetch Walk-Ins for given lead id !", null, error, null)
   }
 }
 

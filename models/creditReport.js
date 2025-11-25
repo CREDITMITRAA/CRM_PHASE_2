@@ -7,11 +7,14 @@ module.exports = (sequelize) => {
     lead_id: { type: DataTypes.INTEGER },
     credit_card_name: { type: DataTypes.STRING },
     total_outstanding: { type: DataTypes.DECIMAL(15, 2) },
+    card_limit: {type: DataTypes.INTEGER, allowNull: true},
     loan_status: {type: DataTypes.ENUM(...LOAN_STATUS_OPTIONS), 
       defaultValue: 'Not Closing' },
     closing_date: { type: DataTypes.DATE, allowNull: true },
+    closing_document_url: {type: DataTypes.STRING, allowNull: true},
     dispute_status: {type: DataTypes.ENUM(...DISPUTE_STATUS_OPTIONS) },
     dispute_date: { type: DataTypes.DATE, allowNull: true },
+    dispute_ref_no: { type: DataTypes.STRING, allowNull: true },
     status: { 
       type: DataTypes.ENUM('active', 'inactive', 'deleted'), 
       defaultValue: 'active' 

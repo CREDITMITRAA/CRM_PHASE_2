@@ -12,7 +12,8 @@ const INITIAL_LEAD_STATUSES = [
     "Email",
     "Not Possible",
     "Scheduled Call With Manager",
-    "Others"
+    "Others",
+    "Re Engaged"
 ]
 
 const  LEAD_STATUSES = [
@@ -61,7 +62,8 @@ const  LEAD_STATUSES = [
     "Advisor Consultation Cancelled",
     "Advisor Consultation Completed",
     "Advisor Consultation Rescheduled",
-    "Closed"       
+    "Closed",
+    "Not met criteria"       
 ]
 
 const VERIFICATION_STATUSES = [
@@ -75,7 +77,8 @@ const VERIFICATION_STATUSES = [
     "Rejected",
     "Normal Login",
     "Scheduled Call With Manager",
-    "Send To Login"
+    "Send To Login",
+    "Others"
 ]
 
 const TASK_STATUSES = [
@@ -88,7 +91,9 @@ const ROLE_ADMIN = "ROLE_ADMIN"
 const ROLE_EMPLOYEE = "ROLE_EMPLOYEE"
 const ROLE_MANAGER = "ROLE_MANAGER"
 const ROLE_OPERATIONS_TEAM = "OPERATIONS_TEAM";
+const ROLE_VIEWER = "ROLE_VIEWER"
 const LOGINS = "LOGINS"
+const REJECTED = "Rejected"
 const NORMAL_LOGIN = "Normal Login"
 const PAID = "Paid"
 const LOGIN_BANK_1 = "Login Bank 1"
@@ -102,6 +107,14 @@ const START_LOGIN = "Start Login"
 const DISBURSED_FROM_BANKS = "Disbursed from Banks"
 const APPLICATION_IS_CLOSED = "Application Closed";
 const OTHERS = "Others"
+const PIPELINE_ENTRIES = "PIPELINE_ENTRIES"
+const PRELIMINERY_CHECK = "PRELIMINERY_CHECK"
+const APPOINTMENTS = "APPOINTMENTS"
+const APPROVED_APPLICATIONS = "APPROVED_APPLICATIONS"
+const ALL_DISPUTES_UPDATED = "All Disputes Updated";
+const ALL_CLEAR = "All Clear"
+const DISPUTE_UPDATED = "Dispute Updated"
+const TASK_REMINDER = "Task Reminder"
 
 const WALK_IN_STATUSES = [
     "Upcoming",
@@ -167,11 +180,42 @@ const DISPUTE_STATUS_OPTIONS = [
 ]
 
 const LOGIN_STATUS_OPTIONS = [
+    "Sent For Login",
+    "Login",
+    "Hold",
     "In Progress",
+    "Sanctioned",
     "Rejected",
-    "Approved",
-    "Disbursed "
+    "Rework",
+    "Disbursed",
+    "Others",
 ]
+
+const LOGIN_SCHEME_OPTIONS = [
+    "Fresh",
+    "Top Up",
+    "Parallel",
+    "BT"
+]
+
+const callTypes = {
+    OUTGOING: "OUTGOING",
+    INCOMING: "INCOMING",
+    MISSED: "MISSED"
+}
+
+const callStatuses = {
+    ANSWERED: "ANSWERED",
+    NOT_ANSWERED: "NOT_ANSWERED"
+}
+
+const leadBuckets = {
+    PIPELINE_ENTRIES,
+    PRELIMINERY_CHECK,
+    APPOINTMENTS,
+    APPROVED_APPLICATIONS,
+    LOGINS
+}
 
 module.exports = {
     LEAD_STATUSES,
@@ -180,6 +224,7 @@ module.exports = {
     ROLE_EMPLOYEE,
     ROLE_MANAGER,
     ROLE_OPERATIONS_TEAM,
+    ROLE_VIEWER,
     TASK_STATUSES,
     WALK_IN_STATUSES,
     APPLICATION_STATUSES,
@@ -204,5 +249,15 @@ module.exports = {
     START_LOGIN,
     DISBURSED_FROM_BANKS,
     APPLICATION_IS_CLOSED,
-    OTHERS
+    OTHERS,
+    LOGIN_SCHEME_OPTIONS,
+    PIPELINE_ENTRIES,
+    REJECTED,
+    ALL_DISPUTES_UPDATED,
+    ALL_CLEAR,
+    DISPUTE_UPDATED,
+    TASK_REMINDER,
+    callTypes,
+    callStatuses,
+    leadBuckets
 }

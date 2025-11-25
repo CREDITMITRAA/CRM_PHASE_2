@@ -26,5 +26,5 @@ async function updateDocsCollectedByActivityId(data, transaction){
 
 module.exports = {
     addActivity,
-    updateDocsCollectedByActivityId
+    updateDocsCollectedByActivityId,
 }

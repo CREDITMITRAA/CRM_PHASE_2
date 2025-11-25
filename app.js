@@ -1,110 +1,109 @@
-require('dotenv').config()
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const helmet = require('helmet');
-// const morgan = require('morgan');
-const { sequelize } = require('./models'); // Sequelize instance
-const routes = require('./routes/index');
-const { ApiResponse } = require('./utilities/api-responses/ApiResponse');
-const cron = require('node-cron');
-const { createBackup } = require('./controllers/backupController');
-const socketIo = require('socket.io');
-const { initializeSocket } = require('./socket/socket');
+require("dotenv").config();
+require("./config/firebase");
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const helmet = require("helmet");
+const { sequelize } = require("./models");
+const routes = require("./routes/index");
+const { ApiResponse } = require("./utilities/api-responses/ApiResponse");
+const cron = require("node-cron");
+const { createBackup } = require("./controllers/backupController");
+const socketIo = require("socket.io");
+const { initializeSocket } = require("./socket/socket");
+const verifyFacebookSignature = require("./middlewares/verifyFacebookSignature");
+const facebookWebhookRoutes = require("./routes/facebookWebhookRoutes");
+const { sendRecentTaskNotifications } = require("./services/NotificationServices");
 
+// ================== EXPRESS APP CONFIG ==================
 const app = express();
-const allowedOrigins = process.env.FRONTEND_ORIGIN_URL.split(",")
-// Middleware
-app.use(helmet()); // For security headers
-app.use(bodyParser.json()); // Parse incoming JSON requests
-app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded data
-// app.use(morgan('dev')); // Log HTTP requests
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like curl or mobile apps)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-app.options('*', cors());  // Handle preflight OPTIONS requests
+const allowedOrigins = process.env.FRONTEND_ORIGIN_URL?.split(",") || ["*"];
+app.set('trust proxy', true); // Trust all proxies
 
-// Test endpoint
-app.get('/', (req, res) => {
-  return ApiResponse(res, 'success', 200, 'API is running smoothly');
+app.use(helmet());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
+
+app.options("*", cors());
+app.use("/webhook", bodyParser.json({ verify: verifyFacebookSignature }));
+app.use("/webhook", facebookWebhookRoutes);
+app.use("/api", routes);
+
+// ================== HEALTH CHECK ==================
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "🚀 FCM Dialer Server is running",
+    endpoints: {
+      register_device: "POST /register-device",
+      trigger_dial: "POST /trigger-dial",
+      list_devices: "GET /devices",
+      clear_devices: "DELETE /devices",
+    },
+    stats: { deviceCount: deviceTokens.size },
+  });
 });
 
-// Routes
-app.use('/api', routes);
-
-// Error handling middleware for 404
-app.use((req, res, next) => {
-  ApiResponse(res, 'error', 404, 'Endpoint not found');
-});
-
-// Error handling middleware for server errors
+// ================== ERROR HANDLERS ==================
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  ApiResponse(
-    res,
-    'error',
-    500,
-    'Internal Server Error',
-    null,
-    { message: err.message }
-  );
+  console.error("Server Error:", err.stack);
+  ApiResponse(res, "error", 500, "Internal Server Error", null, {
+    message: err.message,
+  });
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-
-cron.schedule("30 5 * * *", async () => {
-  console.log("⏳ Running scheduled database backup...");
-  await createBackup(); // No req, res here
+app.use((req, res) => {
+  ApiResponse(res, "error", 404, "Endpoint not found");
 });
 
+// ================== SERVER START ==================
+const PORT = process.env.PORT || 3001;
 
-let server;
-let io;
-// Sync Sequelize models and start the server
 sequelize
   .authenticate()
   .then(() => {
-    console.log('Database connected successfully.');
-    return sequelize.sync({ alter: process.env.ALTER_SEQUALIZE === 'TRUE' && true, force: process.env.FORCE_SEQUALIZE === 'TRUE' && true, logging:process.env.LOG_SQL === 'TRUE' && console.log }); // Sync models with DB
+    console.log("Database connected successfully.");
+    return sequelize.sync({ alter: process.env.ALTER_SEQUALIZE === 'TRUE' && true, force: process.env.FORCE_SEQUALIZE === 'TRUE' && true, logging:process.env.LOG_SQL === 'TRUE' && console.log });
   })
   .then(() => {
-    server = app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-    });
-    initializeSocket(server)
+    const server = app.listen(PORT, () =>
+      console.log(`🚀 Server is running at http://localhost:${PORT}`)
+    );
+    initializeSocket(server);
   })
-  .catch((err) => {
-    console.error('Failed to connect to the database:', err.message);
-  });
+  .catch((err) => console.error("DB connection failed:", err.message));
 
- io = socketIo(server,{
-  cors:{
-    origin:process.env.FRONTEND_ORIGIN_URL,
-    methods:["GET","POST"]
-  }
-})
+// ================== CRON JOBS ==================
+cron.schedule("30 5 * * *", async () => {
+  console.log("⏳ Running scheduled database backup...");
+  await createBackup();
+});
 
-// let count = 0;
-// io.on("connect", (socket)=>{
-//   console.log("A user connected ", socket.id);
-//   socket.on("disconnect", () => {
-//     console.log("User disconnected !", socket.id);
-    
-//   }),
-//   socket.on("count", ()=>{
-//     console.log("count received");
-//   })
-// })
+cron.schedule("* * * * *", () => sendRecentTaskNotifications());
 
-module.exports = {app,io};
+// ================== PROCESS HANDLERS ==================
+process.on("unhandledRejection", (reason, p) => {
+  console.error("Unhandled Rejection at:", p, "reason:", reason);
+  setTimeout(() => process.exit(1), 5000);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+  setTimeout(() => process.exit(1), 5000);
+});
+
+module.exports = { app };

@@ -41,7 +41,10 @@ const ACTIVITY_TYPES = {
     CREDIT_REPORT_EDIT : 'CREDIT_REPORT_EDIT',
     LOGIN_ADD : 'LOGIN_ADD',
     LOGIN_EDIT : "LOGIN_EDIT",
-    LOGIN_DELETE: "LOGIN_DELETE"
+    LOGIN_DELETE: "LOGIN_DELETE",
+    CLOSING_DOC_UPLOAD: "CLOSING_DOC_UPLOAD",
+    CLOSING_DOC_DELETE: "CLOSING_DOC_DELETE",
+    CALL_LOG_ADDED: 'CALL_LOG_ADDED'
 }
 
 const ASSIGNED_TABLE = "ASSIGNED_TABLE";
@@ -134,42 +137,71 @@ const ADVISOR_CONSULTATION_CANCELLED = "Advisor Consultation Cancelled"
 const ADVISOR_CONSULTATION_RESCHEDULED = "Advisor Consultation Rescheduled"
 const MAKER_APPROVED = "Maker Approved"
 const CHECKER_APPROVED = "Checker Approved"
+const SEND_TO_LOGIN = "Send To Login"
+const APPLICATION_ON_HOLD = "Application On Hold"
+const NOT_MET_CRITERIA = "Not met criteria"
+//
+const ACTIVE_PROSPECT = 'Active Prospect'
+const ONGOING_CONTACT = 'Ongoing Contact'
+const RE_CALL = 'Re-call'
+const NON_RESPONSIVE = 'Non-responsive'
+const UNAVAILABLE = 'Unavailable'
+const LINE_ENGAGED = 'Line Engaged'
+const DISENGAGED_LEAD = 'Disengaged Lead'
+const INACTIVE = 'Inactive'
+const INELIGIBLE = 'Ineligible'
+const ADVISOR_CONSULTATION = 'Advisor Consultation'
+const UNATTENDED = 'Unattended'
+const BOOK_APPOINTMENT = 'Book Appointment'
+const PRELIMINARY_APPROVAL = 'Preliminary Approval'
+const EXECUTIVE_CONSULATION = 'Executive Consultation'
+const DOCUMENTATION_COLLECTED = "Documentation Collected"
+const APPOINTMENT_BOOKED = 'Appointment Booked'
+const PAPERWORK_VERIFIED = "Paperwork Verified"
+const STAGE_1_APPROVED = "Stage 1 Approved"
+const SUPERVISOR_APPROVED = "Supervisor Approved"
+const POLICY_CONFIRMATION = "Policy Confirmation"
+const UNDER_CONSIDERATION = "Under Consideration"
+const POLICY_DECLINED = "Policy Declined"
+const RESCHEDULE_APPOINTMENT = "Reschedule Appointment"
+const ADVISOR_CALL_RESCHEDULED = "Advisor Call Rescheduled"
+const APPLICAITON_CLOSED = "Application Closed"
 
 const terminologiesMap = new Map([
-    [NOT_CONTACTED, 'Unattended'],
-    [INTERESTED, 'Active Prospect'],
-    [FOLLOW_UP, 'Ongoing Contact'],
-    [CALL_BACK,'Re-call'],
-    [RNR_RING_NO_RESPONSE, 'Non-responsive'],
-    [SWITCHED_OFF, 'Unavailable'],
-    [BUSY,'Line Engaged'],
-    [NOT_INTERESTED,'Disengaged Lead'],
-    [NOT_WORKING_NOT_REACHABLE,'Inactive'],
-    [NOT_POSSIBLE,'Ineligible'],
-    [SCHEDULE_FOR_WALK_IN, 'Book Appointment'],
-    [VERIFICATION_1, 'Preliminary Approval'],
-    [SCHEDULE_CALL_WITH_MANAGER, 'Executive Consultation'],
-    [TWELVE_DOCUMENTS_COLLECTED, "Documentation Collected"],
-    [SCHEDULED_FOR_WALK_IN, 'Appointment Booked'],
-    [APPROVED_FOR_WALK_IN, "Paperwork Verified"],
-    [SCHEDULED_CALL_WITH_MANAGER, 'Advisor Consultation'],
+    [NOT_CONTACTED, UNATTENDED],
+    [INTERESTED, ACTIVE_PROSPECT],
+    [FOLLOW_UP, ONGOING_CONTACT],
+    [CALL_BACK, RE_CALL],
+    [RNR_RING_NO_RESPONSE, NON_RESPONSIVE],
+    [SWITCHED_OFF, UNAVAILABLE],
+    [BUSY, LINE_ENGAGED],
+    [NOT_INTERESTED, DISENGAGED_LEAD],
+    [NOT_WORKING_NOT_REACHABLE, INACTIVE],
+    [NOT_POSSIBLE, INELIGIBLE],
+    [SCHEDULE_FOR_WALK_IN, BOOK_APPOINTMENT],
+    [VERIFICATION_1, PRELIMINARY_APPROVAL],
+    [SCHEDULE_CALL_WITH_MANAGER, EXECUTIVE_CONSULATION],
+    [TWELVE_DOCUMENTS_COLLECTED, DOCUMENTATION_COLLECTED],
+    [SCHEDULED_FOR_WALK_IN, APPOINTMENT_BOOKED],
+    [APPROVED_FOR_WALK_IN, PAPERWORK_VERIFIED],
+    [SCHEDULED_CALL_WITH_MANAGER, ADVISOR_CONSULTATION],
     [OTHERS, OTHERS],
     [UNDER_REVIEW, UNDER_REVIEW],
-    [ON_HOLD, "Application on Hold"],
-    [MANAGER_1_APPROVED, "Stage 1 Approved"],
-    [MANAGER_2_APPROVED, "Supervisor Approved"],
+    [ON_HOLD, APPLICATION_ON_HOLD],
+    [MANAGER_1_APPROVED, STAGE_1_APPROVED],
+    [MANAGER_2_APPROVED, SUPERVISOR_APPROVED],
     [REJECTED, REJECTED],
     [NORMAL_LOGIN, NORMAL_LOGIN],
-    [OKAY_FOR_POLICY, "Policy Confirmation"],
-    [THINK_AND_GET_BACK, "Under Consideration"],
-    [NOT_OKAY_FOR_POLICY, "Policy Declined"],
-    [RESCHEDULE_WALK_IN, "Reschedule Appointment"],
-    [RESCHEDULE_CALL_WITH_MANAGER, "Advisor Call Rescheduled"],
-    [CLOSED, "Application Closed"],
+    [OKAY_FOR_POLICY, POLICY_CONFIRMATION],
+    [THINK_AND_GET_BACK, UNDER_CONSIDERATION],
+    [NOT_OKAY_FOR_POLICY, POLICY_DECLINED],
+    [RESCHEDULE_WALK_IN, RESCHEDULE_APPOINTMENT],
+    [RESCHEDULE_CALL_WITH_MANAGER, ADVISOR_CALL_RESCHEDULED],
+    [CLOSED, APPLICAITON_CLOSED],
     [LOGIN, LOGIN],
     [WALK_INS, "Appointments"],
     [LEADS, "Pipeline Entries"],
-    [RESCHEDULED_FOR_WALK_IN, "Appointment Rescheduled"],
+    [RESCHEDULED_FOR_WALK_IN, APPOINTMENT_RESCHEDULED],
     [ALL_CLEAR,ALL_CLEAR],
     [NEGATIVE_TRANSACTION, NEGATIVE_TRANSACTION],
     [LOGIN_BANK_1, LOGIN_BANK_1],
@@ -201,7 +233,35 @@ const terminologiesMap = new Map([
   [UNDER_PROCESS,UNDER_PROCESS],
   [DISBURSED_FROM_BANKS,DISBURSED_FROM_BANKS],
   [APPLICATION_IS_CLOSED,APPLICATION_IS_CLOSED],
-  [OTHERS,OTHERS]
+  [OTHERS,OTHERS],
+  [SEND_TO_LOGIN,SEND_TO_LOGIN],
+  [APPLICATION_ON_HOLD,APPLICATION_ON_HOLD],
+  [NOT_MET_CRITERIA, NOT_MET_CRITERIA],
+  [ACTIVE_PROSPECT, ACTIVE_PROSPECT],
+  [ONGOING_CONTACT, ONGOING_CONTACT],
+  [RE_CALL, RE_CALL],
+  [NON_RESPONSIVE, NON_RESPONSIVE],
+  [UNAVAILABLE, UNAVAILABLE],
+  [LINE_ENGAGED, LINE_ENGAGED],
+  [DISENGAGED_LEAD, DISENGAGED_LEAD],
+  [INACTIVE, INACTIVE],
+  [INELIGIBLE, INELIGIBLE],
+  [ADVISOR_CONSULTATION, ADVISOR_CONSULTATION],
+  [UNATTENDED, UNATTENDED],
+  [BOOK_APPOINTMENT, BOOK_APPOINTMENT],
+  [PRELIMINARY_APPROVAL, PRELIMINARY_APPROVAL],
+  [EXECUTIVE_CONSULATION, EXECUTIVE_CONSULATION],
+  [DOCUMENTATION_COLLECTED, DOCUMENTATION_COLLECTED],
+  [APPOINTMENT_BOOKED, APPOINTMENT_BOOKED],
+  [PAPERWORK_VERIFIED, PAPERWORK_VERIFIED],
+  [STAGE_1_APPROVED, STAGE_1_APPROVED],
+  [SUPERVISOR_APPROVED, SUPERVISOR_APPROVED],
+  [POLICY_CONFIRMATION, POLICY_CONFIRMATION],
+  [UNDER_CONSIDERATION, UNDER_CONSIDERATION],
+  [POLICY_DECLINED, POLICY_DECLINED],
+  [RESCHEDULE_APPOINTMENT, RESCHEDULE_APPOINTMENT],
+  [ADVISOR_CALL_RESCHEDULED, ADVISOR_CALL_RESCHEDULED],
+  [APPLICAITON_CLOSED, APPLICAITON_CLOSED]
   ])
 
 const ACTIVITY_LOGS = {
@@ -209,10 +269,10 @@ const ACTIVITY_LOGS = {
     `Lead ID ${leadId} assigned to ${assignedTo} by ${assignedBy}`,
     LEAD_ASSIGNMENT : (employeeName) => `Lead Assigned to ${employeeName}`,
     APPLICATION_STATUS_UPDATE: (newStatus) => `Application status updated to ${terminologiesMap.get(newStatus)}`,
-    LEAD_STATUS_UPDATE: (prevStatus, newStatus, verification_date) => 
-        `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}${
-          [ALL_CLEAR, NEGATIVE_TRANSACTION].includes(terminologiesMap.get(newStatus)) ? ` (Verification Date: ${verification_date})` : ''
-        }`,      
+    LEAD_STATUS_UPDATE: (prevStatus, newStatus, verification_date, sub_status = null) => 
+    `Lead status updated from ${terminologiesMap.get(prevStatus)} to ${terminologiesMap.get(newStatus)}${sub_status ? ` - ${sub_status}` : ''}${
+        [ALL_CLEAR, NEGATIVE_TRANSACTION].includes(terminologiesMap.get(newStatus)) ? ` (Verification Date: ${verification_date})` : ''
+    }`,  
     TASK_CREATE : (task_type, task_date) => `${terminologiesMap.get(task_type)} on ${task_date}`,
     PAYSLIP_UPLOAD : (document_name) => `Payslip ${document_name} uplaoded`,
     CREDIT_BUREAU_UPLOAD : (document_name) => `Credit Bureau ${document_name} uploaded`,
@@ -232,6 +292,8 @@ const ACTIVITY_LOGS = {
     WALK_IN_UPDATE : (new_status) => `Appointment status updated to ${new_status}`,
     PAYSLIP_DELETE : (document_name) => `Payslip ${document_name} deleted`,
     OTHER_DOC_UPLOAD : (document_name) => `Other Doc ${document_name} uploaded`,
+    CLOSING_DOC_UPLOAD: (document_name) => `Closing Doc ${document_name} uploaded`,
+    CLOSING_DOC_DELETE: (document_name) => `Closing Doc ${document_name} deleted`,
     OTHER_DOC_DELETE : (document_name) => `Other Doc ${document_name} deleted`,
     CREDIT_BUREAU_DELETE : (document_name) => `Credit Bureau ${document_name} deleted`,
     DOCUMENTS_COLLECTED :  (docs_collected) => `Documents collected ( Marked as ${docs_collected ? 'YES' : 'NO'} )`,
@@ -243,10 +305,45 @@ const ACTIVITY_LOGS = {
     BEREAU_SCORE_UPDATE : 'Bereau Score Updated',
     LEAD_UPDATE: 'Lead Details Updated',
     LOAN_REPORT_ADD: (loan_type, bank_name, loan_amount, emi, outstanding, emi_date, loan_disbursal_date) => `Loan Report Uploaded ( Loan Type : ${loan_type}, Bank Name : ${bank_name}, Loan Amount : ${loan_amount}, EMI : ${emi}, Outstanding : ${outstanding}, EMI Date : ${emi_date}, Loan Disbursal Date : ${loan_disbursal_date} )`,
-    CREDIT_REPORT_ADD : (credit_card_name, total_outstanding) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding})`,
+    CREDIT_REPORT_ADD : (credit_card_name, total_outstanding, card_limit) => `Credit Report Added ( Credit Card Name : ${credit_card_name}, Total Outstanding : ${total_outstanding}), Card Limit : ${card_limit}`,
     VERIFICATION_STATUS_UPDATE: (verification_status) => `Updated Verification Status to : ${terminologiesMap.get(verification_status)}`,
-    LOGIN_ADD: (bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Added ( Bank Name : ${bank_name},  Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`,
-    LOGIN_DELETE: (login_id, bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Deleted ( Login ID : ${login_id}, Bank Name : ${bank_name}, Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`
+    LOGIN_DELETE: (login_id, bank_name, application_number, login_date, disbursal_date, dsa_name, login_status) => `Login Deleted ( Login ID : ${login_id}, Bank Name : ${bank_name}, Application No : ${application_number}, Login Date : ${login_date}, Disbursal Date : ${disbursal_date}, DSA Name : ${dsa_name}, Login Status : ${login_status})`,
+    LOGIN_ADD: (
+  bank_name,
+  dsa_name,
+  application_number,
+  login_date,
+  scheme,
+  login_amount,
+  login_status,
+  sanction_date,
+  sanction_amount,
+  disbursal_date,
+  disbursal_amount,
+  note
+) => {
+  const fields = [
+    ["Bank Name", bank_name],
+    ["DSA Name", dsa_name],
+    ["Application No", application_number],
+    ["Login Date", login_date],
+    ["Scheme", scheme],
+    ["Login Amount", login_amount],
+    ["Login Status", login_status],
+    ["Sanction Date", sanction_date],
+    ["Sanction Amount", sanction_amount],
+    ["Disbursal Date", disbursal_date],
+    ["Disbursal Amount", disbursal_amount],
+    ["Note", note]
+  ];
+
+  const message = fields
+    .filter(([, value]) => !!value) // only truthy values
+    .map(([key, value]) => `${key} : ${value}`)
+    .join(", ");
+
+  return `Login Added (${message})`;
+}
 }
 
 module.exports = {

@@ -9,6 +9,9 @@ const {
   Activity,
   ActivityLog,
   WalkIn,
+  CreditReport,
+  LoanReport,
+  ReportRuleEngineResult,
 } = require("../models");
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
 const LeadServices = require("../services/leadServices");
@@ -49,17 +52,23 @@ const {
   createActivityLog,
 } = require("../services/ActivityLogServices");
 const { getIo } = require("../socket/socket");
+const { default: axios } = require("axios");
+const { saveNotification } = require("../services/NotificationServices");
 
 async function createBulkLeads(req, res) {
+  const transaction = await sequelize.transaction();
   console.log(req.body, "Received leads data");
 
   const validatePhone = true;
   const validateEmail = false;
   const validateName = false;
   const validateSource = false;
+  const BATCH_SIZE = 1000;
+  const LOG_BATCH_SIZE = 500;
 
   try {
     if (!Array.isArray(req.body) || req.body.length === 0) {
+      await transaction.rollback()
       return ApiResponse(
         res,
         "error",
@@ -68,119 +77,422 @@ async function createBulkLeads(req, res) {
       );
     }
 
-    let validLeads = [];
-    let invalidLeads = [];
+    const userId = req.query?.userId;
+    const userName = req.query?.userName;
+    if (!userId) {
+      await transaction.rollback()
+      return ApiResponse(
+        res,
+        "error",
+        400,
+        "User ID is required for activity logging"
+      );
+    }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let allInvalidLeads = [];
+    let allCreatedLeads = [];
+    let allUpdatedLeads = [];
+    let bulkActivityLogs = [];
+    let processedCount = 0;
 
-    // Rest of your existing workflow remains the same
-    req.body.forEach((lead) => {
-      let isValid = true;
-      let reason = "";
+    // Process in batches
+    for (let i = 0; i < req.body.length; i += BATCH_SIZE) {
+      const batch = req.body.slice(i, i + BATCH_SIZE);
+      let validLeads = [];
+      let invalidLeads = [];
 
-      const phoneRaw = lead.phone?.toString() || "";
-      const phoneReason = getPhoneValidationReason(phoneRaw);
+      // Validate each lead
+      for (const lead of batch) {
+        let isValid = true;
+        let reason = "";
 
-      if (validateName && !lead.name) {
-        isValid = false;
-        reason = "Missing name";
-      } else if (
-        validateEmail &&
-        (!lead.email || !emailRegex.test(lead.email))
-      ) {
-        isValid = false;
-        reason = "Invalid email";
-      } else if (validateSource && !lead.lead_source) {
-        isValid = false;
-        reason = "Missing lead source";
-      } else if (validatePhone && phoneReason) {
-        isValid = false;
-        reason = phoneReason;
-      }
+        const phoneRaw = lead.phone?.toString() || "";
+        const phoneReason = getPhoneValidationReason(phoneRaw);
 
-      let extractedPhone = extractTenDigitMobile(phoneRaw);
-      const formattedLead = {
-        ...lead,
-        original_phone: phoneRaw,
-        phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
-        last_updated_status: "Not Contacted",
-      };
+        if (validateName && !lead.name) {
+          isValid = false;
+          reason = "Missing name";
+        } else if (
+          validateEmail &&
+          (!lead.email || !emailRegex.test(lead.email))
+        ) {
+          isValid = false;
+          reason = "Invalid email";
+        } else if (validateSource && !lead.lead_source) {
+          isValid = false;
+          reason = "Missing lead source";
+        } else if (validatePhone && phoneReason) {
+          isValid = false;
+          reason = phoneReason;
+        }
 
-      if(lead.bereau_score){
-        if(!lead.bereau_name){
-          formattedLead.bereau_name = "TransUnion Cibil"
-        }else{
-          formattedLead.bereau_name = lead.bereau_name
+        let extractedPhone = extractTenDigitMobile(phoneRaw);
+        const formattedLead = {
+          ...lead,
+          original_phone: phoneRaw,
+          phone: isValid ? extractedPhone || phoneRaw : phoneRaw,
+          last_updated_status: "Not Contacted",
+        };
+
+        if (lead.bereau_score) {
+          formattedLead.bereau_name = lead.bereau_name || "TransUnion Cibil";
+        }
+
+        if (!isValid || !extractedPhone) {
+          invalidLeads.push({
+            ...formattedLead,
+            phone: phoneRaw,
+            reason: reason || "Unknown reason",
+          });
+        } else {
+          validLeads.push(formattedLead);
         }
       }
 
-      if (isValid && extractedPhone) {
-        validLeads.push(formattedLead);
-      } else {
-        invalidLeads.push({
-          ...formattedLead,
-          phone: phoneRaw,
-          reason: reason || "Unknown reason",
-        });
-      }
-    });
+      // Existing leads lookup
+      const phoneNumbers = validLeads.map((l) => l.phone).filter(Boolean);
+      const existingLeads =
+        phoneNumbers.length > 0
+          ? await Lead.findAll({
+              where: { phone: phoneNumbers },
+              attributes: [
+                "id",
+                "phone",
+                "name",
+                "email",
+                "lead_source",
+                "bereau_score",
+                "utm_campaign",
+                "utm_source",
+                "lead_status",
+              ],
+              include: [
+                {
+                  model: LeadAssignment,
+                  as: "LeadAssignments",
+                  attributes: ["id", "assigned_to"],
+                  required: false,
+                },
+              ],
+              transaction,
+            })
+          : [];
 
-    // Rest of your existing code for database operations...
-    let createdLeads = [];
-    if (validLeads.length > 0) {
-      try {
-        createdLeads = await Lead.bulkCreate(validLeads, { validate: true });
-      } catch (bulkError) {
-        console.error("Bulk insert error:", bulkError);
-        for (const lead of validLeads) {
-          try {
-            const created = await Lead.create(lead);
-            createdLeads.push(created);
-          } catch (err) {
-            const reason = getErrorReason(err) || "Insert failed";
-            invalidLeads.push({ ...lead, phone: lead.original_phone, reason });
-            console.error("Insert failed:", err);
+      const existingLeadsMap = new Map(existingLeads.map((l) => [l.phone, l]));
+      const leadsToCreate = [];
+      const leadsToUpdate = [];
+
+      for (const lead of validLeads) {
+        const existingLead = existingLeadsMap.get(lead.phone);
+        if (existingLead) {
+          leadsToUpdate.push({
+            lead,
+            existingId: existingLead.id,
+            existingValues: existingLead.get({ plain: true }),
+          });
+        } else {
+          leadsToCreate.push(lead);
+        }
+      }
+
+      // Create new leads
+      let batchCreatedLeads = [];
+      if (leadsToCreate.length > 0) {
+        try {
+          batchCreatedLeads = await Lead.bulkCreate(leadsToCreate, {
+            validate: true,
+            returning: true,
+          });
+        } catch (bulkError) {
+          console.error("Bulk create error:", bulkError);
+          for (const lead of leadsToCreate) {
+            try {
+              const created = await Lead.create(lead);
+              batchCreatedLeads.push(created);
+            } catch (err) {
+              allInvalidLeads.push({
+                ...lead,
+                phone: lead.original_phone,
+                reason: getErrorReason(err) || "Insert failed",
+              });
+            }
           }
         }
       }
-    }
 
-    if (invalidLeads.length > 0) {
-      try {
-        await InvalidLead.bulkCreate(invalidLeads, { validate: false });
-      } catch (bulkInvalidErr) {
-        console.error("Invalid bulk insert failed:", bulkInvalidErr);
-        for (const lead of invalidLeads) {
-          try {
-            await InvalidLead.create(lead);
-          } catch (err) {
-            lead.reason = getErrorReason(err) || "Invalid lead insert failed";
-            console.error("Single invalid insert failed:", err);
+      // Update existing leads
+      let batchUpdatedLeads = [];
+      if (leadsToUpdate.length > 0) {
+        const assignedLeadsMap = new Map();
+        const updatePromises = leadsToUpdate.map(
+          async ({ lead, existingId, existingValues }) => {
+            try {
+              const updateData = {
+                name: lead.name,
+                email: lead.email,
+                lead_source: lead.lead_source,
+                bereau_score: lead.bereau_score,
+                utm_campaign: lead.utm_campaign,
+                utm_source: lead.utm_source,
+                lead_status: "Re Engaged",
+                last_updated_status: "Re Engaged",
+                updated_at: new Date(),
+              };
+
+              // Detect changes
+              const changedFields = {};
+              Object.keys(updateData).forEach((key) => {
+                if (!isEqual(existingValues[key], updateData[key])) {
+                  changedFields[key] = {
+                    previous: existingValues[key],
+                    current: updateData[key],
+                  };
+                }
+              });
+
+              if (Object.keys(changedFields).length > 0) {
+                const [affectedCount] = await Lead.update(updateData, {
+                  where: { id: existingId },
+                });
+
+                if (affectedCount > 0) {
+                  batchUpdatedLeads.push({ id: existingId, ...updateData });
+
+                  // 🟢 Notification Flow
+                  // const assignedTo = existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  // if (assignedTo) {
+                  //   const notification = await saveNotification(
+                  //     {
+                  //       employee_id: assignedTo,
+                  //       notification_from: userName,
+                  //       notification_title: 'New Lead Re-Engagement',
+                  //       message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     },
+                  //     transaction
+                  //   );
+
+                  //   const io = getIo();
+                  //   io.to(`user_${assignedTo}`).emit("leadAssignment", {
+                  //     message: `Lead ${lead.name || existingValues.name} has been re-engaged.`,
+                  //     assignedBy: userName,
+                  //     leadCount: 1,
+                  //     notificationId: notification.id,
+                  //     notification_title: 'New Lead Re-Engagement'
+                  //   });
+                  // }
+
+                  // 🔹 Add to user → lead list map
+                  const assignedTo =
+                    existingValues?.LeadAssignments?.[0]?.assigned_to;
+                  if (assignedTo) {
+                    if (!assignedLeadsMap.has(assignedTo)) {
+                      assignedLeadsMap.set(assignedTo, []);
+                    }
+                    assignedLeadsMap.get(assignedTo).push(existingId);
+                  }
+
+                  // Activity log
+                  const changesText = Object.entries(changedFields)
+                    .map(
+                      ([field, { previous, current }]) =>
+                        `${field}: ${formatValue(previous)} → ${formatValue(
+                          current
+                        )}`
+                    )
+                    .join("; ");
+
+                  bulkActivityLogs.push({
+                    created_by: userId,
+                    activity_type: "LEAD_BULK_UPDATE",
+                    activity_desc: `Updated lead ${existingId} in bulk import: ${changesText}`,
+                    lead_id: existingId,
+                    lead_name: lead.name || existingValues.name,
+                    note: `Batch ${processedCount + 1}`,
+                    status: "active",
+                    updated_at: new Date(),
+                  });
+
+                  if (bulkActivityLogs.length >= LOG_BATCH_SIZE) {
+                    await insertActivityLogs(bulkActivityLogs);
+                    bulkActivityLogs = [];
+                  }
+                }
+              }
+            } catch (err) {
+              console.error(`Error updating lead ${existingId}:`, err);
+              allInvalidLeads.push({
+                ...lead,
+                phone: lead.original_phone,
+                reason: getErrorReason(err) || "Update failed",
+              });
+            }
+          }
+        );
+
+        await Promise.all(updatePromises);
+
+        // 🔹 Step 2: Send one notification per user after processing updates
+        const io = getIo();
+        for (const [assignedTo, leadIds] of assignedLeadsMap) {
+          const notification = await saveNotification(
+            {
+              employee_id: assignedTo,
+              notification_from: userName,
+              notification_title: "Leads Re-Engaged",
+              message: `${leadIds.length} leads have been re-engaged.`,
+            },
+            transaction
+          );
+
+          io.to(`user_${assignedTo}`).emit("leadAssignment", {
+            notification_title: "Leads Re-Engaged",
+            message: `${leadIds.length} leads have been re-engaged.`,
+            assignedBy: userName,
+            leadCount: leadIds.length,
+            notificationId: notification.id,
+          });
+        }
+      }
+
+      // Insert invalid leads
+      if (invalidLeads.length > 0) {
+        try {
+          await InvalidLead.bulkCreate(invalidLeads, { validate: false });
+          allInvalidLeads.push(...invalidLeads);
+        } catch (bulkInvalidErr) {
+          console.error("Invalid bulk insert failed:", bulkInvalidErr);
+          for (const lead of invalidLeads) {
+            try {
+              await InvalidLead.create(lead);
+              allInvalidLeads.push(lead);
+            } catch (err) {
+              console.error("Single invalid insert failed:", err);
+            }
           }
         }
       }
+
+      allCreatedLeads.push(...batchCreatedLeads);
+      allUpdatedLeads.push(...batchUpdatedLeads);
+      processedCount++;
     }
+
+    // Flush remaining logs
+    if (bulkActivityLogs.length > 0) {
+      await insertActivityLogs(bulkActivityLogs);
+    }
+
+    await transaction.commit();
 
     return ApiResponse(res, "success", 201, "Leads processed successfully", {
-      totalValidLeads: createdLeads.length,
-      totalInvalidLeads: invalidLeads.length,
-      createdLeads: createdLeads.map((l) => ({
-        id: l.id,
-        name: l.name,
-        email: l.email,
-        phone: l.phone,
-        lead_source: l.lead_source,
-        ...(l.bereau_score && { bereau_score: l.bereau_score }),
-        ...(l.utm_campaign && { utm_campaign: l.utm_campaign }),
-      })),
-      invalidLeads,
+      totalReceived: req.body.length,
+      totalValidLeads: allCreatedLeads.length + allUpdatedLeads.length,
+      totalCreated: allCreatedLeads.length,
+      totalUpdated: allUpdatedLeads.length,
+      totalInvalidLeads: allInvalidLeads.length,
+      totalLogsCreated: bulkActivityLogs.length,
+      createdLeads: allCreatedLeads.map((l) => formatLeadResponse(l)),
+      updatedLeads: allUpdatedLeads.map((l) => formatLeadResponse(l)),
+      invalidLeads: allInvalidLeads,
     });
   } catch (err) {
+    await transaction.rollback();
     console.error("Unexpected error:", err);
-    return ApiResponse(res, "error", 500, "Failed to process leads", {
-      error: err.message,
-    });
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      err?.message || "Failed to process leads",
+      {
+        error: err.message,
+      }
+    );
   }
+}
+
+// Helper function to insert activity logs with proper validation
+async function insertActivityLogs(logs) {
+  try {
+    const validLogs = logs.map((log) => ({
+      created_by: log.created_by,
+      activity_type: log.activity_type,
+      activity_desc: log.activity_desc,
+      lead_id: log.lead_id,
+      lead_name: log.lead_name,
+      note: log.note,
+      status: log.status,
+      created_at: log.created_at,
+      updated_at: log.updated_at,
+    }));
+
+    await ActivityLog.bulkCreate(validLogs);
+  } catch (err) {
+    console.error("Failed to bulk insert activity logs:", err);
+
+    // Fallback to individual inserts with transaction
+    const transaction = await sequelize.transaction();
+    try {
+      for (const log of logs) {
+        await ActivityLog.create(
+          {
+            created_by: log.created_by,
+            activity_type: log.activity_type,
+            activity_desc: log.activity_desc,
+            lead_id: log.lead_id,
+            lead_name: log.lead_name,
+            note: log.note,
+            status: log.status,
+          },
+          { transaction }
+        );
+      }
+      await transaction.commit();
+    } catch (e) {
+      await transaction.rollback();
+      console.error("Failed to insert activity logs:", e);
+    }
+  }
+}
+
+// Helper functions
+function isEqual(a, b) {
+  if (a === b) return true;
+  if (a instanceof Date && b instanceof Date)
+    return a.getTime() === b.getTime();
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  )
+    return false;
+
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+
+  return keys.every((k) => isEqual(a[k], b[k]));
+}
+
+function formatValue(value) {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function formatLeadResponse(lead) {
+  return {
+    id: lead.id,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    lead_source: lead.lead_source,
+    ...(lead.bereau_score && { bereau_score: lead.bereau_score }),
+    ...(lead.utm_campaign && { utm_campaign: lead.utm_campaign }),
+    ...(lead.utm_source && { utm_source: lead.utm_source }),
+    ...(lead.lead_status && { lead_status: lead.lead_status }),
+  };
 }
 
 async function getAllLeadsWithPagination(req, res) {
@@ -214,18 +526,62 @@ async function getAllLeadsWithPagination(req, res) {
       is_paid = false,
       table_type,
       lead_type,
+      utm_campaign,
+      utm_source,
+      last_updated_status,
+      activity_date,
+      sub_status
     } = req.query;
 
-    // const limit = parseInt(req.query.limit) || 50;
     page = parseInt(page);
     pageSize = parseInt(pageSize);
 
-    // Default validation to prevent non-integer inputs
     if (isNaN(page) || page < 1) page = 1;
     if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
 
     const whereConditions = {};
     let leadAssignmentConditions = {};
+    
+    if (activity_date) {
+      const [startRange, endRange] = activity_date.split(',');
+      
+      let startOfRangeUTC, endOfRangeUTC;
+      
+      if (startRange && endRange) {
+        startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        
+        startOfRangeUTC = startOfDayUTC;
+        endOfRangeUTC = endOfDayUTC;
+      }
+
+      whereConditions.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT lead_id 
+          FROM ActivityLogs 
+          WHERE createdAt BETWEEN '${startOfRangeUTC.toISOString()}' AND '${endOfRangeUTC.toISOString()}'
+          AND status = 'active'
+          AND lead_id IS NOT NULL
+        )`)
+      };
+    }
 
     if (
       assigned_to &&
@@ -242,9 +598,9 @@ async function getAllLeadsWithPagination(req, res) {
       {
         model: Activity,
         as: "Activities",
-        required: false, // Include only if activity_status filter is provided
-        order: [["createdAt", "DESC"]], // Ensure the most recent activity is first
-        limit: 1, // Only include the most recent activity
+        required: false,
+        order: [["createdAt", "DESC"]],
+        limit: 1,
       },
       {
         model: LeadAssignment,
@@ -259,9 +615,9 @@ async function getAllLeadsWithPagination(req, res) {
         where: leadAssignmentConditions,
         include: [
           {
-            model: User, // Assuming `User` is your `AssignedTo` model
-            as: "AssignedTo", // Alias for the related `User` model
-            attributes: ["name"], // Only include the name field
+            model: User,
+            as: "AssignedTo",
+            attributes: ["name"],
           },
         ],
       },
@@ -271,12 +627,22 @@ async function getAllLeadsWithPagination(req, res) {
     if (email) whereConditions.email = { [Op.like]: `%${email}%` };
     if (phone) whereConditions.phone = { [Op.like]: `%${phone}%` };
     if (leadId) whereConditions.id = { [Op.like]: `%${leadId}%` };
+    if (last_updated_status) whereConditions.last_updated_status = last_updated_status;
     if (activity_status)
       whereConditions.lead_status = { [Op.like]: `%${activity_status}` };
-    console.log("verification status = ", verification_status);
+    if (sub_status) {
+      whereConditions.sub_status = { [Op.like]: `%${sub_status}`}
+    }
+
+    if (utm_campaign) {
+      whereConditions.utm_campaign = { [Op.like]: `%${utm_campaign}%` };
+    }
+
+    if (utm_source) {
+      whereConditions.utm_source = { [Op.like]: `%${utm_source}%` };
+    }
 
     if (verification_status) {
-      // Normalize to array if it isn't already
       const statuses = Array.isArray(verification_status)
         ? verification_status
         : [verification_status];
@@ -290,9 +656,19 @@ async function getAllLeadsWithPagination(req, res) {
 
     if (lead_status) {
       if (lead_bucket === LOGINS) {
-        whereConditions.lead_status = lead_status;
+        if (lead_status === "Login Bank") {
+          whereConditions.lead_status = { [Op.like]: `%${lead_status}%` };
+        } else {
+          whereConditions.lead_status = lead_status;
+        }
       } else {
-        whereConditions.last_updated_status = lead_status;
+        if (lead_status === "Login Bank") {
+          whereConditions.last_updated_status = {
+            [Op.like]: `%${lead_status}%`,
+          };
+        } else {
+          whereConditions.lead_status = lead_status;
+        }
       }
     }
 
@@ -321,18 +697,12 @@ async function getAllLeadsWithPagination(req, res) {
         [Op.between]: [startOfDay, endOfDay],
       };
     }
+    
     if (!for_walk_ins_page && application_status) {
       whereConditions.application_status = {
-        [Op.like]: `%${application_status}%`, // Use Op.iLike for case-insensitivity
+        [Op.like]: `%${application_status}%`,
       };
     }
-    // if (application_status) {
-    //   whereConditions.application_status = {
-    //     [Op.or]: application_status.map((status) => ({
-    //       [Op.like]: `%${status}%`, // Use Op.iLike for case-insensitivity if supported
-    //     })),
-    //   };
-    // }
 
     if (importedOn) {
       const [startRange, endRange] = importedOn.split(",");
@@ -396,11 +766,7 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    // lead source filter if lead_source is provided
     if (lead_source) {
-      // whereConditions.lead_source = {
-      //   [Op.like]: `%${lead_source}%`, // Use Op.iLike for case-insensitivity
-      // }
       whereConditions.lead_source = lead_source;
     }
 
@@ -422,9 +788,7 @@ async function getAllLeadsWithPagination(req, res) {
     if (table_type === "Normal Login") {
       whereConditions[Op.or] = [
         { verification_status: { [Op.like]: "Normal Login" } },
-        // { verification_status: { [Op.eq]: null } },
         { application_status: { [Op.like]: "Normal Login" } },
-        // { application_status: { [Op.eq]: null } },
       ];
     }
 
@@ -438,7 +802,6 @@ async function getAllLeadsWithPagination(req, res) {
         lead_bucket === "PRELIMINERY_CHECK" &&
         (!verification_status || verification_statuses.length === 0)
       ) {
-        // For PRELIMINARY_CHECK, exclude "Normal Login" but include null and others
         whereConditions[Op.or] = [
           { verification_status: { [Op.notLike]: "Normal Login" } },
           { verification_status: { [Op.eq]: null } },
@@ -447,7 +810,6 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (assigned_to === "not_assigned") {
-      // Check for leads without any assignments
       whereConditions[Op.and] = Sequelize.literal(`
         NOT EXISTS (
           SELECT 1 
@@ -458,11 +820,10 @@ async function getAllLeadsWithPagination(req, res) {
     } else if (assigned_to === "re_assigned") {
       whereConditions.is_reassigned = true;
     } else if (assigned_to || assigned_to_name || assigned_on) {
-      // Apply other lead assignment filters
       includeConditions.push({
         model: LeadAssignment,
         as: "LeadAssignments",
-        required: true, // INNER JOIN to only get assigned leads
+        required: true,
         where: leadAssignmentConditions,
         include: [
           {
@@ -475,7 +836,6 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (assigned_to_name) {
-      // Use `Op.like` to filter based on the assigned user's name
       leadAssignmentConditions["AssignedTo.name"] = {
         [Op.like]: `%${assigned_to_name}%`,
       };
@@ -496,9 +856,6 @@ async function getAllLeadsWithPagination(req, res) {
           .utc()
           .toDate();
 
-        console.log("Filtered Start UTC:", startOfRangeUTC);
-        console.log("Filtered End UTC:", endOfRangeUTC);
-
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfRangeUTC, endOfRangeUTC],
         };
@@ -514,84 +871,11 @@ async function getAllLeadsWithPagination(req, res) {
           .utc()
           .toDate();
 
-        console.log("Filtered Single Day Start UTC:", startOfDayUTC);
-        console.log("Filtered Single Day End UTC:", endOfDayUTC);
-
         leadAssignmentConditions.updatedAt = {
           [Op.between]: [startOfDayUTC, endOfDayUTC],
         };
       }
     }
-
-    // if (appointment_date) {
-    //   const [startDate, endDate] = appointment_date.split(',');
-
-    //   // Convert to UTC dates
-    //   const startUTC = moment.tz(startDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-    //   const endUTC = moment.tz(endDate, "YYYY-MM-DD HH:mm", "Asia/Kolkata").utc().toDate();
-
-    //   // Add the walkIns include if not already present
-    //   if (for_walk_ins_page) {
-    //     includeConditions.push({
-    //       model: WalkIn,
-    //       as: 'walkIns',
-    //       attributes: walk_in_attributes,
-    //       required: true,
-    //       order: [["id", "DESC"]],
-    //       limit: 1,
-    //       where: {
-    //         [Op.or]: [
-    //           {
-    //             is_rescheduled: true,
-    //             rescheduled_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: false,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: null,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           }
-    //         ]
-    //       }
-    //     });
-    //   } else {
-    //     // If for_walk_ins_page is true, modify the existing walkIns condition
-    //     const walkInInclude = includeConditions.find(inc => inc.as === 'walkIns');
-    //     if (walkInInclude) {
-    //       walkInInclude.where = {
-    //         [Op.or]: [
-    //           {
-    //             is_rescheduled: true,
-    //             rescheduled_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: false,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           },
-    //           {
-    //             is_rescheduled: null,
-    //             walk_in_date_time: {
-    //               [Op.between]: [startUTC, endUTC]
-    //             }
-    //           }
-    //         ]
-    //       };
-    //       walkInInclude.required = true;
-    //     }
-    //   }
-    // }
 
     if (for_walk_ins_page && appointment_date) {
       const [startDate, endDate] = appointment_date.split(",");
@@ -604,7 +888,6 @@ async function getAllLeadsWithPagination(req, res) {
         .utc()
         .toDate();
 
-      // Add a subquery condition to the main where clause
       whereConditions.id = {
         [Op.in]: Sequelize.literal(`(
           SELECT DISTINCT lead_id FROM WalkIns
@@ -616,7 +899,6 @@ async function getAllLeadsWithPagination(req, res) {
         )`),
       };
 
-      // Keep the include for getting walkIn data, but make it optional
       includeConditions.push({
         model: WalkIn,
         as: "walkIns",
@@ -628,28 +910,29 @@ async function getAllLeadsWithPagination(req, res) {
     }
 
     if (for_walk_ins_page) {
-      if (!application_status) {
-        console.log("application status is not given");
-
-        // Modified condition to exclude "Normal Login" but include null and others
+      if (application_status !== undefined && application_status !== null) {
+        if (application_status === "null") {
+          whereConditions.application_status = { [Op.is]: null };
+        } else {
+          whereConditions.application_status = {
+            [Op.like]: `%${application_status}%`,
+          };
+        }
+      } else {
         whereConditions[Op.and] = [
           {
             [Op.or]: [
               { application_status: { [Op.notLike]: "Normal Login" } },
-              { application_status: { [Op.eq]: null } },
+              { application_status: { [Op.is]: null } },
             ],
           },
           {
             [Op.or]: [
               { lead_bucket: { [Op.ne]: "APPROVED_APPLICATIONS" } },
-              { lead_bucket: { [Op.eq]: null } },
+              { lead_bucket: { [Op.is]: null } },
             ],
           },
         ];
-      } else {
-        whereConditions.application_status = {
-          [Op.like]: `%${application_status}%`,
-        };
       }
 
       includeConditions.push({
@@ -672,16 +955,17 @@ async function getAllLeadsWithPagination(req, res) {
       whereConditions?.activity_status;
     const orderConditions = shouldOrderByUpdatedAt
       ? [
-          ["updatedAt", "DESC"], // Apply updatedAt sorting if verification_status is included
+          ["updatedAt", "DESC"],
           ["createdAt", "DESC"],
           ["id", "DESC"],
         ]
       : [
-          ["createdAt", "DESC"], // Default ordering
+          ["createdAt", "DESC"],
           ["id", "DESC"],
         ];
 
     const isPaginationEnabled = isPaginationOff === "false";
+    
     const { count, rows } = await Lead.findAndCountAll({
       where: whereConditions,
       include: includeConditions,
@@ -689,6 +973,270 @@ async function getAllLeadsWithPagination(req, res) {
       limit: isPaginationEnabled ? pageSize : null,
       offset: isPaginationEnabled ? (page - 1) * pageSize : null,
       distinct: true,
+    });
+
+    // NEW: Update lead response objects based on activity log
+    if (activity_date && rows.length > 0) {    
+      const leadIds = rows.map(lead => lead.id);
+  
+      const [startRange, endRange] = activity_date.split(',');
+      let startOfRangeUTC, endOfRangeUTC;
+  
+      if (startRange && endRange) {
+          startOfRangeUTC = moment
+            .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+            .utc()
+            .toDate();
+          endOfRangeUTC = moment
+            .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+            .utc()
+            .toDate();
+      } else {
+          const startOfDayUTC = moment
+            .tz(startRange, "Asia/Kolkata")
+            .startOf("day")
+            .utc()
+            .toDate();
+          const endOfDayUTC = moment
+            .tz(startRange, "Asia/Kolkata")
+            .endOf("day")
+            .utc()
+            .toDate();
+    
+         startOfRangeUTC = startOfDayUTC;
+         endOfRangeUTC = endOfDayUTC;
+      }
+
+      // Fetch ALL activities for these leads within the date range
+      const activities = await ActivityLog.findAll({
+         where: {
+           lead_id: { [Op.in]: leadIds },
+           createdAt: {
+             [Op.between]: [startOfRangeUTC, endOfRangeUTC]
+           },
+           status: 'active'
+         },
+         order: [['createdAt', 'DESC']] // Most recent first
+      });
+
+      // Group activities by lead_id and then by activity_type (most recent of each type)
+      const activitiesByLeadAndType = {};
+  
+      activities.forEach(activity => {
+         const leadId = activity.lead_id;
+         const activityType = activity.activity_type;
+    
+         if (!activitiesByLeadAndType[leadId]) {
+           activitiesByLeadAndType[leadId] = {};
+         }
+    
+         // Only store the most recent activity for each type
+         if (!activitiesByLeadAndType[leadId][activityType]) {
+           activitiesByLeadAndType[leadId][activityType] = activity;
+         }
+      });
+
+      // Update lead response objects based on activities
+      rows.forEach(lead => {
+      const leadActivities = activitiesByLeadAndType[lead.id];
+    
+    if (leadActivities) {
+      // Store original values before modification
+      lead.dataValues._original_lead_status = lead.lead_status;
+      lead.dataValues._original_application_status = lead.application_status;
+      lead.dataValues._original_verification_status = lead.verification_status;
+      lead.dataValues._original_last_updated_status = lead.last_updated_status;
+
+      let mostRecentStatusValue = null;
+      let mostRecentActivityType = null;
+      
+      // Process each activity type in the order they should be applied
+      const activityTypesToProcess = [
+        'LEAD_STATUS_UPDATE',
+        'APPLICATION_STATUS_UPDATE', 
+        'VERIFICATION_STATUS_UPDATE',
+        'LEAD_BULK_UPDATE',
+        'LEAD_ASSIGNMENT',
+        'LEAD_UPDATE'
+      ];
+
+      activityTypesToProcess.forEach(activityType => {
+        const activity = leadActivities[activityType];
+        if (activity) {
+          let newStatusValue = null;
+          
+          switch(activityType) {
+            case 'LEAD_STATUS_UPDATE':
+              // Format: "Lead status updated from Not Contacted to Interested"
+              const leadStatusMatch = activity.activity_desc.match(/to\s+([^(\n,)]+)/);
+              if (leadStatusMatch && leadStatusMatch[1]) {
+                newStatusValue = leadStatusMatch[1].trim();
+                newStatusValue = newStatusValue.replace(/\s*\([^)]*\)$/, '').trim();
+                lead.dataValues.lead_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'APPLICATION_STATUS_UPDATE':
+              // Format: "Application status updated to Under Process"
+              let appStatusMatch = activity.activity_desc.match(/to\s+"([^"]+)"/);
+              if (!appStatusMatch) {
+                appStatusMatch = activity.activity_desc.match(/to\s+:?\s*([^\n,]+)/);
+              }
+              if (appStatusMatch && appStatusMatch[1]) {
+                newStatusValue = appStatusMatch[1].trim();
+                lead.dataValues.application_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'VERIFICATION_STATUS_UPDATE':
+              // Format: "Updated Verification Status to : Approved for Walk-In"
+              const verStatusMatch = activity.activity_desc.match(/to\s+:?\s*([^\n,]+)/);
+              if (verStatusMatch && verStatusMatch[1]) {
+                newStatusValue = verStatusMatch[1].trim();
+                lead.dataValues.verification_status = newStatusValue;
+                mostRecentStatusValue = newStatusValue;
+                mostRecentActivityType = activityType;
+              }
+              break;
+              
+            case 'LEAD_BULK_UPDATE':
+              // Handle bulk update format
+              if (activity.activity_desc.includes('in bulk import:')) {
+                // Extract lead_status changes
+                const leadStatusBulkMatch = activity.activity_desc.match(/lead_status:\s*([^→]+)→\s*([^;]+)/);
+                if (leadStatusBulkMatch && leadStatusBulkMatch[2]) {
+                  newStatusValue = leadStatusBulkMatch[2].trim();
+                  if (newStatusValue !== 'undefined' && newStatusValue !== 'null') {
+                    lead.dataValues.lead_status = newStatusValue;
+                    mostRecentStatusValue = newStatusValue;
+                    mostRecentActivityType = activityType;
+                  }
+                }
+                
+                // Extract last_updated_status changes
+                const lastUpdatedBulkMatch = activity.activity_desc.match(/last_updated_status:\s*([^→]+)→\s*([^;]+)/);
+                if (lastUpdatedBulkMatch && lastUpdatedBulkMatch[2]) {
+                  const lastUpdatedValue = lastUpdatedBulkMatch[2].trim();
+                  if (lastUpdatedValue !== 'undefined' && lastUpdatedValue !== 'null') {
+                    lead.dataValues.last_updated_status = lastUpdatedValue;
+                  }
+                }
+                
+                // Extract application_status changes if present
+                const appStatusBulkMatch = activity.activity_desc.match(/application_status:\s*([^→]+)→\s*([^;]+)/);
+                if (appStatusBulkMatch && appStatusBulkMatch[2]) {
+                  const appStatusValue = appStatusBulkMatch[2].trim();
+                  if (appStatusValue !== 'undefined' && appStatusValue !== 'null') {
+                    lead.dataValues.application_status = appStatusValue;
+                  }
+                }
+                
+                // Extract verification_status changes if present
+                const verStatusBulkMatch = activity.activity_desc.match(/verification_status:\s*([^→]+)→\s*([^;]+)/);
+                if (verStatusBulkMatch && verStatusBulkMatch[2]) {
+                  const verStatusValue = verStatusBulkMatch[2].trim();
+                  if (verStatusValue !== 'undefined' && verStatusValue !== 'null') {
+                    lead.dataValues.verification_status = verStatusValue;
+                  }
+                }
+              }
+              break;
+              
+            case 'LEAD_ASSIGNMENT':
+              // Format: "Lead Assigned to Rishi Emp"
+              const assignMatch = activity.activity_desc.match(/to\s+([^\n]+)/);
+              if (assignMatch && assignMatch[1]) {
+                lead.dataValues._assigned_to = assignMatch[1].trim();
+                lead.dataValues._assigned_at = activity.createdAt;
+                lead.dataValues._activity_note = `Assigned to: ${assignMatch[1].trim()}`;
+              }
+              break;
+              
+            case 'LEAD_UPDATE':
+              // Handle individual field updates
+              if (activity.activity_desc.includes('Lead details updated:')) {
+                lead.dataValues._activity_note = 'Lead details were updated';
+              }
+              break;
+          }
+        }
+      });
+
+      // Update last_updated_status with the most recent status value
+      if (mostRecentStatusValue) {
+        lead.dataValues.last_updated_status = mostRecentStatusValue;
+      }
+      
+      // Store all activities for this lead on this date
+      lead.dataValues._activities_on_date = Object.values(leadActivities).map(act => ({
+        activity_type: act.activity_type,
+        activity_desc: act.activity_desc,
+        activity_note: act.note,
+        activity_created_at: act.createdAt,
+        updated_by: act.created_by
+      }));
+    }
+      });
+    }
+
+    // Rest of your existing code for dispute checks and call counts
+    const approvedLeadIds = rows
+      .filter(
+        (lead) =>
+          lead.lead_bucket === "APPROVED_APPLICATIONS" && lead.is_paid === true
+      )
+      .map((lead) => lead.id);
+
+    let disputeCheckMap = {};
+
+    if (approvedLeadIds.length > 0) {
+      const loanReports = await LoanReport.findAll({
+        where: {
+          lead_id: { [Op.in]: approvedLeadIds },
+          loan_status: "Closed",
+          status: "active",
+        },
+        attributes: ["lead_id", "dispute_status"],
+      });
+
+      const creditReports = await CreditReport.findAll({
+        where: {
+          lead_id: { [Op.in]: approvedLeadIds },
+          loan_status: "Closed",
+          status: "active",
+        },
+        attributes: ["lead_id", "dispute_status"],
+      });
+
+      const reportsByLead = {};
+
+      [...loanReports, ...creditReports].forEach((report) => {
+        if (!reportsByLead[report.lead_id]) reportsByLead[report.lead_id] = [];
+        reportsByLead[report.lead_id].push(report.dispute_status);
+      });
+
+      for (const leadId in reportsByLead) {
+        const reports = reportsByLead[leadId];
+        disputeCheckMap[leadId] =
+          reports.length > 0 &&
+          reports.every((status) => status === "Dispute Updated");
+      }
+    }
+
+    rows.forEach((lead) => {
+      if (
+        lead.lead_bucket === "APPROVED_APPLICATIONS" &&
+        lead.is_paid === true
+      ) {
+        lead.dataValues.isUserAllowedToUpdateAllDisputes =
+          lead.id in disputeCheckMap && disputeCheckMap[lead.id];
+      } else {
+        lead.dataValues.isUserAllowedToUpdateAllDisputes = false;
+      }
     });
 
     let callsStartDate = null;
@@ -708,7 +1256,6 @@ async function getAllLeadsWithPagination(req, res) {
       }
     }
 
-    // SQL to get call count grouped by created_by
     const callCounts = await sequelize.query(
       `SELECT lead_id, COUNT(*) AS total_changes
         FROM Activities
@@ -724,7 +1271,6 @@ async function getAllLeadsWithPagination(req, res) {
       }
     );
 
-    // Map for quick lookup by lead_id
     const callCountMap = {};
     callCounts.forEach(({ lead_id, total_changes }) => {
       callCountMap[lead_id] = parseInt(total_changes);
@@ -732,7 +1278,6 @@ async function getAllLeadsWithPagination(req, res) {
 
     rows.forEach((lead) => {
       const leadId = lead.dataValues?.id;
-
       lead.dataValues.calls_count = leadId ? callCountMap[leadId] || 0 : 0;
     });
 
@@ -761,7 +1306,7 @@ async function getAllLeadsWithPagination(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to fetch leads!",
+      error?.message || "Failed to fetch leads!",
       null,
       error,
       null
@@ -855,7 +1400,7 @@ async function getLeadById(req, res) {
       res,
       "error",
       500,
-      "Internal server error",
+      error?.message || "Failed to fetch lead by id",
       null,
       error.message
     );
@@ -1231,7 +1776,7 @@ async function updateLeadReportsActivities(req, res) {
       res,
       "error",
       500,
-      "Failed to update details!",
+      error?.message || "Failed to update details!",
       null,
       error,
       null
@@ -1257,10 +1802,12 @@ async function updateVerificationStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !verification_status || !role) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
     if (role !== ROLE_ADMIN && role !== ROLE_MANAGER) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -1281,6 +1828,7 @@ async function updateVerificationStatus(req, res) {
       "Rejected",
     ];
     if (!VERIFICATION_STATUSES.includes(verification_status)) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid verification status!");
     }
 
@@ -1290,6 +1838,7 @@ async function updateVerificationStatus(req, res) {
     };
     if (verification_status === "Rejected") {
       if (!rejection_reason || !rejected_by_id) {
+        await transaction.rollback();
         return ApiResponse(
           res,
           "error",
@@ -1370,7 +1919,7 @@ async function updateVerificationStatus(req, res) {
       res,
       "error",
       500,
-      "Failed to update verification status!",
+      error?.message || "Failed to update verification status!",
       null,
       error,
       null
@@ -1466,7 +2015,7 @@ async function getTotalLeadsCount(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch total leads count!",
+      error?.message || "Failed to fetch total leads count!",
       null,
       error,
       null
@@ -1492,9 +2041,11 @@ async function updateApplicationStatus(req, res) {
       closing_date,
       login_date,
       lead_bucket,
+      table_type,
     } = req.body;
 
     if (!lead_id || !application_status || !lead_status || !role) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
@@ -1503,6 +2054,7 @@ async function updateApplicationStatus(req, res) {
       role !== ROLE_MANAGER &&
       role !== ROLE_OPERATIONS_TEAM
     ) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 403, "Unauthorized Access !");
     }
 
@@ -1531,11 +2083,13 @@ async function updateApplicationStatus(req, res) {
     ];
 
     if (!validApplicationStatuses.includes(application_status)) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_bucket !== LOGINS && lead_status !== "12 documents collected") {
       if (lead_bucket !== "APPROVED_APPLICATIONS") {
+        await transaction.rollback();
         return ApiResponse(
           res,
           "error",
@@ -1552,6 +2106,7 @@ async function updateApplicationStatus(req, res) {
 
     if (application_status === "Rejected") {
       if (!rejection_reason) {
+        await transaction.rollback();
         return ApiResponse(res, "error", 400, "Rejection reason is required !");
       }
       updateData.is_rejected = true;
@@ -1561,6 +2116,7 @@ async function updateApplicationStatus(req, res) {
       updateData.updated_by = user_id;
     } else if (application_status === "Application Approved") {
       if (!closing_date || !lead_bucket) {
+        await transaction.rollback();
         return ApiResponse(res, "error", 400, "Missing required fields !");
       }
       updateData.closing_date = closing_date;
@@ -1595,6 +2151,15 @@ async function updateApplicationStatus(req, res) {
       updateData.updated_by = user_id;
       updateData.lead_status = "Closed";
     } else if (application_status === "Send To Login") {
+      if (table_type === "Paid" && lead_status !== "All Disputes Updated") {
+        await transaction.rollback();
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Lead status should be All Disputes Udpated"
+        );
+      }
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
       updateData.rejection_reason = null;
@@ -1604,6 +2169,9 @@ async function updateApplicationStatus(req, res) {
       updateData.lead_bucket = LOGINS;
     } else {
       // If the application status is not Rejected, set is_rejected to false and rejection_reason to null
+      if (application_status === "Start Login") {
+        updateData.start_login_date = Date.now();
+      }
       updateData.application_status_note = application_status_note;
       updateData.is_rejected = false;
       updateData.rejection_reason = null;
@@ -1683,7 +2251,7 @@ async function updateApplicationStatus(req, res) {
       res,
       "error",
       500,
-      error.message || "Failed to update application status !",
+      error?.message || "Failed to update application status !",
       null,
       error,
       null
@@ -1706,23 +2274,26 @@ async function updateLeadStatus(req, res) {
     } = req.body;
 
     if (!lead_id || !lead_status || !role) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields !");
     }
 
-    if (![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM].includes(role)) {
-      return ApiResponse(
-        res,
-        "error",
-        403,
-        "Only Admin or Employee can change lead status !"
-      );
+    if (
+      ![ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_OPERATIONS_TEAM, ROLE_MANAGER].includes(
+        role
+      )
+    ) {
+      await transaction.rollback();
+      return ApiResponse(res, "error", 403, "Access Denied !");
     }
 
     if (!LEAD_STATUSES.includes(lead_status)) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Invalid Appliation Status !");
     }
 
     if (lead_status === "Others" && !others_note) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "error",
@@ -1799,7 +2370,7 @@ async function updateLeadStatus(req, res) {
       res,
       "error",
       500,
-      error.message || "Failed to update lead status !",
+      error?.message || "Failed to update lead status !",
       null,
       error,
       null
@@ -1825,7 +2396,7 @@ async function getAllDistinctLeadSources(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch lead sources !",
+      error?.message || "Failed to fetch lead sources !",
       null,
       error,
       null
@@ -1864,7 +2435,7 @@ async function getLeadSourceByName(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch lead source by name !",
+      error?.message || "Failed to fetch lead source by name !",
       null,
       error,
       null
@@ -1880,10 +2451,12 @@ async function updateLeadDetails(req, res) {
     const { user_id, lead_name } = req.body;
 
     if (!id) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Lead ID is required!");
     }
 
     if (Object.keys(req.body).length === 0) {
+      await transaction.rollback();
       return ApiResponse(res, "error", 400, "Update details are required!");
     }
 
@@ -1917,6 +2490,13 @@ async function updateLeadDetails(req, res) {
       req.body.alternate_phones = [...new Set(cleanedPhones)];
     }
 
+    // check if eligibility criteria fields are being updated
+    const eligibilityFields = ['company', 'city', 'salary', 'company_category', 'income_type', 'pan']
+    const hasEligibilityUpdate = eligibilityFields.some(field => field in req.body)
+    if(hasEligibilityUpdate){
+      req.body.is_eligibility_criteria_checked = false
+    }
+
     const [updatedRowCount] = await Lead.update(req.body, {
       where: { id },
       transaction,
@@ -1935,13 +2515,30 @@ async function updateLeadDetails(req, res) {
     });
 
     let logMessages = [];
+    let eligibilityUpdated = true
+
     for (const key in req.body) {
+      if (key === 'is_eligibility_criteria_checked') continue;
+
       const prevValue = prev_lead_data[key];
       const newValue = updatedLead[key];
 
       if (JSON.stringify(prevValue) !== JSON.stringify(newValue)) {
-        logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+        if (key === "date_of_birth") {
+          // Format both previous and new values properly
+          const prevFormatted = prevValue ? moment(prevValue).format('DD-MMM-YYYY') : 'null';
+          const newFormatted = newValue ? moment(newValue).format('DD-MMM-YYYY') : 'null';
+          logMessages.push(`${key} changed from '${prevFormatted}' to '${newFormatted}'`);
+        } else {
+          logMessages.push(`${key} changed from '${prevValue}' to '${newValue}'`);
+        }
       }
+    }
+
+    // add eligibility updates message if applicable
+    if(eligibilityUpdated && hasEligibilityUpdate){
+      const updatedEligibilityFields = eligibilityFields.filter(field => field in req.body)
+      logMessages.push(`Eligibility criteria check reset (needs recheck) due to update in: ${updatedEligibilityFields.join(', ')}`);
     }
 
     if (logMessages.length > 0) {
@@ -1971,7 +2568,7 @@ async function updateLeadDetails(req, res) {
       res,
       "error",
       500,
-      "Failed to update lead details!",
+      error?.message || "Failed to update lead details!",
       null,
       error
     );
@@ -2031,7 +2628,7 @@ async function getAllLeadsOfExEmployees(req, res) {
       res,
       "error",
       500,
-      "Failed to fetch ex-emp leads !",
+      error?.message || "Failed to fetch ex-emp leads !",
       null,
       error,
       null
@@ -2059,18 +2656,37 @@ async function uploadLead(req, res) {
       income_type,
       company,
       salary,
+      from_google_sheet = false,
+      pan
     } = req.body;
+    
+    console.log('request received = ', req.body)
+
     if (client_secret !== "SQ") {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Un-Authorized Access !");
     }
-
+    
     if (!name || !phone || !lead_source || !loan_type) {
       await transaction.rollback();
       return ApiResponse(res, "error", 400, "Missing required fields!");
     }
 
+    if(lead_source !== "Veda Elite"){
+      const phoneValidationReason = getPhoneValidationReason(String(phone));
+      if (phoneValidationReason) {
+        await transaction.rollback();
+        return ApiResponse(
+          res,
+          "error",
+          400,
+          `Invalid phone number : ${phoneValidationReason}`
+        );
+      } 
+    }
+
     if (income_type === "Salaried" && (!company || !salary)) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "ERROR",
@@ -2081,22 +2697,57 @@ async function uploadLead(req, res) {
 
     if (loan_amount) {
       loan_amount = Number(loan_amount).toFixed(0);
+      required_loan_amount = Number(loan_amount).toFixed(0);
     }
 
-    const leadFromDB = await Lead.findOne({ where: { phone }, transaction });
+    const leadFromDB = await Lead.findOne({
+      where: { phone },
+      include: [
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          attributes: ["id", "assigned_to"],
+          required: false,
+        },
+      ],
+      transaction,
+    });
 
     if (leadFromDB) {
+      console.log("lead from db = ", leadFromDB.toJSON());
       const prev_lead_data = leadFromDB.toJSON();
       // Update current lead source
-      leadFromDB.lead_source = lead_source;
+      // leadFromDB.lead_source = lead_source;
 
-      // Update previous sources array
-      const prevSources = leadFromDB.prev_lead_sources || [];
-      const updatedSources = [lead_source, ...prevSources];
-      leadFromDB.prev_lead_sources = updatedSources;
+        // ✅ Only update lead_source if utm_campaign is NOT "/internal/free-credit-score"
+      if (utm_campaign !== "/internal/free-credit-score") {
+
+        // check if bureau name is 'Crif'
+        if(bereau_name === 'Crif'){
+          const createdAt = leadFromDB.createdAt
+          const now = moment.utc()
+
+          const isOlderThan30Days = now.diff(moment.utc(createdAt), "milliseconds") > 30 * 24 * 60 * 60 * 1000;
+          if(isOlderThan30Days){
+              leadFromDB.lead_source = lead_source;
+              // Update previous sources array
+              const prevSources = leadFromDB.prev_lead_sources || [];
+              const updatedSources = [lead_source, ...prevSources];
+              leadFromDB.prev_lead_sources = updatedSources;
+          }
+        }else {
+          leadFromDB.lead_source = lead_source;
+          // Update previous sources array
+          const prevSources = leadFromDB.prev_lead_sources || [];
+          const updatedSources = [lead_source, ...prevSources];
+          leadFromDB.prev_lead_sources = updatedSources;
+        }
+      }
 
       leadFromDB.visit_count = (leadFromDB.visit_count || 0) + 1;
       leadFromDB.product = loan_type;
+      leadFromDB.lead_status = "Re Engaged";
+      leadFromDB.last_updated_status = "Re Engaged";
 
       // update utm campaign and source array to track marketing performance
       if (utm_campaign && utm_source) {
@@ -2135,6 +2786,7 @@ async function uploadLead(req, res) {
       if (salary) leadFromDB.salary = salary;
       if (name) leadFromDB.name = name;
       if (email) leadFromDB.email = email;
+      if (pan) leadFromDB.pan = pan;
 
       await leadFromDB.save({ transaction });
 
@@ -2156,6 +2808,12 @@ async function uploadLead(req, res) {
         }
       }
 
+      if (prev_lead_data.lead_status !== updatedLead.lead_status) {
+        logMessages.push(
+          `lead_status changed from '${prev_lead_data.lead_status}' to '${updatedLead.lead_status}'`
+        );
+      }
+
       if (logMessages.length > 0) {
         let logData = createLogData(
           `Lead details updated: ${logMessages.join(", ")}`,
@@ -2166,6 +2824,27 @@ async function uploadLead(req, res) {
           leadFromDB.name
         );
         await createActivityLog(logData, transaction);
+      }
+
+      if (leadFromDB?.LeadAssignments.length > 0) {
+        let assigned_to = leadFromDB.LeadAssignments[0].assigned_to;
+        const io = getIo();
+        const notification = await saveNotification(
+          {
+            employee_id: assigned_to,
+            notification_from: from_google_sheet ? "Meta Ads" : "Website",
+            notification_title: "Lead Re-Engaged",
+            message: `1 lead has been re-engaged.`,
+          },
+          transaction
+        );
+        io.to(`user_${assigned_to}`).emit("leadAssignment", {
+          notification_title: "Leads Re-Engaged",
+          message: `1 lead has been re-engaged.`,
+          notification_from: from_google_sheet ? "Meta Ads" : "Website",
+          leadCount: 1,
+          notificationId: notification.id,
+        });
       }
 
       await transaction.commit();
@@ -2179,6 +2858,7 @@ async function uploadLead(req, res) {
       if (utm_campaign) {
         leadToBeSaved.utm_campaign = utm_campaign;
         if (!utm_source) {
+          await transaction.rollback();
           return ApiResponse(
             res,
             "ERROR",
@@ -2201,6 +2881,43 @@ async function uploadLead(req, res) {
       }
 
       const savedLead = await Lead.create(leadToBeSaved, { transaction });
+
+      // uncomment below code if you want to send notification to admins
+      // const adminUsers = await User.findAll({
+      //   where: {
+      //     status: "active",
+      //     role_id: 1,
+      //   },
+      //   attributes: ["id"],
+      //   raw: true,
+      //   transaction,
+      // });
+
+      // const adminUserIds = adminUsers.map((user) => user.id);
+
+      // const io = getIo();
+
+      // for (const adminId of adminUserIds) {
+      //   const notification = await saveNotification(
+      //     {
+      //       employee_id: adminId, // Send to admin user
+      //       notification_from: from_google_sheet ? "Meta Ads" : "Website",
+      //       notification_title: "Lead Added",
+      //       message: `1 lead ( ${name} - ${phone}) has been added.`,
+      //     },
+      //     transaction
+      //   );
+
+      //   // Emit to each admin user's socket
+      //   io.to(`user_${adminId}`).emit("leadAssignment", {
+      //     notification_title: "Lead Added",
+      //     message: `1 lead ( ${name} - ${phone}) has been added.`,
+      //     notification_from: from_google_sheet ? "Meta Ads" : "Website",
+      //     leadCount: 1,
+      //     notificationId: notification.id,
+      //   });
+      // }
+
       await transaction.commit();
       return ApiResponse(
         res,
@@ -2218,7 +2935,7 @@ async function uploadLead(req, res) {
       res,
       "error",
       500,
-      "Failed to upload lead!",
+      error?.message || "Failed to upload lead!",
       null,
       error
     );
@@ -2255,6 +2972,7 @@ async function addNewLead(req, res) {
     // }
 
     if (bereau_score && !bereau_name) {
+      await transaction.rollback();
       return ApiResponse(
         res,
         "ERROR",
@@ -2361,7 +3079,14 @@ async function addNewLead(req, res) {
       );
     }
 
-    return ApiResponse(res, "error", 500, "Failed to add lead!", null, error);
+    return ApiResponse(
+      res,
+      "error",
+      500,
+      error?.message || "Failed to add lead!",
+      null,
+      error
+    );
   }
 }
 
@@ -2476,6 +3201,1463 @@ const getPhoneValidationReason = (rawPhone) => {
   return "Invalid phone format";
 };
 
+async function getCrifReportByCustomerIdOrPhone(req, res) {
+  try {
+    const { customer_id, mob1, lead_id } = req.query;
+    console.log("params received = ", req.query);
+
+    // Validation: lead_id is mandatory, and either customer_id or mob1 must be present
+    if (!lead_id || (!customer_id && !mob1)) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Missing required fields! 'lead_id' is mandatory along with either 'customer_id' or 'mob1'."
+      );
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-b2c-report-by-customer-phone-or-id`,
+      {
+        params: {
+          ...(customer_id && { customer_id }),
+          ...(mob1 && { mob1 }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        validateStatus: () => true, // ✅ Always resolve response
+      }
+    );
+
+    // Handle response
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
+      const fetchedCustomerId = response.data.data.customer_id;
+
+      if (!fetchedCustomerId) {
+        return ApiResponse(
+          res,
+          "ERROR",
+          400,
+          "Customer ID not found in response."
+        );
+      }
+
+      await Lead.update(
+        { customer_id: fetchedCustomerId },
+        { where: { id: lead_id } }
+      );
+
+      // Fetch report rule engine results for this lead
+      const reportRuleEngineResults = await ReportRuleEngineResult.findAll({
+        where: {
+          lead_id: parseInt(lead_id),
+          record_status: 'active'
+        },
+        order: [['updatedAt', 'DESC']]
+      });
+
+      // Add rule engine results to response data without affecting existing structure
+      const responseData = {
+        ...response.data,
+        data: {
+          ...(response.data.data || {}),
+          ruleEngineResults: reportRuleEngineResults.map(r => r.get({ plain: true }))
+        }
+      };
+
+      return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        responseData
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch report."
+      );
+    }
+  } catch (error) {
+    // Unexpected server/network error
+    console.error("Unexpected error:", error);
+
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Something went wrong!",
+      null,
+      error
+    );
+  }
+}
+
+async function getCrifSummaryReport(req, res) {
+  try {
+    const { startDate, endDate } = req.query;
+    console.log("params received = ", req.query);
+
+    if (startDate && !endDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "End Date is madatory for start date "
+      );
+    }
+
+    if (endDate && !startDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Start Date is madatory for end date"
+      );
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-crif-summary-report`,
+      {
+        params: {
+          ...(startDate && { startDate }),
+          ...(endDate && { endDate }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        validateStatus: () => true,
+      }
+    );
+
+    // Handle response
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        response.data.data
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch summary report."
+      );
+    }
+  } catch (error) {
+    console.log("error in fetching crif summary report = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch crif summary report !",
+      null,
+      error
+    );
+  }
+}
+
+async function getCustomers(req, res) {
+  try {
+    const { startDate, endDate, page, pageSize } = req.query;
+    console.log("params received = ", req.query);
+
+    if (startDate && !endDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "End Date is madatory for start date "
+      );
+    }
+
+    if (endDate && !startDate) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        400,
+        "Start Date is madatory for end date"
+      );
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/get-customers`,
+      {
+        params: {
+          ...(startDate && { startDate }),
+          ...(endDate && { endDate }),
+          ...(page && { page }),
+          ...(pageSize && { pageSize }),
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        validateStatus: () => true,
+      }
+    );
+
+    // Handle response
+    if (
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(
+        res,
+        "SUCCESS",
+        200,
+        "Report fetched and lead updated successfully.",
+        response.data.data.result,
+        null,
+        response.data.data.pagination
+      );
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 400,
+        response.data.message || "Failed to fetch summary report."
+      );
+    }
+  } catch (error) {
+    console.log("error in fetcing customers = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch customers !",
+      null,
+      error
+    );
+  }
+}
+
+async function getAllDistinctUtmCampaignsAndSources(req, res) {
+  try {
+    const utmData = await Lead.findAll({
+      attributes: ["utm_campaign", "utm_source"],
+      where: {
+        [Op.or]: [
+          { utm_campaign: { [Op.ne]: null } },
+          { utm_source: { [Op.ne]: null } },
+        ],
+      },
+      raw: true,
+    });
+
+    const uniqueCampaigns = [
+      ...new Set(utmData.map((e) => e.utm_campaign).filter(Boolean)),
+    ];
+    const uniqueSources = [
+      ...new Set(utmData.map((e) => e.utm_source).filter(Boolean)),
+    ];
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Fetched distinct utm campaigns and sources",
+      {
+        utm_campaigns: uniqueCampaigns,
+        utm_sources: uniqueSources,
+      }
+    );
+  } catch (error) {
+    console.log("error in fetching utm campaigns and sources = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch campaigns and sources!",
+      null,
+      error
+    );
+  }
+}
+
+async function getAllReEngagedLeads(req, res) {
+  try {
+    let {
+      lead_status,
+      page = 1,
+      pageSize = 10,
+      leadId,
+      phone,
+      name,
+      lead_bucket,
+      lead_source,
+      utm_campaign,
+      utm_source,
+      assigned_to,
+      importedOn,
+      last_updated,
+      assigned_on,
+      userId,
+      last_updated_status,
+      activity_date // Add the new activity_date filter
+    } = req.query;
+
+    page = parseInt(page);
+    pageSize = parseInt(pageSize);
+
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(pageSize) || pageSize < 1) pageSize = 10;
+
+    let leadWhere = {};
+    let leadAssignmentWhere = {};
+
+    // Handle activity_date filter using subquery
+    if (activity_date) {
+      const [startRange, endRange] = activity_date.split(',');
+      
+      let startOfRangeUTC, endOfRangeUTC;
+      
+      if (startRange && endRange) {
+        // Date range provided
+        startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+      } else {
+        // Single date provided
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        
+        startOfRangeUTC = startOfDayUTC;
+        endOfRangeUTC = endOfDayUTC;
+      }
+
+      // Add subquery condition to leadWhere
+      leadWhere.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT lead_id 
+          FROM ActivityLogs 
+          WHERE createdAt BETWEEN '${startOfRangeUTC.toISOString()}' AND '${endOfRangeUTC.toISOString()}'
+          AND status = 'active'
+          AND lead_id IS NOT NULL
+        )`)
+      };
+    }
+
+    if (lead_status) {
+      leadWhere.lead_status = lead_status;
+    }
+    if(last_updated_status) {
+      leadWhere.last_updated_status = last_updated_status;
+    }
+
+    if (leadId) leadWhere.id = { [Op.like]: `%${leadId}%` };
+    if (phone) leadWhere.phone = { [Op.like]: `%${phone}%` };
+    if (name) leadWhere.name = { [Op.like]: `%${name}%` };
+    if (lead_bucket) leadWhere.lead_bucket = { [Op.like]: `%${lead_bucket}%` };
+    if (lead_source) leadWhere.lead_source = { [Op.like]: `%${lead_source}%` };
+    if (utm_campaign)
+      leadWhere.utm_campaign = { [Op.like]: `%${utm_campaign}%` };
+    if (utm_source) leadWhere.utm_source = { [Op.like]: `%${utm_source}%` };
+    if (assigned_to) {
+      if (assigned_to === "re_assigned") {
+        leadWhere.is_reassigned = true;
+      } else if (assigned_to === "not_assigned") {
+        leadWhere[Op.and] = Sequelize.literal(`
+        NOT EXISTS (
+          SELECT 1 
+          FROM LeadAssignments AS LA 
+          WHERE LA.lead_id = Lead.id
+        )
+      `);
+      } else {
+        leadAssignmentWhere.assigned_to = assigned_to;
+      }
+    }
+    if (userId) leadAssignmentWhere.assigned_to = userId;
+
+    if (importedOn) {
+      const [startRange, endRange] = importedOn.split(",");
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        leadWhere.createdAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        leadWhere.createdAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if (last_updated) {
+      const [startRange, endRange] = last_updated.split(",");
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DDTHH:mm", "Asia/Kolkata")
+          .utc()
+          .toDate();
+        leadWhere.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+        leadWhere.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    if (assigned_on) {
+      const [startRange, endRange] = assigned_on.split(",");
+
+      if (startRange && endRange) {
+        const startOfRangeUTC = moment
+          .tz(startRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .startOf("minute")
+          .utc()
+          .toDate();
+        const endOfRangeUTC = moment
+          .tz(endRange, "YYYY-MM-DD HH:mm", "Asia/Kolkata")
+          .endOf("minute")
+          .utc()
+          .toDate();
+
+        console.log("Filtered Start UTC:", startOfRangeUTC);
+        console.log("Filtered End UTC:", endOfRangeUTC);
+
+        leadAssignmentWhere.updatedAt = {
+          [Op.between]: [startOfRangeUTC, endOfRangeUTC],
+        };
+      } else {
+        const startOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .startOf("day")
+          .utc()
+          .toDate();
+        const endOfDayUTC = moment
+          .tz(startRange, "YYYY-MM-DD", "Asia/Kolkata")
+          .endOf("day")
+          .utc()
+          .toDate();
+
+        console.log("Filtered Single Day Start UTC:", startOfDayUTC);
+        console.log("Filtered Single Day End UTC:", endOfDayUTC);
+
+        leadAssignmentWhere.updatedAt = {
+          [Op.between]: [startOfDayUTC, endOfDayUTC],
+        };
+      }
+    }
+
+    const { count, rows } = await Lead.findAndCountAll({
+      where: leadWhere, // ✅ apply filter here
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: LeadAssignment,
+          as: "LeadAssignments",
+          where: { status: "active", ...leadAssignmentWhere },
+          required: ["assigned_to", "assigned_on", "updatedAt"].some((key) =>
+            Object.keys(leadAssignmentWhere).includes(key)
+          ),
+          include: [
+            {
+              model: User,
+              as: "AssignedTo",
+              attributes: ["id", "name", "status"],
+            },
+          ],
+        },
+      ],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      distinct: true,
+    });
+
+    const totalPages = Math.ceil(count / pageSize);
+
+    let pagination = {
+      page: page,
+      totalPages: totalPages,
+      total: count,
+      pageSize: pageSize,
+    };
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Leads fetched successfully !",
+      rows,
+      null,
+      pagination
+    );
+  } catch (error) {
+    console.log("failed to fetch re engaged leads = ", error);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch re-engaged leads",
+      null,
+      error
+    );
+  }
+}
+
+async function downloadCrifReport(req, res) {
+  try {
+    const { customer_id } = req.body;
+    console.log('received customer id = ', customer_id);
+    
+    if (!customer_id) {
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !");
+    }
+
+    // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/customer/full-report`,
+      { customerId: customer_id },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        responseType: "arraybuffer", // 👈 important to get raw PDF
+      }
+    );
+
+    if (response.status !== 200) {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.status,
+        "Failed to download CRIF report",
+        null,
+        response.data
+      );
+    }
+
+    // 3. Set headers to tell client it's a PDF download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=crif_report_${customer_id}.pdf`
+    );
+
+    // 4. Send PDF buffer to client
+    return res.send(response.data);
+
+  } catch (error) {
+    console.log("failed to download crif report = ", error.message);
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to download crif report !",
+      null,
+      error
+    );
+  }
+}
+
+async function uploadCibilReport(req,res){
+  try {
+    const { customer_id, report_id, lead_id, pan, report_date, full_report } = req.body
+        if(!report_id || !lead_id || !pan || !report_date || !full_report){
+            return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+        }
+
+        // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/cibil-reports/upload-cibil-report`,
+      { report_id, lead_id, pan, report_date, full_report, ...(customer_id && {customer_id}) },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (
+      response.data.statusCode === 201 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(res, "SUCCESS", 201, "Cibil report uploaded successfully !", response.data.data)
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to upload cibil report 1"
+      );
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload cibil report !", null, error)
+  }
+}
+
+async function getCibilReport(req,res){
+  try {
+    const { pan, lead_id,  report_id } = req.query
+    if(!pan && !lead_id && !report_id){
+      return ApiResponse(res, "ERROR", 400, "At least one of pan, lead_id, or report_id is required.")
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/cibil-reports/fetch-cibil-report`,
+      {
+        params: {
+          ...(pan && {pan}),
+          ...(lead_id && {lead_id}),
+          ...(report_id && {report_id})
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
+    }else {
+      return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch cibil report")
+    }
+  } catch (error) {
+    console.log('error in fetching cibil report = ', error);
+    
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch cibil report !", null, error)
+  }
+}
+
+async function uploadExperianReport(req,res){
+  try {
+    const { customer_id, report_id, lead_id, pan, report_date, full_report } = req.body
+        if(!report_id || !lead_id || !pan || !report_date || !full_report){
+            return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+        }
+
+        // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/upload-experian-report`,
+      { report_id, lead_id, pan, report_date, full_report, ...(customer_id && {customer_id}) },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (
+      response.data.statusCode === 201 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(res, "SUCCESS", 201, "Experian report uploaded successfully !", response.data.data)
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to upload experian report !"
+      );
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload experian report !", null, error)
+  }
+}
+
+async function getExperianReport(req,res){
+  try {
+    const { pan, lead_id,  report_id } = req.query
+    if(!pan && !lead_id && !report_id){
+      return ApiResponse(res, "ERROR", 400, "At least one of pan, lead_id, or report_id is required.")
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/fetch-experian-report`,
+      {
+        params: {
+          ...(pan && {pan}),
+          ...(lead_id && {lead_id}),
+          ...(report_id && {report_id})
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
+    }else {
+      return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch experian report")
+    }
+  } catch (error) {
+    console.log('error in fetching experian report = ', error);
+    
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch experian report !", null, error)
+  }
+}
+
+async function uploadCrifParsedReport(req,res){
+  try {
+    const { customer_id, report_id, lead_id, pan, report_date, full_report } = req.body
+        if(!report_id || !lead_id || !pan || !report_date || !full_report){
+            return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+        }
+
+        // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/crif-parsed-reports/upload-crif-parsed-report`,
+      { report_id, lead_id, pan, report_date, full_report, ...(customer_id && {customer_id}) },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+
+    if (
+      response.data.statusCode === 201 &&
+      response.data.status === "SUCCESS"
+    ) {
+      return ApiResponse(res, "SUCCESS", 201, "Experian report uploaded successfully !", response.data.data)
+    } else {
+      // Backend returned handled error (e.g. 400, 404, etc.)
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to upload crif report !"
+      );
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to upload crif report !", null, error)
+  }
+}
+
+async function getCrifParsedReport(req,res){
+  try {
+    const { pan, lead_id,  report_id } = req.query
+    if(!pan && !lead_id && !report_id){
+      return ApiResponse(res, "ERROR", 400, "At least one of pan, lead_id, or report_id is required.")
+    }
+
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    const response = await axios.get(
+      `${process.env.SAJAN_BACKEND_URL}/api/crif-parsed-reports/fetch-crif-parsed-report`,
+      {
+        params: {
+          ...(pan && {pan}),
+          ...(lead_id && {lead_id}),
+          ...(report_id && {report_id})
+        },
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(response.data.statusCode === 200 && response.data.status === "SUCCESS"){
+      // Fetch report rule engine results if lead_id is provided
+      let ruleEngineResults = [];
+      if (lead_id) {
+        ruleEngineResults = await ReportRuleEngineResult.findAll({
+          where: {
+            lead_id: parseInt(lead_id),
+            record_status: 'active'
+          },
+          order: [['updatedAt', 'DESC']]
+        });
+      }
+
+      // Add rule engine results to response data
+      const responseData = {
+        ...response.data.data,
+        ruleEngineResults: ruleEngineResults.map(r => r.get({ plain: true }))
+      };
+
+      return ApiResponse(res, "SUCCESS", 200, "report fetched successfully", responseData)
+    }else {
+      return ApiResponse(res, "ERROR", response.data.statusCode || 400, response.data.message || "Failed to fetch crif parsed report")
+    }
+  } catch (error) {
+    console.log('error in fetching crif parsed report = ', error);
+    
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch crif parsed report !", null, error)
+  }
+}
+
+async function updateB2cReport(req,res){
+  try {
+      const { report_id, pan, open_accounts } = req.body
+      if(!report_id || !pan || !open_accounts){
+        return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+      }
+      // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/b2c-reports/update-b2c-report`,
+      { report_id, pan, open_accounts },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+    
+    if(
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ){
+      return ApiResponse(res, "SUCCESS", 200, "b2c report updated successfully .", response.data.data)
+    } else {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to updated b2c report !"
+      )
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to update bc2 report !", null, error)
+  }
+}
+
+async function updateExperianReport(req,res){
+  try {
+      const { report_id, pan, open_accounts } = req.body
+      
+      if(!report_id || !pan || !open_accounts){
+        return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+      }
+      // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/experian-reports/update-experian-report`,
+      { report_id, pan, open_accounts },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+    
+    if(
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ){
+      return ApiResponse(res, "SUCCESS", 200, "b2c report updated successfully .", response.data.data)
+    } else {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to updated b2c report !"
+      )
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to update bc2 report !", null, error)
+  }
+}
+
+async function updateCibilReport(req,res){
+  try {
+    const { report_id, pan, open_accounts } = req.body
+
+    if(!report_id || !pan || !open_accounts){
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+    }
+
+    // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/cibil-reports/update-cibil-report`,
+      { report_id, pan, open_accounts },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+    
+    if(
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ){
+      return ApiResponse(res, "SUCCESS", 200, "Cibil report updated successfully .", response.data.data)
+    } else {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to updated cibil report !"
+      )
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to update cibil report !", null, error)
+  }
+}
+
+async function updateCrifParsedReport(req,res){
+  try {
+    const { report_id, pan, open_accounts } = req.body
+
+    if(!report_id || !pan || !open_accounts){
+      return ApiResponse(res, "ERROR", 400, "Missing required fields !")
+    }
+
+    // 1. Get Auth Token
+    const authToken = (
+      await axios.post(
+        `${process.env.SAJAN_BACKEND_URL}/api/auth/get-jwt-token`,
+        {
+          CLIENT_SECRET_KEY: "SQ",
+        }
+      )
+    ).data.data;
+
+    // 2. Call Sajan API and request binary response
+    const response = await axios.post(
+      `${process.env.SAJAN_BACKEND_URL}/api/crif-parsed-reports/update-crif-parsed-report`,
+      { report_id, pan, open_accounts },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      }
+    )
+
+    if(
+      response.data.statusCode === 200 &&
+      response.data.status === "SUCCESS"
+    ){
+      return ApiResponse(res, "SUCCESS", 200, "Crif parsed report updated successfully .", response.data.data)
+    } else {
+      return ApiResponse(
+        res,
+        "ERROR",
+        response.data.statusCode || 500,
+        response.data.message || "Failed to updated crif parsed report !"
+      )
+    }
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to update crif parsed report !", null, error)
+  }
+}
+
+async function getImportedLeadStats(req,res){
+  try {
+    const { chartType="lead_source", startDate, endDate } = req.query
+
+    // Build where clause with UTC conversion
+    let where = {};
+    if (startDate && endDate) {
+      const startUtc = moment(startDate).utc().startOf("day").toDate();
+      const endUtc = moment(endDate).utc().endOf("day").toDate();
+
+      where.createdAt = {
+        [Op.between]: [startUtc, endUtc],
+      };
+    }
+
+    let stats;
+
+    if (chartType === "utm_source") {
+      // Group by utm_source + utm_campaign
+      stats = await Lead.findAll({
+        attributes: [
+          "utm_source",
+          "utm_campaign",
+          [Sequelize.fn("COUNT", Sequelize.col("id")), "total_leads"],
+        ],
+        where,
+        group: ["utm_source", "utm_campaign"],
+        order: [["utm_source", "ASC"]],
+        raw: true, // returns plain JSON
+      });
+    } else {
+      // Default: Group by lead_source
+      stats = await Lead.findAll({
+        attributes: [
+          "lead_source",
+          [Sequelize.fn("COUNT", Sequelize.col("id")), "total_leads"],
+        ],
+        where,
+        group: ["lead_source"],
+        order: [["lead_source", "ASC"]],
+        raw: true,
+      });
+    }
+
+    return ApiResponse(res, "SUCCESS", 200, "Imported Leads stats fetched successfully ", stats)
+
+  } catch (error) {
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch imported lead stats", null, error)
+  }
+}
+
+async function getEmployeeWiseLeadStats(req, res) {
+  try {
+    const { chartType = "lead_source", startDate, endDate } = req.query;
+
+    const where = {};
+    if (startDate && endDate) {
+      const startUtc = moment(startDate).utc().startOf("day").toDate();
+      const endUtc = moment(endDate).utc().endOf("day").toDate();
+      where.createdAt = { [Op.between]: [startUtc, endUtc] };
+    }
+
+    let stats;
+
+    if (chartType === "utm_source") {
+      // Group by employee + utm_source + utm_campaign
+      stats = await Lead.findAll({
+        attributes: [
+          [Sequelize.col("LeadAssignments.assigned_to"), "employee_id"],
+          "utm_source",
+          "utm_campaign",
+          [Sequelize.fn("COUNT", Sequelize.col("Lead.id")), "total_leads"],
+        ],
+        include: [
+          {
+            model: LeadAssignment,
+            as: "LeadAssignments",
+            attributes: [],
+            required: true,
+            where: { status: "active" },
+          },
+        ],
+        where,
+        group: [
+          Sequelize.col("LeadAssignments.assigned_to"),
+          "utm_source",
+          "utm_campaign",
+        ],
+        order: [[Sequelize.col("LeadAssignments.assigned_to"), "ASC"]],
+        raw: true,
+      });
+    } else {
+      // Group by employee + lead_source
+      stats = await Lead.findAll({
+        attributes: [
+          [Sequelize.col("LeadAssignments.assigned_to"), "employee_id"],
+          "lead_source",
+          [Sequelize.fn("COUNT", Sequelize.col("Lead.id")), "total_leads"],
+        ],
+        include: [
+          {
+            model: LeadAssignment,
+            as: "LeadAssignments",
+            attributes: [],
+            required: true,
+            where: { status: "active" },
+          },
+        ],
+        where,
+        group: [Sequelize.col("LeadAssignments.assigned_to"), "lead_source"],
+        order: [[Sequelize.col("LeadAssignments.assigned_to"), "ASC"]],
+        raw: true,
+      });
+    }
+
+    return ApiResponse(
+      res,
+      "SUCCESS",
+      200,
+      "Employee lead stats fetched successfully",
+      stats
+    );
+  } catch (error) {
+    return ApiResponse(
+      res,
+      "ERROR",
+      500,
+      error?.message || "Failed to fetch employee wise lead stats!",
+      null,
+      error
+    );
+  }
+}
+
+async function getLeadNames(req,res){
+  try {
+    const { leadIds } = req.body
+
+    const leads = await LeadServices.getLeadNamesByLeadIds(leadIds)
+
+    return ApiResponse(res, "SUCCESS", 200, "Names fetched succussfully", leads)
+
+  } catch (error) {
+    return ApiResponse(res, "ERROR", error?.message || "Failed to fetch lead names !", null, error)
+  }
+}
+
+async function getAssignedLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_bucket, assigned_to=null, lead_source=null, last_updated_status=null, utm_campaign=null, utm_source=null, importedOn=null, assigned_on=null, last_updated=null } = req.query;
+
+    const offset = (page-1)*pageSize;
+
+    let filters = { 
+      leadId,
+      phone,
+      name,
+      lead_bucket,
+      assigned_to,
+      lead_source,
+      last_updated_status,
+      utm_campaign,
+      utm_source,
+      importedOn,
+      assigned_on,
+      last_updated
+    }
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getAssignedLeads(filters,paginationData,transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "Assigned leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    await transaction.rollback()
+    console.log("Failed to fetch assigned leads ! = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch assigned leads !", null, error)
+  }
+}
+
+async function getUnAssignedLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, importedOn=null, utm_campaign=null, utm_source=null } = req.query
+
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      importedOn,
+      utm_campaign,
+      utm_source
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getUnAssignedLeads(filters, paginationData, transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "UnAssigned leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    await transaction.rollback()
+    console.log("Failed to fetch un assigned leads ! = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch un assigned leads !", null, error)
+  }
+}
+
+async function getPreliminaryApprovalLeads(req,res){
+  const transaction = await sequelize.transaction()
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, assigned_to=null, lead_status=null, verification_status=null } = req.query
+
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      assigned_to,
+      verification_status,
+      lead_status
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getPreliminaryApprovalLeads(filters,paginationData,transaction)
+    await transaction.commit()
+    return ApiResponse(res, "SUCCESS", 200, "Preliminary leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    await transaction.rollback()
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch preliminary approval leads !", null, error)
+  }
+}
+
+async function getAppointmentLeads(req,res){
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, appointment_date=null, lead_source=null, assigned_to=null, lead_status=null, application_status=null } = req.query
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      appointment_date,
+      lead_source,
+      assigned_to,
+      lead_status,
+      application_status
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getAppointmentLeads(filters, paginationData)
+    return ApiResponse(res, "SUCCESS", 200, "Appointment leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    console.log("Failed to fetch appointment leads = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch appointment leads !", null, error)
+  }
+}
+
+async function getApprovedApplicationLeads(req,res){
+  try {
+    const { page=1, pageSize=20, leadId=null, phone=null, name=null, lead_source=null, lead_status=null, assigned_to=null, application_status=null, closing_date=null, verification_date=null, login_date=null, is_paid=false } = req.query
+    const offset = (page-1)*pageSize
+
+    let filters = {
+      leadId,
+      phone,
+      name,
+      lead_source,
+      lead_status,
+      assigned_to,
+      application_status,
+      closing_date,
+      verification_date,
+      login_date,
+      is_paid
+    }
+
+    let paginationData = { page, pageSize, offset }
+
+    const response = await LeadServices.getApprovedApplicationLeads(filters, paginationData)
+    return ApiResponse(res, "SUCCESS", 200, "Approved application leads fetched successfully", response.leads, null, response.pagination)
+  } catch (error) {
+    console.log("Failed to fetch approved application leads = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch approved application leads !", null, error)
+  }
+}
+
+async function getLeadDistributionCounts(req,res){
+  try {
+    const {} = req.query
+    const response = await LeadServices.getLeadDistributionCounts()
+    return ApiResponse(res, "SUCCESS", 200, "Lead distribution counts fetched successfully", response)
+  } catch (error) {
+    console.log("Failed to fetch lead distribution counts = ", error);
+    return ApiResponse(res, "ERROR", 500, error?.message || "Failed to fetch lead distribution counts", null, error)
+  }
+}
+
 module.exports = {
   createBulkLeads,
   getAllLeadsWithPagination,
@@ -2491,4 +4673,29 @@ module.exports = {
   getAllLeadsOfExEmployees,
   uploadLead,
   addNewLead,
+  getCrifReportByCustomerIdOrPhone,
+  getCrifSummaryReport,
+  getCustomers,
+  getAllDistinctUtmCampaignsAndSources,
+  getAllReEngagedLeads,
+  downloadCrifReport,
+  uploadCibilReport,
+  getCibilReport,
+  uploadExperianReport,
+  getExperianReport,
+  uploadCrifParsedReport,
+  getCrifParsedReport,
+  updateB2cReport,
+  updateExperianReport,
+  updateCibilReport,
+  updateCrifParsedReport,
+  getImportedLeadStats,
+  getEmployeeWiseLeadStats,
+  getLeadNames,
+  getAssignedLeads,
+  getUnAssignedLeads,
+  getPreliminaryApprovalLeads,
+  getAppointmentLeads,
+  getApprovedApplicationLeads,
+  getLeadDistributionCounts
 };

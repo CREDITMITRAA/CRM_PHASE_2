@@ -10,7 +10,7 @@ const {
   WalkIn,
 } = require("../models"); // Adjust paths as needed
 const { ApiResponse } = require("../utilities/api-responses/ApiResponse");
-const { INITIAL_LEAD_STATUSES } = require("../utilities/constants");
+const { INITIAL_LEAD_STATUSES, PIPELINE_ENTRIES } = require("../utilities/constants");
 const ActivityLogServices = require("../services/ActivityLogServices");
 const {
   ACTIVITY_LOGS,
@@ -32,6 +32,7 @@ async function assignLeadsToEmployee(req, res) {
       !assignedTo ||
       !assignedBy
     ) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 400, "Missing required fields!");
     }
 
@@ -42,9 +43,11 @@ async function assignLeadsToEmployee(req, res) {
     ]);
 
     if (!employee) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 404, "Assigned employee not found!");
     }
     if (!assigningUser) {
+      await transaction.rollback()
       return ApiResponse(res, "ERROR", 404, "Assigning user not found!");
     }
 
@@ -314,6 +317,8 @@ async function assignLeadsToEmployee(req, res) {
     const notification = await saveNotification(
       {
         employee_id: assignedTo,
+        notification_from: assigningUser?.name,
+        notification_title: 'New Lead Assignment',
         message: `${leadIds.length} leads have been assigned to you.`,
       },
       transaction
@@ -328,6 +333,7 @@ async function assignLeadsToEmployee(req, res) {
 
     const io = getIo();
     io.to(`user_${assignedTo}`).emit("leadAssignment", {
+      notification_title: 'New Lead Assignment',
       message: `${leadIds.length} leads have been assigned to you.`,
       assignedBy: userName,
       leadCount: leadIds.length,
@@ -346,7 +352,7 @@ async function assignLeadsToEmployee(req, res) {
       res,
       "ERROR",
       500,
-      "Failed to assign leads!",
+      error?.message || "Failed to assign leads!",
       null,
       error,
       null
@@ -376,6 +382,8 @@ async function getLeadsByAssignedUserId(req, res) {
       leadId,
       assigned_on,
       lead_status,
+      utm_campaign,
+      utm_source
     } = req.query;
 
     // Validate input
@@ -393,20 +401,32 @@ async function getLeadsByAssignedUserId(req, res) {
     const offset = (page - 1) * (pageSize ? pageSize : limit);
 
     // Build filters
-    const leadFilters = {};
+    const leadFilters = {
+      lead_bucket: PIPELINE_ENTRIES
+    };
     if (name) leadFilters.name = { [Op.like]: `%${name}%` };
     if (email) leadFilters.email = { [Op.like]: `%${email}%` };
     if (phone) leadFilters.phone = { [Op.like]: `%${phone}%` };
     if (leadId) leadFilters.id = { [Op.like]: `%${leadId}%` };
+    if(utm_campaign){
+          leadFilters.utm_campaign = { [Op.like]: `%${utm_campaign}%` }
+        }
+    
+        if(utm_source) {
+          leadFilters.utm_source = { [Op.like]: `%${utm_source}%` }
+        }
     const leadSourceValue = leadSource || lead_source;
     if (leadSourceValue) {
       // leadFilters.lead_source = { [Op.like]: `%${leadSourceValue}%` };
       leadFilters.lead_source = leadSourceValue;
     }
+    // Fixed filter logic
     if (leadStatus || lead_status) {
       leadFilters.lead_status = leadStatus || lead_status;
+      if (exclude_verification === "true") {
+        leadFilters.verification_status = "Under Review";
+      }
     } else if (exclude_verification === "true") {
-      // Exclude leads with status "Verification 1"
       leadFilters.lead_status = { [Op.in]: [...INITIAL_LEAD_STATUSES] };
       leadFilters.verification_status = "Under Review";
     }
@@ -652,7 +672,7 @@ async function getLeadsByAssignedUserId(req, res) {
       res,
       "error",
       500,
-      "Failed to retrieve leads",
+      error?.message || "Failed to retrieve leads",
       null,
       error,
       null

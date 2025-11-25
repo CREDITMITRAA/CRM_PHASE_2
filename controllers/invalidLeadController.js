@@ -19,7 +19,7 @@ async function deleteInvalidLeads(req, res) {
       resizeBy,
       "error",
       500,
-      "Failed to delete invalid leads !",
+      error?.message || "Failed to delete invalid leads !",
       null,
       error,
       null
@@ -115,7 +115,7 @@ async function getAllInvalidLeads(req, res) {
       res,
       "error",
       500,
-      "Failed to get invalid leads!",
+      error?.message || "Failed to get invalid leads!",
       null,
       error.message,
       null
@@ -141,7 +141,7 @@ async function deleteInvalidLeadsByLeadIds(req,res){
 
     return ApiResponse(res, 'success', 200, `Delete ${response} Invalid Leads Successfully`)
   } catch (error) {
-    return ApiResponse(res, 'error', 500, "Failed to delete invalid leads !", null, error, null)
+    return ApiResponse(res, 'error', 500, error?.message || "Failed to delete invalid leads !", null, error, null)
   }
 }
 
@@ -158,7 +158,7 @@ async function getDistinctInvalidLeadReasons(req,res){
       reasons = reasons.map((reason) => reason.reason)
       return ApiResponse(res, 'success', 200, "Query Successful", reasons)
   } catch (error) {
-    return ApiResponse(res, 'error', 500, "Failed to get unique invalid leads reasons !", null, error, null)
+    return ApiResponse(res, 'error', 500, error?.message || "Failed to get unique invalid leads reasons !", null, error, null)
   }
 }
 

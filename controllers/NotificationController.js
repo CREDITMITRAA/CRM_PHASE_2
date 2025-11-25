@@ -20,7 +20,7 @@ async function acknowledgeNotification(req,res){
 
         return ApiResponse(res, 'success', 200, "Notification Acknowledged Successfully !")
     } catch (error) {
-        return ApiResponse(res, 'error', 500, "Failed to Acknowledge Notification !", null, error, null)
+        return ApiResponse(res, 'error', 500, error?.message || "Failed to Acknowledge Notification !", null, error, null)
     }
 }
 
@@ -67,7 +67,7 @@ async function getNotificationsByEmployeeId(req,res){
 
         return ApiResponse(res, 'success', 200, "Notifications Fetched Successfully.", rows, null, pagination)
     } catch (error) {
-        return ApiResponse(res, 'error', 500, "Failed to Fetch Notifications for the Employee !", null, error, null)
+        return ApiResponse(res, 'error', 500, error?.message || "Failed to Fetch Notifications for the Employee !", null, error, null)
     }
 }
 
@@ -84,7 +84,7 @@ async function getUnSeenNotificationsCount(req,res){
 
         return ApiResponse(res, 'success', 200, "Count fetched succussfully.", {count})
     } catch (error) {
-        return ApiResponse(res, 'error', 500, "Failed to fetch unseen notifications count !", null, error, null)
+        return ApiResponse(res, 'error', 500, error?.message || "Failed to fetch unseen notifications count !", null, error, null)
     }
 }
 
